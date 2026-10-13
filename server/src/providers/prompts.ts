@@ -1,0 +1,173 @@
+/**
+ * תבניות פרומפט וסכמות JSON לספקי טקסט.
+ * הפלט חייב להיות מובנה (Structured Outputs) כדי שהתסריט והשוטים יישמרו כנתונים ולא כטקסט חופשי.
+ */
+import { type Brief, type ScriptContent, STORY_ROLES, wordsPerSecond } from '@apos/shared';
+import type { ProjectContext } from './types.js';
+
+export function briefToText(ctx: ProjectContext): string {
+  const b: Brief = ctx.brief;
+  const lines: Array<[string, string]> = [
+    ['Project', ctx.name],
+    ['Client', ctx.clientName],
+    ['Video type', b.videoType],
+    ['Goal', b.goal],
+    ['Product / service', b.productOrService],
+    ['Target audience', b.targetAudience],
+    ['Key message', b.keyMessage],
+    ['Platforms', b.platforms.join(', ')],
+    ['Aspect ratio', b.aspectRatio],
+    ['Target duration (seconds)', b.durationSec ? String(b.durationSec) : ''],
+    ['Visual style', b.visualStyle],
+    ['Inspirations', b.inspirations],
+    ['Brand logo', b.brandLogo],
+    ['Brand colors', b.brandColors],
+    ['Brand fonts', b.brandFonts],
+    ['Characters', b.characters.map((c) => `${c.name}: ${c.description}`).join(' | ')],
+    ['Voice-over', b.voiceoverNeeded ? 'yes' : 'no (on-screen text / music only)'],
+    ['Language', b.language],
+    ['Tone', b.tone],
+    ['Voice notes', b.voiceNotes],
+    ['Budget / constraints', [b.budget, b.constraints].filter(Boolean).join(' — ')],
+    ['Extra notes', b.notes],
+  ];
+  return lines
+    .filter(([, v]) => v && v.trim())
+    .map(([k, v]) => `- ${k}: ${v}`)
+    .join('\n');
+}
+
+export function scriptSystemPrompt(ctx: ProjectContext): string {
+  const wps = wordsPerSecond(ctx.brief.language);
+  return [
+    'You are a senior commercial scriptwriter and creative director for short AI-generated marketing videos.',
+    'Write a production-ready script based strictly on the brief. Do not invent product claims, prices or facts that are not in the brief.',
+    `Write narration and on-screen text in the brief's language (${ctx.brief.language || 'same language as the brief'}). Write visualAction and notes in the same language.`,
+    'Narration must sound natural when read aloud: short sentences, spoken rhythm, no stage directions inside narration.',
+    `Timing: assume about ${wps} spoken words per second. Each scene's estDurationSec must fit its narration, and the total must match the target duration within ±10%.`,
+    'Structure the story with clear roles (hook in the first 1–3 seconds, then problem/solution/benefit/proof as relevant, end with a CTA when the goal requires one).',
+    `storyRole must be one of: ${STORY_ROLES.join(', ')}.`,
+    'visualAction describes what is seen on screen in one or two concrete, filmable sentences, suitable for AI image/video generation.',
+    'notes: optional production notes (sound, transitions, emphasis). Use an empty string if none.',
+  ].join('\n');
+}
+
+export function scriptUserPrompt(ctx: ProjectContext): string {
+  return `BRIEF:\n${briefToText(ctx)}\n\nWrite the script now.`;
+}
+
+export function reviseUserPrompt(ctx: ProjectContext, base: ScriptContent, feedback: string): string {
+  const current = JSON.stringify(
+    {
+      title: base.title,
+      logline: base.logline,
+      scenes: base.scenes.map(({ id: _id, ...s }) => s),
+    },
+    null,
+    2,
+  );
+  return [
+    `BRIEF:\n${briefToText(ctx)}`,
+    `CURRENT SCRIPT (JSON):\n${current}`,
+    `FEEDBACK TO APPLY:\n${feedback}`,
+    'Produce a revised full script. Apply the feedback precisely; keep everything that the feedback does not ask to change.',
+  ].join('\n\n');
+}
+
+export function storyboardSystemPrompt(defaults: { imageModel: string; animationModel: string }): string {
+  return [
+    'You are a cinematographer and storyboard artist preparing shots for AI image generation and AI video animation.',
+    'Break each script scene into one or more shots. Keep shot durations realistic for AI video (usually 2–8 seconds) and the sum close to the scene duration.',
+    'For every shot fill all fields concretely: shot type, camera angle, composition and subject placement, body/head/gaze movement, lens & depth of field when relevant, lighting, color & mood, character description and wardrobe, and consistency requirements versus other shots (same character identity, wardrobe, product look, logo).',
+    'imagePrompt: a detailed English prompt for a photorealistic still frame (subject, action, environment, camera, lens, lighting, color grade, realistic human skin texture when people appear, aspect ratio). No brand names of AI tools inside the prompt.',
+    'animationPrompt: an English prompt describing only the motion over the shot duration (subject motion, camera motion, pacing). Keep it consistent with the still frame.',
+    `imageModel: default "${defaults.imageModel}" unless there is a clear reason otherwise.`,
+    `animationModel: choose "Kling (Unlimited)" for simple/moderate motion, budget or speed priority; choose "Seedance" when the shot needs very high realism, complex human motion, emotional performance or cinematic quality. Default "${defaults.animationModel}". Explain the choice briefly in animationModelReason.`,
+    'Fields other than imagePrompt / animationPrompt may be written in the same language as the script.',
+    'sceneIndex is the zero-based index of the script scene the shot belongs to; narration is the exact narration part covered by the shot (empty string if none).',
+  ].join('\n');
+}
+
+export function storyboardUserPrompt(ctx: ProjectContext, script: ScriptContent): string {
+  const scenes = script.scenes.map((s, i) => ({
+    sceneIndex: i,
+    storyRole: s.storyRole,
+    narration: s.narration,
+    onScreenText: s.onScreenText,
+    visualAction: s.visualAction,
+    estDurationSec: s.estDurationSec,
+  }));
+  return `BRIEF:\n${briefToText(ctx)}\n\nAPPROVED SCRIPT "${script.title}":\n${JSON.stringify(scenes, null, 2)}\n\nCreate the storyboard shots.`;
+}
+
+const str = { type: 'string' } as const;
+
+export const SCRIPT_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['title', 'logline', 'scenes'],
+  properties: {
+    title: str,
+    logline: str,
+    scenes: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['storyRole', 'narration', 'onScreenText', 'visualAction', 'estDurationSec', 'notes'],
+        properties: {
+          storyRole: { type: 'string', enum: [...STORY_ROLES] },
+          narration: str,
+          onScreenText: str,
+          visualAction: str,
+          estDurationSec: { type: 'number' },
+          notes: str,
+        },
+      },
+    },
+  },
+} as const;
+
+export const SHOT_KEYS = [
+  'sceneIndex',
+  'narration',
+  'durationSec',
+  'action',
+  'shotType',
+  'cameraAngle',
+  'composition',
+  'movement',
+  'lens',
+  'lighting',
+  'colorMood',
+  'character',
+  'wardrobe',
+  'consistencyNotes',
+  'imagePrompt',
+  'animationPrompt',
+  'imageModel',
+  'animationModel',
+  'animationModelReason',
+] as const;
+
+export const STORYBOARD_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['shots'],
+  properties: {
+    shots: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: [...SHOT_KEYS],
+        properties: Object.fromEntries(
+          SHOT_KEYS.map((k) => [
+            k,
+            k === 'sceneIndex' ? { type: 'integer' } : k === 'durationSec' ? { type: 'number' } : str,
+          ]),
+        ),
+      },
+    },
+  },
+} as const;
