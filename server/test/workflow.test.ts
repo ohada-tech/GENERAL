@@ -182,7 +182,11 @@ describe('Storyboard stage', () => {
       [2, 'draft'],
       [1, 'superseded'],
     ]);
-    expect(listShots(ctx.db, versions[1].id).length).toBeGreaterThan(0);
+    const oldShots = listShots(ctx.db, versions[1].id);
+    expect(oldShots.length).toBeGreaterThan(0);
+    // גרסה שהוחלפה נעולה — גם לשוטים וגם לרפרנסים
+    expect(() => cmd.updateShot(ctx, oldShots[0].id, { action: 'x' })).toThrow(/לקריאה בלבד/);
+    expect(() => cmd.addReference(ctx, oldShots[0].id, { url: 'https://pexels.com/x' })).toThrow(/לקריאה בלבד/);
   });
 
   it('script_only scope builds a skeleton without calling the model', async () => {

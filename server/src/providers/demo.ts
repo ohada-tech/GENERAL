@@ -71,7 +71,7 @@ export class DemoTextProvider implements TextProvider {
       character: '',
       wardrobe: '',
       consistencyNotes: '',
-      imagePrompt: `[DEMO] ${s.visualAction}`,
+      imagePrompt: s.visualAction,
       animationPrompt: '[DEMO]',
       imageModel: defaults.imageModel,
       animationModel: defaults.animationModel,

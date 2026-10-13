@@ -556,9 +556,18 @@ export function reopenStoryboard(ctx: Ctx, projectId: string) {
 
 /* ---------------- References ---------------- */
 
-export function addReference(ctx: Ctx, shotId: string, input: unknown) {
+/** רפרנסים ניתנים לניהול גם אחרי אישור הסטורי בורד (שלב 04), אך לא בגרסה שהוחלפה. */
+function assertRefsEditable(ctx: Ctx, shotId: string) {
   const shot = getShot(ctx.db, shotId);
   if (!shot) throw new NotFoundError('שוט');
+  if (getStoryboard(ctx.db, shot.storyboardId)?.status === 'superseded') {
+    throw new GateError('זו גרסת סטורי בורד ישנה — לקריאה בלבד');
+  }
+  return shot;
+}
+
+export function addReference(ctx: Ctx, shotId: string, input: unknown) {
+  const shot = assertRefsEditable(ctx, shotId);
   const r = referenceInputSchema.parse(input);
   return tx(ctx.db, () => {
     const id = uid();
@@ -596,6 +605,7 @@ export function addReference(ctx: Ctx, shotId: string, input: unknown) {
 export function updateReference(ctx: Ctx, refId: string, patch: unknown) {
   const ref = getRef(ctx.db, refId);
   if (!ref) throw new NotFoundError('רפרנס');
+  assertRefsEditable(ctx, ref.shotId);
   const p = referencePatchSchema.parse(patch);
   const next = { ...ref, ...p };
   if (p.url) next.platform = detectPlatform(p.url);
@@ -634,6 +644,7 @@ export function updateReference(ctx: Ctx, refId: string, patch: unknown) {
 export function deleteReference(ctx: Ctx, refId: string) {
   const ref = getRef(ctx.db, refId);
   if (!ref) throw new NotFoundError('רפרנס');
+  assertRefsEditable(ctx, ref.shotId);
   tx(ctx.db, () => {
     ctx.db.prepare('DELETE FROM refs WHERE id = ?').run(refId);
     emit(ctx, {
