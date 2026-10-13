@@ -15,7 +15,7 @@ const app = await buildApp(ctx, { logger: true, serveWeb: true });
 const worker = startWorker(ctx, (id) => isProjectCompleted(ctx, id));
 
 await app.listen({ port: config.port, host: config.host });
-console.log(`\n  AutoPilot → http://${config.host}:${config.port}`);
+console.log(`\n  AI Production AP → http://${config.host}:${config.port}`);
 console.log(`  Data: ${config.dataDir}`);
 console.log(
   config.openai.apiKey

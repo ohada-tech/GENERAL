@@ -1,5 +1,5 @@
 #!/bin/bash
-# AutoPilot — double-click (Mac) or run ./start-mac.command (Mac/Linux)
+# AI Production AP — double-click (Mac) or run ./start-mac.command (Mac/Linux)
 cd "$(dirname "$0")" || exit 1
 
 if ! command -v node >/dev/null 2>&1; then

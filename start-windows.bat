@@ -1,7 +1,7 @@
 @echo off
-REM AutoPilot - double-click to install (first time), build and start.
+REM AI Production AP - double-click to install (first time), build and start.
 cd /d "%~dp0"
-title AutoPilot
+title AI Production AP
 
 where node >nul 2>nul
 if errorlevel 1 (

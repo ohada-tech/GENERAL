@@ -2,7 +2,7 @@
   "name": "ai-production-os",
   "private": true,
   "version": "0.1.0",
-  "description": "AutoPilot — מערכת הפקה לסרטוני AI עם Human-in-the-loop",
+  "description": "AI Production AP — מערכת הפקה לסרטוני AI עם Human-in-the-loop",
   "workspaces": [
     "shared",
     "server",
