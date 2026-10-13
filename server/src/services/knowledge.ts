@@ -237,18 +237,20 @@ let running: Promise<void> | null = null;
 /** מזקק ברקע את כל הסקילים שממתינים, אחד אחרי השני */
 export function digestPending(ctx: Ctx): Promise<void> {
   if (running) return running;
-  running = (async () => {
-    try {
-      for (;;) {
-        const r = ctx.db.prepare("SELECT id FROM skills WHERE digest_status = 'pending' ORDER BY priority DESC LIMIT 1").get() as { id: string } | undefined;
-        if (!r) break;
-        await digestSkill(ctx, r.id);
-      }
-    } finally {
-      running = null;
+  const loop = async () => {
+    // await ראשון לפני כל עבודה — כדי שהאיפוס של running לא יקרה לפני ההשמה (כשאין מה לזקק)
+    await Promise.resolve();
+    for (;;) {
+      const r = ctx.db.prepare("SELECT id FROM skills WHERE digest_status = 'pending' ORDER BY priority DESC LIMIT 1").get() as { id: string } | undefined;
+      if (!r) break;
+      await digestSkill(ctx, r.id);
     }
-  })();
-  return running;
+  };
+  const p: Promise<void> = loop().finally(() => {
+    if (running === p) running = null;
+  });
+  running = p;
+  return p;
 }
 
 export function redigest(ctx: Ctx, id: string) {

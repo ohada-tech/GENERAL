@@ -55,6 +55,14 @@ describe('Knowledge base (Claude skills → production playbook)', () => {
     expect(knowledge.skillMatchesClient('', 'anyone')).toBe(true);
   });
 
+  it('keeps digesting after an idle run (regression: the first empty run left the queue stuck)', async () => {
+    const { ctx } = ctxWithDigest();
+    await knowledge.digestPending(ctx); // כמו בהפעלת השרת — אין עדיין סקילים
+    knowledge.upsertSkill(ctx, { name: 'copywriting', body: 'hooks' });
+    await knowledge.digestPending(ctx);
+    expect(knowledge.listSkills(ctx)[0].digestStatus).toBe('done');
+  });
+
   it('digests skills with Claude and injects only the relevant ones into each prompt', async () => {
     const { ctx, seen } = ctxWithDigest();
     const app = await buildApp(ctx);
