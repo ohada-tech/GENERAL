@@ -46,6 +46,8 @@ export interface ProjectContext {
   brief: Brief;
   /** כללים שהמערכת למדה מהערות קודמות (כלליים + של הלקוח) */
   lessons?: string[];
+  /** ספר ההפקה: הסקילים שלימדת את Claude, מזוקקים (כלליים + של הלקוח) */
+  playbook?: string;
 }
 
 export interface TextGenOptions {

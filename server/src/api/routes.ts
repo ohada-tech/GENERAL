@@ -24,6 +24,7 @@ import { describeProviders } from '../providers/registry.js';
 import { dashboard, projectState } from '../services/views.js';
 import * as secrets from '../services/secrets.js';
 import * as learning from '../services/learning.js';
+import * as knowledge from '../services/knowledge.js';
 import * as time from '../services/time.js';
 import * as cmd from '../workflow/commands.js';
 import { emit } from '../workflow/events.js';
@@ -396,6 +397,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     feedback: learning.recentFeedback(ctx, 60),
     pending: learning.pendingFeedbackCount(ctx),
     distillEvery: learning.DISTILL_EVERY,
+    firstPass: learning.firstPassStats(ctx),
     clients: (ctx.db.prepare("SELECT DISTINCT client_name AS c FROM projects WHERE client_name != '' ORDER BY client_name").all() as Array<{ c: string }>).map((r) => r.c),
   }));
   app.post('/api/lessons', async (req) => {
@@ -417,6 +419,43 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     const job = tx(ctx.db, () => learning.maybeDistill(ctx, null, true));
     if (!job) throw new GateError('אין הערות חדשות ללמוד מהן');
     return { jobId: job.id };
+  });
+
+  // ספר הידע: הסקילים שלימדת את Claude
+  const skillSummary = ({ body, ...s }: knowledge.Skill) => ({ ...s, bodyChars: body.length });
+  app.get('/api/skills', async () => ({ skills: knowledge.listSkills(ctx).map(skillSummary) }));
+  app.get('/api/skills/:sid', async (req) => {
+    const s = knowledge.getSkill(ctx, (req.params as any).sid);
+    if (!s) throw new NotFoundError('סקיל');
+    return s;
+  });
+  /** סקיל אחד: קובץ SKILL.md גולמי ({md}) או שדות מפורשים */
+  app.post('/api/skills', async (req) => {
+    const b = (req.body ?? {}) as Record<string, any>;
+    const input = typeof b.md === 'string' ? { ...knowledge.parseSkillMd(b.md, b.name), ...(b.clients ? { clients: b.clients } : {}), source: 'manual' } : b;
+    const s = knowledge.upsertSkill(ctx, input as knowledge.SkillInput);
+    void knowledge.digestPending(ctx);
+    return skillSummary(s);
+  });
+  app.post('/api/skills/import', async (req) => {
+    const list = ((req.body ?? {}) as { skills?: unknown[] }).skills;
+    if (!Array.isArray(list) || !list.length) throw new GateError('אין סקילים לייבוא', 400);
+    const out = list.map((x) => skillSummary(knowledge.upsertSkill(ctx, x as knowledge.SkillInput)));
+    void knowledge.digestPending(ctx);
+    return { imported: out.length, skills: out };
+  });
+  app.patch('/api/skills/:sid', async (req) => {
+    const s = knowledge.updateSkill(ctx, (req.params as any).sid, (req.body ?? {}) as any);
+    if (!s) throw new NotFoundError('סקיל');
+    return skillSummary(s);
+  });
+  app.post('/api/skills/:sid/redigest', async (req) => {
+    knowledge.redigest(ctx, (req.params as any).sid);
+    return { ok: true };
+  });
+  app.delete('/api/skills/:sid', async (req) => {
+    knowledge.deleteSkill(ctx, (req.params as any).sid);
+    return { ok: true };
   });
 
   app.get('/api/settings/keys', async () => secrets.allKeyStatus(ctx.config));

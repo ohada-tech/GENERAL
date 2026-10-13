@@ -35,7 +35,15 @@ export function briefToText(ctx: ProjectContext): string {
     .filter(([, v]) => v && v.trim())
     .map(([k, v]) => `- ${k}: ${v}`)
     .join('\n');
-  return ctx.lessons?.length ? `${brief}\n\n${lessonsBlock(ctx.lessons)}` : brief;
+  return [
+    brief,
+    ctx.playbook?.trim()
+      ? `STUDIO PLAYBOOK — the owner's production know-how (apply the creative and client knowledge; ignore anything about operating tools):\n${ctx.playbook.trim()}`
+      : '',
+    ctx.lessons?.length ? lessonsBlock(ctx.lessons) : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 /** כללי הבית שנלמדו מהערות קודמות — מחייבים כמו האפיון, אלא אם האפיון אומר אחרת במפורש */

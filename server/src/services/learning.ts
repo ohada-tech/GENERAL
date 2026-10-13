@@ -182,3 +182,56 @@ export function applyDistilled(ctx: Ctx, rows: Array<{ scope: string; area: stri
   for (const id of feedbackIds) mark.run(id);
   return n;
 }
+
+export interface FirstPassArea {
+  area: 'script' | 'storyboard' | 'image' | 'motion' | 'audio' | 'editing';
+  total: number;
+  firstPass: number;
+  byMonth: Array<{ month: string; total: number; firstPass: number }>;
+}
+
+/**
+ * המדד שמראה אם המערכת משתפרת: כמה מהתוצרים אושרו כבר בפעם הראשונה, בלי בקשת תיקון — לפי תחום ולפי חודש.
+ * תסריט: הגרסה שהלקוח אישר היא v1. שוט: אושר בלי "נדרש תיקון". מדיה: הגרסה המאושרת היא הראשונה.
+ */
+export function firstPassStats(ctx: Ctx): FirstPassArea[] {
+  const rows: Array<{ area: FirstPassArea['area']; at: string; first: boolean }> = [];
+  for (const r of ctx.db
+    .prepare(
+      `SELECT sv.version AS v, MIN(a.created_at) AS at FROM script_versions sv
+       JOIN approvals a ON a.subject_type = 'script_version' AND a.subject_id = sv.id AND a.kind = 'client' AND a.decision = 'approved'
+       WHERE sv.status = 'client_approved' GROUP BY sv.id`,
+    )
+    .all() as any[])
+    rows.push({ area: 'script', at: r.at, first: Number(r.v) === 1 });
+  for (const r of ctx.db
+    .prepare(
+      `SELECT s.updated_at AS at,
+         EXISTS (SELECT 1 FROM approvals a WHERE a.subject_type = 'shot' AND a.subject_id = s.id AND a.decision = 'changes_requested') AS fixed
+       FROM shots s JOIN storyboards b ON b.id = s.storyboard_id WHERE b.status = 'approved' AND s.approval = 'approved'`,
+    )
+    .all() as any[])
+    rows.push({ area: 'storyboard', at: r.at, first: !Number(r.fixed) });
+  const KIND: Record<string, FirstPassArea['area']> = { frame: 'image', clip: 'motion', voiceover: 'audio', music: 'audio', final: 'editing' };
+  for (const r of ctx.db.prepare("SELECT kind, version, updated_at AS at FROM media WHERE status = 'approved'").all() as any[])
+    if (KIND[r.kind]) rows.push({ area: KIND[r.kind], at: r.at, first: Number(r.version) === 1 });
+
+  const areas: FirstPassArea['area'][] = ['script', 'storyboard', 'image', 'motion', 'audio', 'editing'];
+  return areas.map((area) => {
+    const mine = rows.filter((r) => r.area === area);
+    const months = new Map<string, { total: number; firstPass: number }>();
+    for (const r of mine) {
+      const m = String(r.at).slice(0, 7);
+      const cur = months.get(m) ?? { total: 0, firstPass: 0 };
+      cur.total++;
+      if (r.first) cur.firstPass++;
+      months.set(m, cur);
+    }
+    return {
+      area,
+      total: mine.length,
+      firstPass: mine.filter((r) => r.first).length,
+      byMonth: [...months.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, v]) => ({ month, ...v })),
+    };
+  });
+}

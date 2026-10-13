@@ -49,8 +49,8 @@ function Shell({ canLogout }: { canLogout: boolean }) {
           <BrandLockup />
         </Link>
         <div className="topbar-side">
-          <Link to="/learning" className="btn-link small" title="הכללים שהמערכת למדה מההערות שלך">
-            🧠 מה למדתי
+          <Link to="/learning" className="btn-link small" title="ספר הידע והכללים שהמערכת למדה">
+            🧠 המוח
           </Link>
           <TimerWidget />
           {health.error ? (

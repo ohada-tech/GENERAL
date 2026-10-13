@@ -11,7 +11,13 @@ import type { GenResult, ScriptDraft, TextProvider } from '../providers/types.js
 import { ProviderError } from '../providers/types.js';
 import { emit } from '../workflow/events.js';
 import { MEDIA_HANDLERS } from './media.js';
-import { applyDistilled, DISTILL_SCHEMA, distillPrompts, lessonsFor } from '../services/learning.js';
+import { applyDistilled, DISTILL_SCHEMA, distillPrompts, lessonsFor, type LessonArea } from '../services/learning.js';
+import { playbookFor } from '../services/knowledge.js';
+
+const AREAS_FOR: Record<'script' | 'storyboard', LessonArea[]> = {
+  script: ['script', 'audio', 'general'],
+  storyboard: ['storyboard', 'image', 'motion', 'general'],
+};
 
 export interface JobHandler<R = unknown> {
   run(ctx: Ctx, job: Job): Promise<R>;
@@ -30,7 +36,8 @@ function textProviderFor(ctx: Ctx, projectId: string): { provider: TextProvider;
   return { provider, model: project.settings.textModel || undefined };
 }
 
-function projectContext(ctx: Ctx, projectId: string) {
+/** הקשר לכתיבה: האפיון + הכללים שנלמדו + ספר ההפקה (הסקילים) הרלוונטיים למה שנכתב עכשיו */
+function projectContext(ctx: Ctx, projectId: string, purpose: 'script' | 'storyboard') {
   const p = getProject(ctx.db, projectId);
   if (!p) throw new GateError('הפרויקט נמחק');
   if (!p.briefCompletedAt) throw new GateError('האפיון לא סומן כמוכן');
@@ -38,7 +45,8 @@ function projectContext(ctx: Ctx, projectId: string) {
     name: p.name,
     clientName: p.clientName,
     brief: p.brief,
-    lessons: lessonsFor(ctx, p.clientName, ['script', 'storyboard', 'image', 'motion', 'general']),
+    lessons: lessonsFor(ctx, p.clientName, AREAS_FOR[purpose]),
+    playbook: playbookFor(ctx, p.clientName, AREAS_FOR[purpose]),
   };
 }
 
@@ -121,7 +129,7 @@ type ScriptRun = { draft: GenResult<ScriptDraft>; isDemo: boolean };
 
 const scriptGenerate: JobHandler<ScriptRun> = {
   async run(ctx, job) {
-    const pc = projectContext(ctx, job.projectId);
+    const pc = projectContext(ctx, job.projectId, 'script');
     const { provider, model } = textProviderFor(ctx, job.projectId);
     const draft = await provider.generateScript(pc, { model });
     return { draft, isDemo: provider.isDemo };
@@ -142,7 +150,7 @@ const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string }>
     const feedback = String(job.payload.feedback ?? '');
     const base = getScript(ctx.db, baseId);
     if (!base) throw new GateError('גרסת הבסיס לא נמצאה');
-    const pc = projectContext(ctx, job.projectId);
+    const pc = projectContext(ctx, job.projectId, 'script');
     const { provider, model } = textProviderFor(ctx, job.projectId);
     const draft = await provider.reviseScript(pc, base.content, feedback, { model });
     return { draft, isDemo: provider.isDemo, baseId, feedback };
@@ -196,7 +204,7 @@ const storyboardGenerate: JobHandler<StoryboardRun> = {
       return { scriptVersionId, shots, source: 'skeleton', provider: null, model: null };
     }
 
-    const pc = projectContext(ctx, job.projectId);
+    const pc = projectContext(ctx, job.projectId, 'storyboard');
     const { provider, model } = textProviderFor(ctx, job.projectId);
     const res = await provider.generateStoryboard(pc, script.content, defaults, { model });
     return {

@@ -247,4 +247,22 @@ export const MIGRATIONS: string[] = [
     updated_at TEXT NOT NULL
   );
   `,
+  /* v5 — ספר הידע: הסקילים שלימדת את Claude, מזוקקים להנחיות הפקה */ `
+  CREATE TABLE skills (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL,
+    digest TEXT NOT NULL DEFAULT '',
+    areas TEXT NOT NULL DEFAULT '[]',
+    clients TEXT NOT NULL DEFAULT '',
+    priority INTEGER NOT NULL DEFAULT 50,
+    active INTEGER NOT NULL DEFAULT 1,
+    source TEXT NOT NULL DEFAULT 'claude',
+    digest_status TEXT NOT NULL DEFAULT 'pending',
+    digest_error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  `,
 ];
