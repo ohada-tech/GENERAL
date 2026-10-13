@@ -38,7 +38,7 @@ describe('Production autopilot (05–09)', () => {
 
   it.skipIf(!haveFfmpeg)('runs every stage after each approval, through to the final video', async () => {
     const ctx = makeCtx();
-    const { p, shots } = await toApprovedStoryboard(ctx);
+    const { p, shots } = await toApprovedStoryboard(ctx, { audioProvider: 'kie' });
 
     // אישור הסטורי בורד מפעיל אוטומטית את יצירת התמונות
     cmd.approveStoryboard(ctx, p.id);
@@ -138,5 +138,47 @@ describe('Production autopilot (05–09)', () => {
     const n = ctx.db.prepare("SELECT title FROM notifications WHERE title LIKE '%לא הופעל%'").all();
     expect(n.length).toBe(1);
     expect(stage(ctx, p.id, 'images').detail).toContain('KIE');
+  });
+});
+
+describe('ElevenLabs audio', () => {
+  it.skipIf(!haveFfmpeg)('voice-over and music come from the account voice, with no KIE call', async () => {
+    const ctx = makeCtx();
+    const calls: string[] = [];
+    const mp3 = sampleMedia().mp3!;
+    (ctx.providers as any).voice = {
+      isConfigured: () => true,
+      verify: async () => ({ ok: true, credits: 1000 }),
+      voices: async () => [{ id: 'v-yoav', name: 'Yoav', category: 'cloned', description: '' }],
+      tts: async (text: string, voice: string, model: string) => (calls.push(`tts:${voice}:${model}:${text.length > 0}`), mp3),
+      music: async (prompt: string, ms: number) => (calls.push(`music:${ms}`), mp3),
+    };
+    const { p } = await toApprovedStoryboard(ctx, { elevenVoiceId: 'v-yoav' });
+    cmd.approveStoryboard(ctx, p.id);
+    await drain(ctx);
+    prod.approveStage(ctx, p.id, 'images');
+    await drain(ctx);
+    const kieBefore = ctx.kie.created.length;
+    prod.approveStage(ctx, p.id, 'animation');
+    await drain(ctx);
+    expect(ctx.kie.created.length).toBe(kieBefore); // הסאונד לא עבר דרך KIE
+    expect(calls).toEqual(['tts:v-yoav:eleven_v3:true', 'music:33000']);
+    const vo = listMedia(ctx.db, p.id, 'voiceover')[0];
+    expect(vo.status).toBe('ready');
+    expect(vo.model).toBe('ElevenLabs · eleven_v3');
+  }, 60_000);
+
+  it('asks for a voice before starting the audio stage', async () => {
+    const ctx = makeCtx();
+    (ctx.providers as any).voice = { isConfigured: () => true };
+    const { p } = await toApprovedStoryboard(ctx, { autoAdvance: false });
+    cmd.approveStoryboard(ctx, p.id);
+    prod.startStage(ctx, p.id, 'images');
+    await drain(ctx);
+    prod.approveStage(ctx, p.id, 'images');
+    prod.startStage(ctx, p.id, 'animation');
+    await drain(ctx);
+    prod.approveStage(ctx, p.id, 'animation');
+    expect(() => prod.startStage(ctx, p.id, 'audio')).toThrow(/לא נבחר קול/);
   });
 });

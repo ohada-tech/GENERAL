@@ -22,6 +22,11 @@ export const projectSettingsSchema = z.object({
   imageModel: z.string().default('nano-banana-2'),
   videoModel: z.string().default('kling-2.6'),
   voiceId: z.string().default('EkK5I93UQWFDigLMpZcX'),
+  /** קריינות ומוזיקה: elevenlabs = ישירות מהחשבון שלך (כל הקולות שלך); kie = דרך KIE */
+  audioProvider: z.enum(['elevenlabs', 'kie']).default('elevenlabs'),
+  /** קול ElevenLabs (מזהה מהחשבון) ומודל הקריינות */
+  elevenVoiceId: z.string().default(''),
+  elevenModel: z.string().default('eleven_v3'),
   music: z.boolean().default(true),
   /** אישור שלב מפעיל אוטומטית את השלב הבא (העלות מוצגת על כפתור האישור) */
   autoAdvance: z.boolean().default(true),
@@ -52,7 +57,8 @@ export type JobType =
   | 'clip.generate'
   | 'voiceover.generate'
   | 'music.generate'
-  | 'edit.render';
+  | 'edit.render'
+  | 'lessons.distill';
 
 export const JOB_LABELS: Record<JobType, string> = {
   'script.generate': 'יצירת טיוטת תסריט',
@@ -63,6 +69,7 @@ export const JOB_LABELS: Record<JobType, string> = {
   'voiceover.generate': 'יצירת קריינות',
   'music.generate': 'יצירת מוזיקה',
   'edit.render': 'עריכת הסרטון',
+  'lessons.distill': 'למידה מההערות שלך',
 };
 
 export const JOB_STAGE: Record<JobType, StageKey> = {
@@ -74,6 +81,7 @@ export const JOB_STAGE: Record<JobType, StageKey> = {
   'voiceover.generate': 'audio',
   'music.generate': 'audio',
   'edit.render': 'editing',
+  'lessons.distill': 'brief',
 };
 
 export interface Job {

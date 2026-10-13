@@ -225,12 +225,26 @@ function approvedScriptText(ctx: Ctx, projectId: string) {
   return s.content.scenes.map((x) => x.narration.trim()).filter(Boolean).join('\n');
 }
 
+/** שמירת אודיו שהתקבל ישירות (ElevenLabs) לקובץ */
+async function saveBytes(ctx: Ctx, m: Media, data: Buffer, ext: string, mime: string) {
+  const file = path.join(mediaDir(ctx, m.projectId), `${m.kind}-${m.id}.${ext}`);
+  fs.writeFileSync(file, data);
+  return { file, mime, size: data.length, durationSec: await ffprobeDuration(file) };
+}
+
 const voiceoverGenerate: JobHandler<MediaOut> = {
   async run(ctx, job) {
     const m = mustMedia(ctx, job);
     const project = getProject(ctx.db, m.projectId)!;
     const text = approvedScriptText(ctx, m.projectId);
     if (!text) throw new GateError('אין קריינות בתסריט המאושר');
+    if (project.settings.audioProvider === 'elevenlabs' && ctx.providers.voice) {
+      const { elevenVoiceId, elevenModel } = project.settings;
+      if (!elevenVoiceId) throw new GateError('לא נבחר קול ElevenLabs בהגדרות הפרויקט');
+      const data = await ctx.providers.voice.tts(text, elevenVoiceId, elevenModel || 'eleven_v3');
+      const saved = await saveBytes(ctx, m, data, 'mp3', 'audio/mpeg');
+      return { mediaId: m.id, ...saved, credits: null, model: `ElevenLabs · ${elevenModel || 'eleven_v3'}`, prompt: text, extraParams: { voiceId: elevenVoiceId, chars: text.length } };
+    }
     const tts = ttsModelFor(project.brief.language);
     const voice = project.settings.voiceId;
     let taskId = m.params.taskId as string | undefined;
@@ -273,8 +287,15 @@ function musicPrompt(ctx: Ctx, projectId: string, feedback: string) {
 const musicGenerate: JobHandler<MediaOut> = {
   async run(ctx, job) {
     const m = mustMedia(ctx, job);
+    const project = getProject(ctx.db, m.projectId)!;
     let taskId = m.params.taskId as string | undefined;
     const prompt = m.prompt || musicPrompt(ctx, m.projectId, String(m.params.feedback ?? ''));
+    if (project.settings.audioProvider === 'elevenlabs' && ctx.providers.voice) {
+      const seconds = (project.brief.durationSec ?? 30) + 3;
+      const data = await ctx.providers.voice.music(prompt, seconds * 1000);
+      const saved = await saveBytes(ctx, m, data, 'mp3', 'audio/mpeg');
+      return { mediaId: m.id, ...saved, credits: null, model: 'ElevenLabs · Music', prompt };
+    }
     if (!taskId) {
       taskId = await ctx.providers.media.createMusic({ prompt, instrumental: true, model: MUSIC.model });
       rememberTask(ctx, m, taskId);

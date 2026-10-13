@@ -1,7 +1,7 @@
 import { IMAGE_MODELS, KIE_USD_PER_CREDIT, VIDEO_MODELS, VOICES, type ProjectSettings } from '@apos/shared';
 import { useEffect, useState } from 'react';
 import { Field, InlineError, Tag } from '../components/ui';
-import { api, useAction } from '../lib/api';
+import { api, useAction, useApi } from '../lib/api';
 import type { TabProps } from './ProjectPage';
 
 export function SettingsTab({ detail, reload, health }: TabProps) {
@@ -28,6 +28,7 @@ export function SettingsTab({ detail, reload, health }: TabProps) {
   };
 
   const claudeEngine = health?.engine === 'claude';
+  const voices = useApi<{ connected: boolean; voices: Array<{ id: string; name: string; category: string }> }>(claudeEngine ? null : '/api/elevenlabs/voices');
   const k = health?.keys;
   const need = s.textProvider === 'collab' ? ['openai', 'anthropic'] : s.textProvider === 'openai' ? ['openai'] : s.textProvider === 'claude' ? ['anthropic'] : [];
   const missingKeys = k ? need.filter((x) => !k[x as 'openai'].configured).map((x) => (x === 'openai' ? 'ChatGPT' : 'Claude')) : [];
@@ -138,22 +139,48 @@ export function SettingsTab({ detail, reload, health }: TabProps) {
               ))}
             </select>
           </Field>
-          <Field label="קול הקריינות" hint="קריינות בעברית נוצרת ב-ElevenLabs v3.">
-            <select value={s.voiceId} onChange={(e) => setS({ ...s, voiceId: e.target.value })}>
-              {VOICES.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name} — {v.vibe}
-                </option>
-              ))}
+          <Field label="קריינות ומוזיקה" hint="ElevenLabs: ישירות מהחשבון שלך, כולל קולות משובטים. KIE: רשימת קולות קבועה.">
+            <select value={s.audioProvider} onChange={(e) => setS({ ...s, audioProvider: e.target.value as ProjectSettings['audioProvider'] })}>
+              <option value="elevenlabs">ElevenLabs (החשבון שלי)</option>
+              <option value="kie">KIE</option>
             </select>
           </Field>
+          {s.audioProvider === 'elevenlabs' ? (
+            <>
+              <Field label="קול הקריינות" hint={voices.data?.connected === false ? 'חבר ElevenLabs ב"מפתחות" כדי לבחור קול מהחשבון' : 'הקולות מהחשבון שלך ב-ElevenLabs'}>
+                <select value={s.elevenVoiceId} onChange={(e) => setS({ ...s, elevenVoiceId: e.target.value })}>
+                  <option value="">— בחר קול —</option>
+                  {(voices.data?.voices ?? []).map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}
+                      {v.category ? ` · ${v.category}` : ''}
+                    </option>
+                  ))}
+                  {s.elevenVoiceId && !(voices.data?.voices ?? []).some((v) => v.id === s.elevenVoiceId) && <option value={s.elevenVoiceId}>{s.elevenVoiceId}</option>}
+                </select>
+              </Field>
+              <Field label="מודל קריינות" hint="eleven_v3 תומך בעברית">
+                <input dir="ltr" value={s.elevenModel} onChange={(e) => setS({ ...s, elevenModel: e.target.value })} />
+              </Field>
+            </>
+          ) : (
+            <Field label="קול הקריינות" hint="קריינות בעברית נוצרת ב-ElevenLabs v3 דרך KIE.">
+              <select value={s.voiceId} onChange={(e) => setS({ ...s, voiceId: e.target.value })}>
+                {VOICES.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name} — {v.vibe}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
           <Field label="תקרת עלות לפרויקט ($)" hint="יצירה שתעבור את התקרה נחסמת עם הסבר — אפשר להגדיל כאן.">
             <input type="number" min={0} step={1} value={s.budgetUsd} onChange={(e) => setS({ ...s, budgetUsd: Number(e.target.value) || 0 })} />
           </Field>
         </div>
         <label className="check">
           <input type="checkbox" checked={s.music} onChange={(e) => setS({ ...s, music: e.target.checked })} />
-          מוזיקת רקע (Suno, ~$0.05)
+          מוזיקת רקע ({s.audioProvider === 'elevenlabs' ? 'ElevenLabs Music' : 'Suno, ~$0.05'})
         </label>
         <label className="check">
           <input type="checkbox" checked={s.autoAdvance} onChange={(e) => setS({ ...s, autoAdvance: e.target.checked })} />

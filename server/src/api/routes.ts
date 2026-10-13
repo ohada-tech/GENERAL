@@ -23,6 +23,7 @@ import {
 import { describeProviders } from '../providers/registry.js';
 import { dashboard, projectState } from '../services/views.js';
 import * as secrets from '../services/secrets.js';
+import * as learning from '../services/learning.js';
 import * as time from '../services/time.js';
 import * as cmd from '../workflow/commands.js';
 import { emit } from '../workflow/events.js';
@@ -389,7 +390,40 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!(secrets.KEY_SERVICES as string[]).includes(v)) throw new GateError('שירות לא מוכר', 400);
     return v as secrets.KeyService;
   };
+  // למידה: מה המערכת למדה מההערות שלך ושל הלקוחות
+  app.get('/api/lessons', async () => ({
+    lessons: learning.listLessons(ctx),
+    feedback: learning.recentFeedback(ctx, 60),
+    pending: learning.pendingFeedbackCount(ctx),
+    distillEvery: learning.DISTILL_EVERY,
+    clients: (ctx.db.prepare("SELECT DISTINCT client_name AS c FROM projects WHERE client_name != '' ORDER BY client_name").all() as Array<{ c: string }>).map((r) => r.c),
+  }));
+  app.post('/api/lessons', async (req) => {
+    const b = (req.body ?? {}) as { scope?: string; area?: string; text?: string };
+    if (!b.text?.trim()) throw new GateError('יש לכתוב את הכלל', 400);
+    return learning.addLesson(ctx, { scope: b.scope, area: b.area, text: b.text });
+  });
+  app.patch('/api/lessons/:lid', async (req) => {
+    const b = (req.body ?? {}) as { text?: string; active?: boolean };
+    const l = learning.updateLesson(ctx, (req.params as any).lid, b);
+    if (!l) throw new NotFoundError('כלל');
+    return l;
+  });
+  app.delete('/api/lessons/:lid', async (req) => {
+    learning.deleteLesson(ctx, (req.params as any).lid);
+    return { ok: true };
+  });
+  app.post('/api/lessons/distill', async () => {
+    const job = tx(ctx.db, () => learning.maybeDistill(ctx, null, true));
+    if (!job) throw new GateError('אין הערות חדשות ללמוד מהן');
+    return { jobId: job.id };
+  });
+
   app.get('/api/settings/keys', async () => secrets.allKeyStatus(ctx.config));
+  app.get('/api/elevenlabs/voices', async () => {
+    if (!ctx.providers.voice?.isConfigured()) return { connected: false, voices: [] };
+    return { connected: true, voices: await ctx.providers.voice.voices() };
+  });
   app.post('/api/settings/keys/:service', async (req, reply) => {
     const b = (req.body ?? {}) as Body;
     const r = await secrets.saveKey(ctx, mustService((req.params as any).service), { apiKey: b.apiKey, model: b.model });

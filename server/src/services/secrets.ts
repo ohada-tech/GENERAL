@@ -10,8 +10,8 @@ import type { Config } from '../config.js';
 import type { AnthropicTextProvider } from '../providers/anthropic.js';
 import type { OpenAITextProvider } from '../providers/openai.js';
 
-export type KeyService = 'openai' | 'anthropic' | 'kie';
-export const KEY_SERVICES: KeyService[] = ['openai', 'anthropic', 'kie'];
+export type KeyService = 'openai' | 'anthropic' | 'kie' | 'elevenlabs';
+export const KEY_SERVICES: KeyService[] = ['openai', 'anthropic', 'kie', 'elevenlabs'];
 
 interface SecretsFile {
   openaiApiKey?: string;
@@ -19,6 +19,7 @@ interface SecretsFile {
   anthropicApiKey?: string;
   anthropicModel?: string;
   kieApiKey?: string;
+  elevenlabsApiKey?: string;
 }
 
 export interface KeyStatus {
@@ -35,11 +36,12 @@ export interface KeyStatus {
 }
 export type OpenAIStatus = KeyStatus;
 
-const LABEL: Record<KeyService, string> = { openai: 'OpenAI', anthropic: 'Anthropic', kie: 'KIE' };
+const LABEL: Record<KeyService, string> = { openai: 'OpenAI', anthropic: 'Anthropic', kie: 'KIE', elevenlabs: 'ElevenLabs' };
 const FORMAT: Record<KeyService, { re: RegExp; hint: string }> = {
   openai: { re: /^sk-[A-Za-z0-9_\-]{20,}$/, hint: 'זה לא נראה כמו מפתח OpenAI (אמור להתחיל ב-sk-)' },
   anthropic: { re: /^sk-ant-[A-Za-z0-9_\-]{20,}$/, hint: 'זה לא נראה כמו מפתח Anthropic (אמור להתחיל ב-sk-ant-)' },
   kie: { re: /^[A-Za-z0-9_\-]{16,}$/, hint: 'זה לא נראה כמו מפתח KIE (העתק אותו מ-kie.ai/api-key)' },
+  elevenlabs: { re: /^[A-Za-z0-9_\-]{20,}$/, hint: 'זה לא נראה כמו מפתח ElevenLabs (העתק אותו מ-elevenlabs.io/app/developers/api-keys)' },
 };
 
 const file = (config: Config) => path.join(config.dataDir, 'secrets.json');
@@ -48,12 +50,14 @@ const env: Record<KeyService, { apiKey: string; model: string }> = {
   openai: { apiKey: '', model: '' },
   anthropic: { apiKey: '', model: '' },
   kie: { apiKey: '', model: '' },
+  elevenlabs: { apiKey: '', model: '' },
 };
-const source: Record<KeyService, KeyStatus['source']> = { openai: null, anthropic: null, kie: null };
+const source: Record<KeyService, KeyStatus['source']> = { openai: null, anthropic: null, kie: null, elevenlabs: null };
 const check: Record<KeyService, Pick<KeyStatus, 'verified' | 'verifiedAt' | 'lastError'> & { credits?: number | null }> = {
   openai: { verified: null, verifiedAt: null, lastError: null },
   anthropic: { verified: null, verifiedAt: null, lastError: null },
   kie: { verified: null, verifiedAt: null, lastError: null, credits: null },
+  elevenlabs: { verified: null, verifiedAt: null, lastError: null, credits: null },
 };
 
 function readFile(config: Config): SecretsFile {
@@ -71,11 +75,12 @@ function writeFile(config: Config, data: SecretsFile) {
 
 /** הגדרות הספק בתוך ה-Config (אובייקט חי — הספקים קוראים ממנו בכל קריאה) */
 function slot(config: Config, s: KeyService): { apiKey: string; model?: string } {
-  return s === 'openai' ? config.openai : s === 'anthropic' ? config.anthropic : config.kie;
+  return s === 'openai' ? config.openai : s === 'anthropic' ? config.anthropic : s === 'kie' ? config.kie : config.elevenlabs;
 }
 
-const fileKey = (s: KeyService) => `${s}ApiKey` as 'openaiApiKey' | 'anthropicApiKey' | 'kieApiKey';
-const fileModel = (s: KeyService) => (s === 'kie' ? null : (`${s}Model` as 'openaiModel' | 'anthropicModel'));
+const noModel = (s: KeyService) => s === 'kie' || s === 'elevenlabs';
+const fileKey = (s: KeyService) => `${s}ApiKey` as 'openaiApiKey' | 'anthropicApiKey' | 'kieApiKey' | 'elevenlabsApiKey';
+const fileModel = (s: KeyService) => (noModel(s) ? null : (`${s}Model` as 'openaiModel' | 'anthropicModel'));
 
 /** בהפעלה: טוען מפתחות שנשמרו מהממשק מעל ערכי הסביבה. */
 export function loadSecrets(config: Config) {
@@ -92,7 +97,7 @@ export function loadSecrets(config: Config) {
     }
     const fm = fileModel(s);
     if (fm && f[fm]) sl.model = f[fm];
-    check[s] = { verified: null, verifiedAt: null, lastError: null, ...(s === 'kie' ? { credits: null } : {}) };
+    check[s] = { verified: null, verifiedAt: null, lastError: null, ...(noModel(s) ? { credits: null } : {}) };
   }
 }
 
@@ -114,6 +119,7 @@ type VerifyResult = { ok: true; credits?: number } | { ok: false; code: string; 
 
 async function verify(ctx: Ctx, s: KeyService, apiKey: string, model: string): Promise<VerifyResult> {
   if (s === 'kie') return ctx.providers.media?.verify ? ctx.providers.media.verify(apiKey) : { ok: true };
+  if (s === 'elevenlabs') return ctx.providers.voice ? ctx.providers.voice.verify(apiKey) : { ok: true };
   const p = ctx.providers.text[s === 'openai' ? 'openai' : 'claude'] as unknown as OpenAITextProvider | AnthropicTextProvider | undefined;
   if (!p || typeof (p as OpenAITextProvider).verify !== 'function') return { ok: true };
   return (p as OpenAITextProvider).verify(apiKey, model);
@@ -128,7 +134,7 @@ export async function testKey(ctx: Ctx, s: KeyService) {
     verified: r.ok,
     verifiedAt: ctx.now().toISOString(),
     lastError: r.ok ? null : r.message,
-    ...(s === 'kie' ? { credits: r.ok ? (r.credits ?? null) : null } : {}),
+    ...(noModel(s) ? { credits: r.ok ? (r.credits ?? null) : null } : {}),
   };
   return keyStatus(ctx.config, s);
 }
@@ -149,9 +155,9 @@ export async function saveKey(ctx: Ctx, s: KeyService, input: { apiKey?: string;
   if (fm && input.model?.trim()) f[fm] = model;
   writeFile(ctx.config, f);
   sl.apiKey = apiKey;
-  if (s !== 'kie') sl.model = model;
+  if (!noModel(s)) sl.model = model;
   if (input.apiKey?.trim()) source[s] = 'ui';
-  check[s] = { verified: true, verifiedAt: ctx.now().toISOString(), lastError: null, ...(s === 'kie' ? { credits: r.credits ?? null } : {}) };
+  check[s] = { verified: true, verifiedAt: ctx.now().toISOString(), lastError: null, ...(noModel(s) ? { credits: r.credits ?? null } : {}) };
   return { ok: true as const, status: keyStatus(ctx.config, s) };
 }
 
@@ -164,9 +170,9 @@ export function clearKey(ctx: Ctx, s: KeyService) {
   writeFile(ctx.config, f);
   const sl = slot(ctx.config, s);
   sl.apiKey = env[s].apiKey;
-  if (s !== 'kie') sl.model = env[s].model || sl.model;
+  if (!noModel(s)) sl.model = env[s].model || sl.model;
   source[s] = env[s].apiKey ? 'env' : null;
-  check[s] = { verified: null, verifiedAt: null, lastError: null, ...(s === 'kie' ? { credits: null } : {}) };
+  check[s] = { verified: null, verifiedAt: null, lastError: null, ...(noModel(s) ? { credits: null } : {}) };
   return keyStatus(ctx.config, s);
 }
 

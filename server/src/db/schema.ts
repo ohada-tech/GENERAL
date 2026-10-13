@@ -223,4 +223,28 @@ export const MIGRATIONS: string[] = [
     PRIMARY KEY (project_id, stage)
   );
   `,
+  /* v4 — למידה: הערות ואישורים → כללים שנכנסים לפרומפטים */ `
+  CREATE TABLE feedback (
+    id TEXT PRIMARY KEY,
+    project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+    client TEXT NOT NULL DEFAULT '',
+    area TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'revision',
+    text TEXT NOT NULL,
+    distilled INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_feedback_pending ON feedback(distilled, created_at);
+
+  CREATE TABLE lessons (
+    id TEXT PRIMARY KEY,
+    scope TEXT NOT NULL DEFAULT 'global',
+    area TEXT NOT NULL DEFAULT 'general',
+    text TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'learned',
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  `,
 ];

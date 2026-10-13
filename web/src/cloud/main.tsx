@@ -27,6 +27,7 @@ const config: Config = {
   openai: { apiKey: '', model: 'Claude', baseUrl: '', timeoutMs: 180_000 },
   anthropic: { apiKey: '', model: 'Claude', timeoutMs: 600_000 },
   kie: { apiKey: '', baseUrl: 'https://api.kie.ai', uploadUrl: 'https://kieai.redpandaai.co', pollMs: 4000, timeoutMinutes: 25 },
+  elevenlabs: { apiKey: '', baseUrl: 'https://api.elevenlabs.io' },
   auth: { password: '', sessionSecret: '' },
   jobs: { maxAttempts: 3, retryBaseSeconds: 15, stuckMinutes: 10, pollMs: 1000, concurrency: 2 },
   stalledProjectDays: 3,

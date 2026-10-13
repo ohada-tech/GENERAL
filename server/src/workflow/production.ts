@@ -1,3 +1,4 @@
+import { recordFeedback, type LessonArea } from '../services/learning.js';
 /**
  * הפקה אוטומטית (שלבים 05–09): כל שלב מתחיל רק מאישור מפורש של המשתמש —
  * אישור השלב הקודם (כשמופעל "המשך אוטומטי") או לחיצה על "הפעל". לפני כל הפעלה
@@ -99,6 +100,10 @@ export function planStage(ctx: Ctx, project: Project, stage: ProductionStage) {
       const dur = clipDuration(vm, s.durationSec || 5);
       items.push({ kind: 'clip', shotId: s.id, credits: vm.creditsPerSec * dur, label: `קליפ · ${vm.label.split(' · ')[0]}` });
     }
+  } else if (stage === 'audio' && project.settings.audioProvider === 'elevenlabs') {
+    const text = narrationText(ctx, project.id);
+    if (project.brief.voiceoverNeeded && text) items.push({ kind: 'voiceover', shotId: null, credits: 0, label: 'קריינות · ElevenLabs' });
+    if (project.settings.music) items.push({ kind: 'music', shotId: null, credits: 0, label: 'מוזיקה · ElevenLabs' });
   } else if (stage === 'audio') {
     const text = narrationText(ctx, project.id);
     if (project.brief.voiceoverNeeded && text) {
@@ -148,6 +153,11 @@ const isExternal = (project: Project, kind: MediaKind) => project.settings.gener
 
 function requireKie(ctx: Ctx, stage: ProductionStage, project?: Project) {
   if (project?.settings.generator === 'higgsfield' && (stage === 'images' || stage === 'animation')) return;
+  if (stage === 'audio' && project?.settings.audioProvider === 'elevenlabs') {
+    if (!ctx.providers.voice?.isConfigured()) throw new GateError('ElevenLabs לא מחובר — הדבק מפתח ב"מפתחות" בסרגל העליון (או העלה קריינות ומוזיקה ידנית).');
+    if (!project.settings.elevenVoiceId) throw new GateError('לא נבחר קול ElevenLabs — בחר קול בהגדרות הפרויקט.');
+    return;
+  }
   if (stage !== 'editing' && stage !== 'delivery' && !ctx.providers.media.isConfigured()) {
     throw new GateError('KIE לא מחובר — חבר מפתח KIE ב"מפתחות" בסרגל העליון כדי ליצור תמונות, וידאו וסאונד.');
   }
@@ -304,6 +314,7 @@ export function regenerateItem(ctx: Ctx, mediaId: string, feedback = '', actor =
         message: `בקשה לגרסה חדשה ב-Higgsfield: ${KIND_HE[m.kind]}${feedback ? ` — ${feedback}` : ''}`,
         payload: { mediaId: m.id, kind: m.kind, shotId: m.shotId, feedback },
       });
+      recordFeedback(ctx, m.projectId, KIND_AREA[m.kind], feedback);
       return getMedia(ctx.db, m.id)!;
     });
   }
@@ -330,9 +341,13 @@ export function regenerateItem(ctx: Ctx, mediaId: string, feedback = '', actor =
       message: `יצירה מחדש: ${KIND_HE[m.kind]} v${m.version + 1}${feedback ? ` — ${feedback}` : ''}`,
       payload: { mediaId: id, previousId: m.id, kind: m.kind },
     });
+    recordFeedback(ctx, m.projectId, KIND_AREA[m.kind], feedback);
     return getMedia(ctx.db, id)!;
   });
 }
+
+const KIND_AREA: Record<MediaKind, LessonArea> = { frame: 'image', clip: 'motion', voiceover: 'audio', music: 'audio', final: 'editing' };
+const STAGE_AREA: Record<ProductionStage, LessonArea> = { images: 'image', animation: 'motion', audio: 'audio', editing: 'editing', delivery: 'general' };
 
 export const KIND_HE: Record<MediaKind, string> = {
   frame: 'תמונה',
@@ -380,6 +395,7 @@ export function approveStage(ctx: Ctx, projectId: string, stage: ProductionStage
       message: `שלב "${STAGE_HE[stage]}" אושר`,
       payload: { stage },
     });
+    recordFeedback(ctx, projectId, STAGE_AREA[stage], note, 'approval');
     return { stage, approved: true };
   });
   return result;

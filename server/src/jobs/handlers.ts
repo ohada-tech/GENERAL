@@ -11,6 +11,7 @@ import type { GenResult, ScriptDraft, TextProvider } from '../providers/types.js
 import { ProviderError } from '../providers/types.js';
 import { emit } from '../workflow/events.js';
 import { MEDIA_HANDLERS } from './media.js';
+import { applyDistilled, DISTILL_SCHEMA, distillPrompts, lessonsFor } from '../services/learning.js';
 
 export interface JobHandler<R = unknown> {
   run(ctx: Ctx, job: Job): Promise<R>;
@@ -33,8 +34,39 @@ function projectContext(ctx: Ctx, projectId: string) {
   const p = getProject(ctx.db, projectId);
   if (!p) throw new GateError('הפרויקט נמחק');
   if (!p.briefCompletedAt) throw new GateError('האפיון לא סומן כמוכן');
-  return { name: p.name, clientName: p.clientName, brief: p.brief };
+  return {
+    name: p.name,
+    clientName: p.clientName,
+    brief: p.brief,
+    lessons: lessonsFor(ctx, p.clientName, ['script', 'storyboard', 'image', 'motion', 'general']),
+  };
 }
+
+/** סבב למידה: Claude (או ChatGPT) מזקק את ההערות החדשות לכללים */
+const lessonsDistill: JobHandler<{ rows: Array<{ scope: string; area: string; text: string }>; feedbackIds: string[]; model: string }> = {
+  async run(ctx) {
+    const { system, user, feedbackIds } = distillPrompts(ctx);
+    if (!feedbackIds.length) return { rows: [], feedbackIds, model: '' };
+    const p = [ctx.providers.text.claude, ctx.providers.text.openai].find((x) => x?.isConfigured()) as
+      | { name?: string; json?: <T>(n: string, s: object, sys: string, user: string) => Promise<{ data: T; model?: string }> }
+      | undefined;
+    if (!p?.json) throw new ProviderError('אין מנוע כתיבה מחובר (Claude או ChatGPT) — לא ניתן ללמוד מההערות', false, 'not_configured');
+    const r = await p.json<{ lessons: Array<{ scope: string; area: string; text: string }> }>('lessons', DISTILL_SCHEMA, system, user);
+    return { rows: r.data.lessons ?? [], feedbackIds, model: r.model ?? '' };
+  },
+  persist(ctx, job, r) {
+    if (!r.feedbackIds.length) return { lessons: 0 };
+    const n = applyDistilled(ctx, r.rows, r.feedbackIds);
+    emit(ctx, {
+      projectId: job.projectId,
+      type: 'lessons.updated',
+      actor: 'system',
+      message: `המערכת למדה מ-${r.feedbackIds.length} הערות · ${n} כללים פעילים`,
+      payload: { lessons: n, feedback: r.feedbackIds.length },
+    });
+    return { lessons: n };
+  },
+};
 
 function insertScriptVersion(
   ctx: Ctx,
@@ -215,5 +247,6 @@ export const HANDLERS: Record<JobType, JobHandler<any>> = {
   'script.generate': scriptGenerate,
   'script.revise': scriptRevise,
   'storyboard.generate': storyboardGenerate,
+  'lessons.distill': lessonsDistill,
   ...MEDIA_HANDLERS,
 };

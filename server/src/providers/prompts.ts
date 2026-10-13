@@ -31,10 +31,19 @@ export function briefToText(ctx: ProjectContext): string {
     ['Budget / constraints', [b.budget, b.constraints].filter(Boolean).join(' — ')],
     ['Extra notes', b.notes],
   ];
-  return lines
+  const brief = lines
     .filter(([, v]) => v && v.trim())
     .map(([k, v]) => `- ${k}: ${v}`)
     .join('\n');
+  return ctx.lessons?.length ? `${brief}\n\n${lessonsBlock(ctx.lessons)}` : brief;
+}
+
+/** כללי הבית שנלמדו מהערות קודמות — מחייבים כמו האפיון, אלא אם האפיון אומר אחרת במפורש */
+export function lessonsBlock(lessons: string[]): string {
+  return [
+    'HOUSE RULES LEARNED FROM THE OWNER\'S AND CLIENT\'S PAST FEEDBACK (follow them unless this brief explicitly says otherwise):',
+    ...lessons.map((l) => `- ${l}`),
+  ].join('\n');
 }
 
 export function scriptSystemPrompt(ctx: ProjectContext): string {

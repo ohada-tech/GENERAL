@@ -3,7 +3,7 @@ import { api, useAction, useApi } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
 import { ConfirmButton, Field, InlineError, Modal, Tag } from './ui';
 
-export type KeyService = 'openai' | 'anthropic' | 'kie';
+export type KeyService = 'openai' | 'anthropic' | 'kie' | 'elevenlabs';
 
 export interface KeyStatus {
   service: KeyService;
@@ -36,21 +36,28 @@ const META: Record<KeyService, { name: string; role: string; where: string; plac
   },
   kie: {
     name: 'KIE',
-    role: 'מייצר תמונות, וידאו, קריינות ומוזיקה',
+    role: 'מייצר תמונות ווידאו אוטומטית (לא נחוץ במצב Higgsfield)',
     where: 'kie.ai/api-key',
     placeholder: 'המפתח מ-kie.ai',
   },
+  elevenlabs: {
+    name: 'ElevenLabs',
+    role: 'קריינות בכל קול מהחשבון שלך (כולל קולות משובטים) ומוזיקה',
+    where: 'elevenlabs.io/app/developers/api-keys',
+    placeholder: 'sk_…',
+  },
 };
 
-const ORDER: KeyService[] = ['openai', 'anthropic', 'kie'];
+const ORDER: KeyService[] = ['openai', 'anthropic', 'elevenlabs', 'kie'];
 
 const ok = (s?: KeyStatus) => !!s?.configured && s.verified !== false;
 
 /** תג בסרגל העליון: מצב שלושת החיבורים במבט אחד */
 export function KeysTag({ keys, onClick }: { keys: Keys | undefined; onClick: () => void }) {
   if (!keys) return null;
-  const all = ORDER.every((k) => ok(keys[k]));
-  const text = ORDER.map((k) => `${META[k].name} ${ok(keys[k]) ? '✓' : '✗'}`).join(' · ');
+  const shown = ORDER.filter((k) => keys[k] && (k !== 'kie' || keys[k].configured));
+  const all = shown.every((k) => ok(keys[k]));
+  const text = shown.map((k) => `${META[k].name} ${ok(keys[k]) ? '✓' : '✗'}`).join(' · ');
   return (
     <button className="tag-btn" onClick={onClick} title="מפתחות API — נשמרים בשרת בלבד">
       <Tag tone={all ? 'auto' : 'warn'}>{all ? `מחובר: ${text}` : `מפתחות: ${text}`}</Tag>
@@ -65,7 +72,7 @@ export function KeysModal({ keys, onClose, onChanged }: { keys: Keys; onClose: (
         <p className="small muted">
           כל מפתח נבדק מול הספק לפני שהוא נשמר, ונשמר רק בשרת — לא בדפדפן ולא ב-GitHub. הבדיקה לא עולה כסף.
         </p>
-        {ORDER.map((s) => (
+        {ORDER.filter((s) => keys[s]).map((s) => (
           <KeyRow key={s} status={keys[s]} onChanged={onChanged} />
         ))}
         <OperatorRow />
@@ -88,7 +95,7 @@ function KeyRow({ status, onChanged }: { status: KeyStatus; onChanged: () => Pro
     const r = await act.run(() => api.post<KeyStatus>(base, { apiKey, model }));
     if (r) {
       setApiKey('');
-      setDone(`נבדק ונשמר${r.credits != null ? ` · יתרה: ${r.credits} קרדיטים` : ''}`);
+      setDone(`נבדק ונשמר${r.credits != null ? (r.service === 'elevenlabs' ? ` · נשארו ${r.credits.toLocaleString('he-IL')} תווים` : ` · יתרה: ${r.credits} קרדיטים`) : ''}`);
       await onChanged();
     }
   };
@@ -124,7 +131,10 @@ function KeyRow({ status, onChanged }: { status: KeyStatus; onChanged: () => Pro
         <div className="small muted">
           מפתח שמסתיים ב-<code>…{status.last4}</code>
           {status.model && ` · מודל ${status.model}`}
-          {status.credits != null && ` · יתרה: ${status.credits} קרדיטים (~$${(status.credits * 0.005).toFixed(2)})`}
+          {status.credits != null &&
+            (status.service === 'elevenlabs'
+              ? ` · נשארו ${status.credits.toLocaleString('he-IL')} תווים במכסה`
+              : ` · יתרה: ${status.credits} קרדיטים (~$${(status.credits * 0.005).toFixed(2)})`)}
           {status.verifiedAt && ` · נבדק ${fmtDateTime(status.verifiedAt)}`}
           {status.source === 'env' && ' · מוגדר בשרת'}
         </div>

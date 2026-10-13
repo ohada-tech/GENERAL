@@ -18,6 +18,7 @@ import {
   type StageKey,
 } from '@apos/shared';
 import { z } from 'zod';
+import { recordFeedback } from '../services/learning.js';
 import { GateError, NotFoundError, type Ctx } from '../context.js';
 import { json, tx, uid } from '../db/db.js';
 import {
@@ -193,15 +194,16 @@ export function requestScriptRevision(ctx: Ctx, versionId: string, feedback: str
   if (!v) throw new NotFoundError('גרסת תסריט');
   requireBriefComplete(ctx, v.projectId);
   if (!feedback?.trim()) throw new GateError('יש לכתוב משוב לתיקון', 400);
-  return tx(ctx.db, () =>
-    enqueueJob(ctx, {
+  return tx(ctx.db, () => {
+    recordFeedback(ctx, v.projectId, 'script', feedback);
+    return enqueueJob(ctx, {
       projectId: v.projectId,
       type: 'script.revise',
       payload: { baseVersionId: versionId, feedback: feedback.trim() },
       idempotencyKey: `script.revise:${versionId}:${uid()}`,
       actor: owner(ctx),
-    }),
-  );
+    });
+  });
 }
 
 /** שמירת עריכה ידנית — תמיד כגרסה חדשה (היסטוריה נשמרת). */
@@ -268,6 +270,7 @@ export function approveScriptInternal(ctx: Ctx, versionId: string, note = '') {
       message: `תסריט v${v.version} אושר פנימית${note ? `: ${note}` : ''}`,
       payload: { scriptVersionId: v.id, version: v.version },
     });
+    recordFeedback(ctx, v.projectId, 'script', note, 'approval');
     return getScript(ctx.db, v.id)!;
   });
 }
@@ -299,6 +302,7 @@ export function recordClientApproval(ctx: Ctx, versionId: string, input: { appro
       message: `הלקוח (${by}) אישר את תסריט v${v.version}`,
       payload: { scriptVersionId: v.id, version: v.version, approvedBy: by },
     });
+    recordFeedback(ctx, v.projectId, 'script', input.note ?? '', 'approval');
     return getScript(ctx.db, v.id)!;
   });
 }
@@ -326,6 +330,7 @@ export function requestScriptChanges(ctx: Ctx, versionId: string, input: { from:
       message: `נדרשים שינויים בתסריט v${v.version} (${input.from === 'client' ? 'לקוח' : 'פנימי'}): ${input.note.trim()}`,
       payload: { scriptVersionId: v.id, version: v.version, from: input.from },
     });
+    recordFeedback(ctx, v.projectId, 'script', `${input.from === 'client' ? 'הלקוח: ' : ''}${input.note}`);
     return getScript(ctx.db, v.id)!;
   });
 }
@@ -500,6 +505,7 @@ export function setShotApproval(ctx: Ctx, shotId: string, decision: 'approved' |
       message: decision === 'approved' ? `שוט ${shot.number} אושר` : `שוט ${shot.number} — נדרש תיקון: ${note.trim()}`,
       payload: { shotId },
     });
+    recordFeedback(ctx, shot.projectId, 'storyboard', note, decision === 'approved' ? 'approval' : 'revision');
     return getShot(ctx.db, shotId)!;
   });
 }
@@ -534,6 +540,7 @@ export function approveStoryboard(ctx: Ctx, projectId: string, note = '') {
       message: `סטורי בורד v${sb.version} אושר (${shots.length} שוטים)`,
       payload: { storyboardId: sb.id, version: sb.version },
     });
+    recordFeedback(ctx, projectId, 'storyboard', note, 'approval');
     return getStoryboard(ctx.db, sb.id)!;
   });
 }

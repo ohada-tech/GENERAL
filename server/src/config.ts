@@ -14,6 +14,7 @@ export interface Config {
   openai: { apiKey: string; model: string; baseUrl: string; timeoutMs: number };
   anthropic: { apiKey: string; model: string; timeoutMs: number };
   kie: { apiKey: string; baseUrl: string; uploadUrl: string; pollMs: number; timeoutMinutes: number };
+  elevenlabs: { apiKey: string; baseUrl: string };
   /** סיסמת כניסה למערכת. ריק = ללא התחברות (מותר רק כשהשרת מאזין למחשב המקומי) */
   auth: { password: string; sessionSecret: string };
   jobs: { maxAttempts: number; retryBaseSeconds: number; stuckMinutes: number; pollMs: number; concurrency: number };
@@ -45,6 +46,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       uploadUrl: (env.KIE_UPLOAD_URL || 'https://kieai.redpandaai.co').replace(/\/$/, ''),
       pollMs: num(env.KIE_POLL_MS, 4000),
       timeoutMinutes: num(env.KIE_TIMEOUT_MINUTES, 25),
+    },
+    elevenlabs: {
+      apiKey: env.ELEVENLABS_API_KEY || '',
+      baseUrl: (env.ELEVENLABS_BASE_URL || 'https://api.elevenlabs.io').replace(/\/$/, ''),
     },
     auth: {
       password: env.APP_PASSWORD || '',

@@ -9,6 +9,7 @@ import { TimerWidget } from './components/TimerWidget';
 import { Loading, Tag } from './components/ui';
 import { api, isCloud, useApi } from './lib/api';
 import { Dashboard } from './pages/Dashboard';
+import { LessonsPage } from './pages/LessonsPage';
 import { ProjectPage } from './pages/ProjectPage';
 
 export interface Health {
@@ -48,6 +49,9 @@ function Shell({ canLogout }: { canLogout: boolean }) {
           <BrandLockup />
         </Link>
         <div className="topbar-side">
+          <Link to="/learning" className="btn-link small" title="הכללים שהמערכת למדה מההערות שלך">
+            🧠 מה למדתי
+          </Link>
           <TimerWidget />
           {health.error ? (
             <Tag tone="danger">השרת לא זמין</Tag>
@@ -76,6 +80,7 @@ function Shell({ canLogout }: { canLogout: boolean }) {
       <main className="main">
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/learning" element={<LessonsPage />} />
           <Route path="/projects/:id" element={<ProjectPage health={health.data} />} />
           <Route path="/projects/:id/:tab" element={<ProjectPage health={health.data} />} />
           <Route path="*" element={<div className="empty">העמוד לא נמצא. <Link to="/">לדשבורד</Link></div>} />

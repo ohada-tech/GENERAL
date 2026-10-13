@@ -2,6 +2,7 @@ import type { Config } from '../config.js';
 import { AnthropicTextProvider } from './anthropic.js';
 import { CollabTextProvider } from './collab.js';
 import { DemoTextProvider } from './demo.js';
+import { ElevenLabsClient } from './elevenlabs.js';
 import { KieClient } from './kie.js';
 import { OpenAITextProvider } from './openai.js';
 import type { TextProvider } from './types.js';
@@ -10,6 +11,8 @@ export interface Providers {
   text: Record<string, TextProvider>;
   /** מחולל מדיה (תמונה/וידאו/קול/מוזיקה) — KIE */
   media: KieClient;
+  /** קריינות ומוזיקה ישירות מ-ElevenLabs (אופציונלי) */
+  voice?: ElevenLabsClient;
 }
 
 export function createProviders(config: Config, fetchFn: typeof fetch = fetch): Providers {
@@ -24,6 +27,7 @@ export function createProviders(config: Config, fetchFn: typeof fetch = fetch): 
       demo: new DemoTextProvider(),
     },
     media: new KieClient(config.kie, fetchFn),
+    voice: new ElevenLabsClient(config.elevenlabs, fetchFn),
   };
 }
 

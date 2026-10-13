@@ -44,6 +44,8 @@ export interface ProjectContext {
   name: string;
   clientName: string;
   brief: Brief;
+  /** כללים שהמערכת למדה מהערות קודמות (כלליים + של הלקוח) */
+  lessons?: string[];
 }
 
 export interface TextGenOptions {
