@@ -16,11 +16,11 @@ const worker = startWorker(ctx, (id) => isProjectCompleted(ctx, id));
 
 await app.listen({ port: config.port, host: config.host });
 console.log(`\n  AI Production OS → http://${config.host}:${config.port}`);
-console.log(`  נתונים: ${config.dataDir}`);
+console.log(`  Data: ${config.dataDir}`);
 console.log(
   config.openai.apiKey
-    ? `  OpenAI: מחובר (מודל ברירת מחדל ${config.openai.model})`
-    : '  OpenAI: לא מוגדר OPENAI_API_KEY — יצירת תסריט ב-AI תיחסם עד להגדרה (או בחר ספק demo בפרויקט)',
+    ? `  OpenAI: connected (default model ${config.openai.model})`
+    : '  OpenAI: OPENAI_API_KEY not set - AI script writing is disabled until you add it to .env (or use the demo provider)',
 );
 
 const shutdown = async () => {
