@@ -5,6 +5,9 @@ import { App } from './App';
 import { TimerProvider } from './lib/timer';
 import './fonts';
 import './styles.css';
+import { registerInstall } from './lib/install';
+
+registerInstall();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

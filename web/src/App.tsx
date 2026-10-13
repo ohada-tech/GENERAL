@@ -10,6 +10,7 @@ import { Loading, Tag } from './components/ui';
 import { api, isCloud, useApi } from './lib/api';
 import { Dashboard } from './pages/Dashboard';
 import { LessonsPage } from './pages/LessonsPage';
+import { InstallApp } from './components/InstallApp';
 import { ProjectPage } from './pages/ProjectPage';
 
 export interface Health {
@@ -49,6 +50,7 @@ function Shell({ canLogout }: { canLogout: boolean }) {
           <BrandLockup />
         </Link>
         <div className="topbar-side">
+          {!isCloud() && <InstallApp />}
           <Link to="/learning" className="btn-link small" title="ספר הידע והכללים שהמערכת למדה">
             🧠 המוח
           </Link>
