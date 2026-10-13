@@ -6,7 +6,7 @@ import { OpenAIConnectModal, OpenAITag, type OpenAIStatus } from './components/O
 import { ThemeToggle } from './components/ThemeToggle';
 import { TimerWidget } from './components/TimerWidget';
 import { Tag } from './components/ui';
-import { useApi } from './lib/api';
+import { isCloud, useApi } from './lib/api';
 import { Dashboard } from './pages/Dashboard';
 import { ProjectPage } from './pages/ProjectPage';
 
@@ -14,6 +14,8 @@ export interface Health {
   ok: boolean;
   owner: string;
   openai: OpenAIStatus & { defaultModel: string };
+  /** מנוע ה-AI: openai (מקומי, עם מפתח) או claude (בגרסת הענן, מובנה) */
+  engine?: 'openai' | 'claude';
   providers: Array<{ id: string; label: string; configured: boolean; demo: boolean }>;
 }
 
@@ -30,10 +32,20 @@ export function App() {
           <TimerWidget />
           {health.error ? (
             <Tag tone="danger">השרת לא זמין</Tag>
+          ) : health.data?.engine === 'claude' ? (
+            health.data.openai.verified ? (
+              <Tag tone="auto" title="כתיבת תסריטים וסטורי בורד רצה דרך Claude בחשבון claude.ai שלך — בלי מפתח ובלי הגדרות">
+                AI מחובר ✓ · Claude
+              </Tag>
+            ) : (
+              <Tag tone="warn" title={health.data.openai.lastError ?? undefined}>
+                AI לא זמין כאן
+              </Tag>
+            )
           ) : (
             <OpenAITag status={health.data?.openai} onClick={() => setConnectOpen(true)} />
           )}
-          <ThemeToggle />
+          {!isCloud() && <ThemeToggle />}
           <NotificationBell />
         </div>
       </header>
@@ -45,7 +57,7 @@ export function App() {
           <Route path="*" element={<div className="empty">העמוד לא נמצא. <Link to="/">לדשבורד</Link></div>} />
         </Routes>
       </main>
-      {connectOpen && health.data && (
+      {connectOpen && health.data && health.data.engine !== 'claude' && (
         <OpenAIConnectModal status={health.data.openai} onClose={() => setConnectOpen(false)} onChanged={health.reload} />
       )}
     </div>

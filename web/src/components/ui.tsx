@@ -1,5 +1,5 @@
 import { STATUS_LABELS, type Status } from '@apos/shared';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 export function StatusBadge({ status, label }: { status: Status | string; label?: string }) {
   const text = label ?? STATUS_LABELS[status as Status]?.he ?? status;
@@ -141,5 +141,46 @@ export function ModeTag({ mode }: { mode: 'auto' | 'manual' | 'demo' | 'planned'
     <Tag tone={tone} title={title}>
       {text}
     </Tag>
+  );
+}
+
+/**
+ * כפתור פעולה הרסנית עם אישור בתוך הדף: לחיצה ראשונה מחליפה את התווית ל"בטוח?",
+ * לחיצה שנייה תוך 4 שניות מבצעת. (confirm() של הדפדפן לא עובד בכל הסביבות.)
+ */
+export function ConfirmButton({
+  onConfirm,
+  children,
+  confirmLabel = 'בטוח? לחץ שוב',
+  className = 'btn btn-sm btn-danger-ghost',
+  disabled,
+}: {
+  onConfirm: () => void | Promise<void>;
+  children: ReactNode;
+  confirmLabel?: string;
+  className?: string;
+  disabled?: boolean;
+}) {
+  const [armed, setArmed] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  return (
+    <button
+      type="button"
+      className={className}
+      disabled={disabled}
+      onClick={async () => {
+        if (!armed) {
+          setArmed(true);
+          timer.current = window.setTimeout(() => setArmed(false), 4000);
+          return;
+        }
+        window.clearTimeout(timer.current);
+        setArmed(false);
+        await onConfirm();
+      }}
+    >
+      {armed ? confirmLabel : children}
+    </button>
   );
 }

@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+/** גרסת הענן (Artifact ב-claude.ai): הכול רץ בדפדפן, קבצים נשמרים כנכסי Artifact. */
+export const isCloud = () => typeof window !== 'undefined' && (window as unknown as { __APOS_CLOUD__?: boolean }).__APOS_CLOUD__ === true;
+
+/** כתובת לקובץ שהועלה — מקומית מהשרת, בענן מאחסון הנכסים של ה-Artifact. */
+export const assetUrl = (id: string) => (isCloud() ? `/_blob/${id}` : `/api/assets/${id}/file`);
+
 export class ApiError extends Error {
   constructor(
     message: string,

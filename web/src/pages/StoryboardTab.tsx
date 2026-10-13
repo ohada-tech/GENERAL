@@ -12,8 +12,8 @@ import {
 } from '@apos/shared';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Empty, ErrorBox, Field, InlineError, Loading, ModeTag, Modal, StatusBadge, Tag } from '../components/ui';
-import { api, useAction, useApi } from '../lib/api';
+import { ConfirmButton, Empty, ErrorBox, Field, InlineError, Loading, ModeTag, Modal, StatusBadge, Tag } from '../components/ui';
+import { api, assetUrl, isCloud, useAction, useApi } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
 import type { TabProps } from './ProjectPage';
 
@@ -79,8 +79,8 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
           )}
           <div className="small muted">
             {project.settings.chatgptScope === 'script_and_visual'
-              ? 'מצב: ChatGPT מפתח גם קונספט חזותי ופרומפטים לכל שוט.'
-              : 'מצב: ChatGPT לתסריט בלבד — ייווצר שלד שוטים מהסצנות למילוי ידני.'}{' '}
+              ? `מצב: ${isCloud() ? 'Claude' : 'ChatGPT'} מפתח גם קונספט חזותי ופרומפטים לכל שוט.`
+              : `מצב: ${isCloud() ? 'Claude' : 'ChatGPT'} לתסריט בלבד — ייווצר שלד שוטים מהסצנות למילוי ידני.`}{' '}
             <Link to={`/projects/${project.id}/settings`}>שנה בהגדרות</Link>
           </div>
         </Empty>
@@ -169,7 +169,7 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
           {shots.map((s) => {
             const r = shotRefs(s.id);
             const approvedRef = r.find((x) => x.status === 'approved' && x.imageUrl);
-            const preview = s.previewAssetId ? `/api/assets/${s.previewAssetId}/file` : approvedRef?.imageUrl;
+            const preview = s.previewAssetId ? assetUrl(s.previewAssetId) : approvedRef?.imageUrl;
             return (
               <button key={s.id} className={`shot-card ap-${s.approval}`} onClick={() => setOpenShot(s.id)}>
                 <div className={`shot-thumb ar-${project.brief.aspectRatio.replace(':', 'x') || '16x9'}`}>
@@ -302,17 +302,16 @@ function ShotEditor({
             <button className="btn btn-sm" onClick={() => run(() => api.post(`/api/shots/${shot.id}/move`, { direction: 'down' }))} disabled={shot.number === total || act.busy}>
               ↓
             </button>
-            <button
-              className="btn btn-sm btn-danger-ghost"
-              onClick={async () => {
-                if (!confirm(`למחוק את שוט ${shot.number}?`)) return;
+            <ConfirmButton
+              disabled={act.busy}
+              onConfirm={async () => {
                 await act.run(() => api.del(`/api/shots/${shot.id}`));
                 await onChanged();
                 onClose();
               }}
             >
               מחק שוט
-            </button>
+            </ConfirmButton>
             <button className="btn btn-primary" onClick={save} disabled={!dirty || act.busy}>
               שמור
             </button>
@@ -364,7 +363,7 @@ function ShotEditor({
         <div className="stack">
           <div className="preview-box">
             {shot.previewAssetId ? (
-              <img src={`/api/assets/${shot.previewAssetId}/file`} alt="תצוגה מקדימה" />
+              <img src={assetUrl(shot.previewAssetId)} alt="תצוגה מקדימה" />
             ) : (
               <div className="muted small">אין תמונה לשוט. ניתן להעלות פריים שנוצר ידנית.</div>
             )}

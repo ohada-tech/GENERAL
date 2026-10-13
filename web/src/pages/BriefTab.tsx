@@ -1,7 +1,7 @@
 import { ASPECT_RATIOS, validateBrief, type Asset, type Brief } from '@apos/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { Field, InlineError, Tag } from '../components/ui';
-import { api, useAction } from '../lib/api';
+import { api, assetUrl, useAction } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
 import type { TabProps } from './ProjectPage';
 
@@ -323,7 +323,7 @@ function Attachments({
         <ul className="file-list">
           {attachments.map((a) => (
             <li key={a.id}>
-              <a href={`/api/assets/${a.id}/file`} target="_blank" rel="noreferrer">
+              <a href={assetUrl(a.id)} target="_blank" rel="noreferrer">
                 {a.filename}
               </a>{' '}
               <span className="muted small">{Math.round(a.size / 1024)}KB</span>

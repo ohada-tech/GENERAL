@@ -8,7 +8,7 @@ import {
   type TimeSummary,
 } from '@apos/shared';
 import { useEffect, useState } from 'react';
-import { Empty, ErrorBox, Field, InlineError, Loading, Tag } from '../components/ui';
+import { ConfirmButton, Empty, ErrorBox, Field, InlineError, Loading, Tag } from '../components/ui';
 import { api, useAction, useApi } from '../lib/api';
 import { fmtDate, fmtDateTime } from '../lib/format';
 import { useTimer } from '../lib/timer';
@@ -247,7 +247,6 @@ function EntryRow({ entry, liveSec, onDone }: { entry: TimeEntry; liveSec: numbe
     }
   };
   const remove = async () => {
-    if (!confirm('למחוק את רישום הזמן?')) return;
     await act.run(() => api.del(`/api/time/${entry.id}`));
     await onDone();
   };
@@ -310,9 +309,9 @@ function EntryRow({ entry, liveSec, onDone }: { entry: TimeEntry; liveSec: numbe
           ערוך
         </button>
         {!running && (
-          <button className="btn-link danger-text" onClick={remove} disabled={act.busy}>
+          <ConfirmButton className="btn-link danger-text" onConfirm={remove} disabled={act.busy} confirmLabel="בטוח?">
             מחק
-          </button>
+          </ConfirmButton>
         )}
       </td>
     </tr>

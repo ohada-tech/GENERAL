@@ -15,8 +15,9 @@
     "build": "npm run build -w web",
     "start": "npm run start -w server",
     "test": "npm run test -w server",
-    "typecheck": "tsc -p shared && tsc -p server && tsc -p web",
-    "seed:demo": "npm run seed:demo -w server"
+    "typecheck": "tsc -p shared && tsc -p server && tsc -p web && tsc -p web/tsconfig.cloud.json",
+    "seed:demo": "npm run seed:demo -w server",
+    "build:cloud": "npm run build:cloud -w web"
   },
   "devDependencies": {
     "concurrently": "^10.0.6",

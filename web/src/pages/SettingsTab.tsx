@@ -28,6 +28,7 @@ export function SettingsTab({ detail, reload, health }: TabProps) {
   };
 
   const openai = health?.providers.find((p) => p.id === 'openai');
+  const claudeEngine = health?.engine === 'claude';
 
   return (
     <form className="stack" onSubmit={save}>
@@ -44,7 +45,16 @@ export function SettingsTab({ detail, reload, health }: TabProps) {
       </section>
 
       <section className="card">
-        <h2>מנוע טקסט (ChatGPT)</h2>
+        <h2>{claudeEngine ? 'מנוע טקסט (Claude)' : 'מנוע טקסט (ChatGPT)'}</h2>
+        {claudeEngine ? (
+          <Field label="ספק" hint="בגרסת הענן התסריטים נכתבים ב-Claude דרך חשבון claude.ai שלך — בלי מפתח API. demo = תוכן תבניתי לבדיקת הזרימה בלבד.">
+            <select value={s.textProvider} onChange={(e) => setS({ ...s, textProvider: e.target.value as ProjectSettings['textProvider'] })}>
+              <option value="openai">Claude (מובנה)</option>
+              <option value="demo">הדגמה (ללא AI)</option>
+            </select>
+          </Field>
+        ) : (
+          <>
         <div className="grid-2">
           <Field label="ספק" hint="demo מייצר תוכן תבניתי מסומן, לבדיקת הזרימה בלבד — לא תוצר AI.">
             <select value={s.textProvider} onChange={(e) => setS({ ...s, textProvider: e.target.value as ProjectSettings['textProvider'] })}>
@@ -61,7 +71,9 @@ export function SettingsTab({ detail, reload, health }: TabProps) {
             OpenAI לא מחובר — לחץ על "חבר OpenAI" בסרגל העליון והדבק מפתח API. עד אז משימות AI ייכשלו ויסומנו כחסומות.
           </div>
         )}
-        <Field label="היקף השימוש ב-ChatGPT בפרויקט" group>
+          </>
+        )}
+        <Field label={claudeEngine ? 'היקף השימוש ב-AI בפרויקט' : 'היקף השימוש ב-ChatGPT בפרויקט'} group>
           <div className="stack">
             <label className="check">
               <input type="radio" checked={s.chatgptScope === 'script_and_visual'} onChange={() => setS({ ...s, chatgptScope: 'script_and_visual' })} />

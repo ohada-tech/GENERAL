@@ -191,7 +191,7 @@ export class OpenAITextProvider implements TextProvider {
   }
 }
 
-function validateScript(d: ScriptDraft): ScriptDraft {
+export function validateScript(d: ScriptDraft): ScriptDraft {
   if (!d || !Array.isArray(d.scenes) || d.scenes.length === 0) {
     throw new ProviderError('המודל החזיר תסריט ללא סצנות', true, 'empty_output');
   }

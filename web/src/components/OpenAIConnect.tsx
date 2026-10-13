@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api, ApiError, useAction } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
-import { Field, InlineError, Modal, Tag } from './ui';
+import { ConfirmButton, Field, InlineError, Modal, Tag } from './ui';
 
 export interface OpenAIStatus {
   configured: boolean;
@@ -74,7 +74,6 @@ export function OpenAIConnectModal({
   };
 
   const disconnect = async () => {
-    if (!confirm('לנתק את מפתח OpenAI מהמערכת?')) return;
     await act.run(() => api.del('/api/settings/openai'));
     setDone(null);
     await onChanged();
@@ -128,9 +127,9 @@ export function OpenAIConnectModal({
                     בדוק חיבור
                   </button>
                   {status.source === 'ui' && (
-                    <button type="button" className="btn btn-sm btn-danger-ghost" onClick={disconnect} disabled={act.busy}>
+                    <ConfirmButton onConfirm={disconnect} disabled={act.busy}>
                       נתק
-                    </button>
+                    </ConfirmButton>
                   )}
                 </>
               )}
