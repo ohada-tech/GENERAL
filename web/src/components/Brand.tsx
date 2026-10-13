@@ -32,7 +32,7 @@ export function BrandLockup() {
       <BrandMark />
       <span className="brand-words">
         <b className="brand-script holo">Ohad Alfi</b>
-        <span className="brand-line">AI PRODUCTION OS</span>
+        <span className="brand-line">AutoPilot</span>
       </span>
     </>
   );

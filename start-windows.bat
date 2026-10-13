@@ -1,7 +1,7 @@
 @echo off
-REM AI Production OS - double-click to install (first time), build and start.
+REM AutoPilot - double-click to install (first time), build and start.
 cd /d "%~dp0"
-title AI Production OS
+title AutoPilot
 
 where node >nul 2>nul
 if errorlevel 1 (

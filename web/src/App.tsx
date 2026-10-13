@@ -20,7 +20,7 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <Link to="/" className="brand" aria-label="Production OS — לדשבורד">
+        <Link to="/" className="brand" aria-label="AutoPilot — לדשבורד">
           <BrandLockup />
         </Link>
         <div className="topbar-side">
