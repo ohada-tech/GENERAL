@@ -61,12 +61,59 @@ const samePassword = (a: string, b: string) => {
   return crypto.timingSafeEqual(ha, hb);
 };
 
+/* ---------- מפתח גישה ל-Claude (מפעיל): Bearer token, נשמר רק כ-hash ---------- */
+const opFile = (config: Config) => path.join(config.dataDir, 'operator-token.json');
+const sha = (v: string) => crypto.createHash('sha256').update(v).digest('hex');
+
+interface OperatorToken {
+  hash: string;
+  last4: string;
+  createdAt: string;
+}
+
+function readOperator(config: Config): OperatorToken | null {
+  try {
+    return JSON.parse(fs.readFileSync(opFile(config), 'utf8')) as OperatorToken;
+  } catch {
+    return null;
+  }
+}
+
+export function operatorStatus(config: Config) {
+  const t = readOperator(config);
+  return t ? { active: true, last4: t.last4, createdAt: t.createdAt } : { active: false, last4: null, createdAt: null };
+}
+
+/** יוצר מפתח חדש (מחליף קודם). הערך המלא מוחזר פעם אחת בלבד. */
+export function createOperatorToken(config: Config) {
+  const token = `apos_${crypto.randomBytes(24).toString('base64url')}`;
+  fs.mkdirSync(config.dataDir, { recursive: true });
+  fs.writeFileSync(opFile(config), JSON.stringify({ hash: sha(token), last4: token.slice(-4), createdAt: new Date().toISOString() }), { mode: 0o600 });
+  return { token, ...operatorStatus(config) };
+}
+
+export function revokeOperatorToken(config: Config) {
+  fs.rmSync(opFile(config), { force: true });
+  return operatorStatus(config);
+}
+
+function validBearer(config: Config, req: FastifyRequest) {
+  const h = String(req.headers.authorization ?? '');
+  if (!h.startsWith('Bearer apos_')) return false;
+  const t = readOperator(config);
+  if (!t) return false;
+  const a = Buffer.from(sha(h.slice(7)));
+  const b = Buffer.from(t.hash);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 export function registerAuth(app: FastifyInstance, config: Config) {
   const enabled = Boolean(config.auth.password);
   const secret = enabled ? secretFor(config) : '';
   const attempts = new Map<string, { n: number; until: number }>();
 
-  const isAuthed = (req: FastifyRequest) => !enabled || validToken(secret, readCookie(req, COOKIE), Date.now());
+  const isAuthed = (req: FastifyRequest) =>
+    !enabled || validToken(secret, readCookie(req, COOKIE), Date.now()) || validBearer(config, req);
 
   app.addHook('onRequest', async (req, reply) => {
     const url = req.url.split('?')[0];
@@ -98,6 +145,10 @@ export function registerAuth(app: FastifyInstance, config: Config) {
     );
     return { ok: true };
   });
+
+  app.get('/api/settings/operator-token', async () => operatorStatus(config));
+  app.post('/api/settings/operator-token', async () => createOperatorToken(config));
+  app.delete('/api/settings/operator-token', async () => revokeOperatorToken(config));
 
   app.post('/api/auth/logout', async (_req, reply) => {
     reply.header('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);

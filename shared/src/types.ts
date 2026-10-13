@@ -16,6 +16,8 @@ export const projectSettingsSchema = z.object({
   autoGenerateStoryboard: z.boolean().default(true),
   defaultImageModel: z.string().default('Nano Banana 2'),
   defaultAnimationModel: z.string().default('Kling 2.6'),
+  /** מי מייצר תמונות וקליפים: kie = אוטומטי דרך KIE; higgsfield = Claude מריץ ב-Higgsfield (Unlimited או קרדיטים) או העלאה ידנית */
+  generator: z.enum(['kie', 'higgsfield']).default('kie'),
   /** הפקה (05–09) דרך KIE */
   imageModel: z.string().default('nano-banana-2'),
   videoModel: z.string().default('kling-2.6'),

@@ -18,6 +18,8 @@ import {
   type Project,
   type Shot,
 } from '@apos/shared';
+import fs from 'node:fs';
+import path from 'node:path';
 import { GateError, NotFoundError, type Ctx } from '../context.js';
 import { json, tx, uid } from '../db/db.js';
 import { currentStoryboard, getMedia, getProject, getShot, listGates, listMedia, listScripts, listShots } from '../db/repo.js';
@@ -82,6 +84,12 @@ function narrationText(ctx: Ctx, projectId: string) {
 export function planStage(ctx: Ctx, project: Project, stage: ProductionStage) {
   const shots = approvedShots(ctx, project.id);
   const items: Array<{ kind: MediaKind; shotId: string | null; credits: number; label: string }> = [];
+  const external = project.settings.generator === 'higgsfield';
+  if (external && (stage === 'images' || stage === 'animation')) {
+    for (const s of shots)
+      items.push({ kind: stage === 'images' ? 'frame' : 'clip', shotId: s.id, credits: 0, label: stage === 'images' ? 'תמונה · Higgsfield' : 'קליפ · Higgsfield' });
+    return items;
+  }
   if (stage === 'images') {
     const m = imageModel(project.settings.imageModel);
     for (const s of shots) items.push({ kind: 'frame', shotId: s.id, credits: m.credits, label: `תמונה · ${m.label.split(' · ')[0]}` });
@@ -136,7 +144,10 @@ function checkBudget(ctx: Ctx, project: Project, newCredits: number) {
   }
 }
 
-function requireKie(ctx: Ctx, stage: ProductionStage) {
+const isExternal = (project: Project, kind: MediaKind) => project.settings.generator === 'higgsfield' && (kind === 'frame' || kind === 'clip');
+
+function requireKie(ctx: Ctx, stage: ProductionStage, project?: Project) {
+  if (project?.settings.generator === 'higgsfield' && (stage === 'images' || stage === 'animation')) return;
   if (stage !== 'editing' && stage !== 'delivery' && !ctx.providers.media.isConfigured()) {
     throw new GateError('KIE לא מחובר — חבר מפתח KIE ב"מפתחות" בסרגל העליון כדי ליצור תמונות, וידאו וסאונד.');
   }
@@ -218,7 +229,31 @@ export function startStage(ctx: Ctx, projectId: string, stage: ProductionStage, 
   if (project.pipelineState === 'stopped') throw new GateError('ה-Pipeline עצור — הפעל אותו מחדש קודם');
   assertPrereq(ctx, project, stage);
   if (stage === 'delivery') throw new GateError('שלב המסירה לא מייצר תוצרים — אשר את הסרטון הסופי');
-  requireKie(ctx, stage);
+  requireKie(ctx, stage, project);
+  if (project.settings.generator === 'higgsfield' && (stage === 'images' || stage === 'animation')) {
+    // הייצור מתבצע מחוץ למערכת (Claude ב-Higgsfield או העלאה ידנית) — רק מסמנים שהשלב פתוח
+    const { latest } = latestMedia(ctx, projectId);
+    const waiting = planStage(ctx, project, stage).filter((it) => {
+      const cur = latest.get(`${it.kind}:${it.shotId ?? ''}`);
+      return !cur || cur.status === 'failed' || cur.status === 'rejected';
+    }).length;
+    return tx(ctx.db, () => {
+      ctx.db
+        .prepare(
+          `INSERT INTO stage_gates (project_id, stage, started_at) VALUES (?, ?, ?)
+           ON CONFLICT(project_id, stage) DO UPDATE SET started_at = excluded.started_at, approved_at = NULL, approved_by = NULL`,
+        )
+        .run(projectId, stage, ts(ctx));
+      emit(ctx, {
+        projectId,
+        type: 'stage.awaiting_external',
+        actor,
+        message: `שלב "${STAGE_HE[stage]}" פתוח: ${waiting} שוטים מחכים ל-Higgsfield`,
+        payload: { stage, waiting },
+      });
+      return { stage, created: 0, external: true, waiting, estimate: estimate([]) };
+    });
+  }
   const { latest } = latestMedia(ctx, projectId);
   const items = planStage(ctx, project, stage).filter((it) => {
     const cur = latest.get(`${it.kind}:${it.shotId ?? ''}`);
@@ -257,7 +292,22 @@ export function regenerateItem(ctx: Ctx, mediaId: string, feedback = '', actor =
   const project = mustProject(ctx, m.projectId);
   if (m.status === 'generating') throw new GateError('הפריט עדיין בתהליך יצירה');
   const stage = (Object.keys(STAGE_KINDS) as ProductionStage[]).find((s) => STAGE_KINDS[s].includes(m.kind))!;
-  requireKie(ctx, stage);
+  if (isExternal(project, m.kind)) {
+    // Higgsfield: לא יוצרים כאן — מסמנים לתיקון עם ההערה, ו-Claude/אתה מעלים גרסה חדשה
+    return tx(ctx.db, () => {
+      ctx.db.prepare("UPDATE media SET status = 'rejected', note = ?, updated_at = ? WHERE id = ?").run(feedback || m.note, ts(ctx), m.id);
+      ctx.db.prepare('UPDATE stage_gates SET approved_at = NULL, approved_by = NULL WHERE project_id = ? AND stage = ?').run(m.projectId, stage);
+      emit(ctx, {
+        projectId: m.projectId,
+        type: 'media.redo_requested',
+        actor,
+        message: `בקשה לגרסה חדשה ב-Higgsfield: ${KIND_HE[m.kind]}${feedback ? ` — ${feedback}` : ''}`,
+        payload: { mediaId: m.id, kind: m.kind, shotId: m.shotId, feedback },
+      });
+      return getMedia(ctx.db, m.id)!;
+    });
+  }
+  requireKie(ctx, stage, project);
   const { latest } = latestMedia(ctx, m.projectId);
   if (latest.get(`${m.kind}:${m.shotId ?? ''}`)?.id !== m.id) throw new GateError('יש גרסה חדשה יותר לפריט הזה');
   const plan = planStage(ctx, project, stage).find((it) => it.kind === m.kind && it.shotId === m.shotId);
@@ -385,6 +435,7 @@ export function productionOverview(ctx: Ctx, projectId: string) {
     spentUsd: creditsToUsd(spent),
     budgetUsd: project.settings.budgetUsd,
     kieConfigured: ctx.providers.media.isConfigured(),
+    generator: project.settings.generator,
     aspect: aspectFor(project.brief.aspectRatio),
     autoAdvance: project.settings.autoAdvance,
   };
@@ -397,4 +448,139 @@ export function stageProgress(ctx: Ctx, projectId: string) {
 
 export function nextStage(stage: ProductionStage): ProductionStage | null {
   return PRODUCTION_STAGES[PRODUCTION_STAGES.indexOf(stage) + 1] ?? null;
+}
+
+/* ---------- תוצרים מבחוץ (Higgsfield / העלאה ידנית) ---------- */
+
+export interface ExternalMediaInput {
+  kind: MediaKind;
+  shotId?: string | null;
+  data: Buffer;
+  mime: string;
+  filename: string;
+  model?: string;
+  prompt?: string;
+  /** higgsfield-unlimited | higgsfield-credits | manual */
+  source?: string;
+  /** קרדיטי Higgsfield שנוצלו (לא קרדיטי KIE) */
+  hfCredits?: number | null;
+  sourceUrl?: string;
+  note?: string;
+}
+
+const EXT_MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', mp4: 'video/mp4', mov: 'video/quicktime', mp3: 'audio/mpeg', wav: 'audio/wav' };
+
+/** מוסיף גרסה חדשה לפריט מתוצר שנוצר מחוץ למערכת. הגרסה הקודמת מסומנת "הוחלף", והשלב חוזר לבדיקה. */
+export function addExternalMedia(ctx: Ctx, projectId: string, input: ExternalMediaInput, actor = ctx.config.ownerName) {
+  const project = mustProject(ctx, projectId);
+  const kind = input.kind;
+  if (!['frame', 'clip', 'voiceover', 'music', 'final'].includes(kind)) throw new GateError('סוג תוצר לא מוכר', 400);
+  const shotId = kind === 'frame' || kind === 'clip' ? (input.shotId ?? null) : null;
+  if ((kind === 'frame' || kind === 'clip') && !shotId) throw new GateError('חסר שוט לתמונה/קליפ', 400);
+  if (shotId && !approvedShots(ctx, projectId).some((s) => s.id === shotId)) {
+    throw new GateError('השוט לא שייך לסטורי בורד המאושר של הפרויקט', 400);
+  }
+  const ext = (input.filename.split('.').pop() ?? '').toLowerCase();
+  const mime = input.mime && input.mime !== 'application/octet-stream' ? input.mime : (EXT_MIME[ext] ?? input.mime);
+  const okType = kind === 'frame' ? mime.startsWith('image/') : kind === 'clip' || kind === 'final' ? mime.startsWith('video/') : mime.startsWith('audio/');
+  if (!okType) throw new GateError(`סוג הקובץ (${mime}) לא מתאים ל${KIND_HE[kind]}`, 400);
+  const stage = (Object.keys(STAGE_KINDS) as ProductionStage[]).find((s) => STAGE_KINDS[s].includes(kind))!;
+  const dir = path.join(ctx.config.dataDir, 'uploads', projectId, 'media');
+  fs.mkdirSync(dir, { recursive: true });
+  const id = uid();
+  const file = path.join(dir, `${kind}-${id}.${EXT_MIME[ext] ? ext : (Object.entries(EXT_MIME).find(([, m]) => m === mime)?.[0] ?? 'bin')}`);
+  fs.writeFileSync(file, input.data);
+  return tx(ctx.db, () => {
+    const { latest } = latestMedia(ctx, projectId);
+    const prev = latest.get(`${kind}:${shotId ?? ''}`);
+    if (prev && prev.status !== 'failed' && prev.status !== 'rejected') {
+      ctx.db.prepare("UPDATE media SET status = 'rejected', updated_at = ? WHERE id = ?").run(ts(ctx), prev.id);
+    }
+    const last = ctx.db
+      .prepare("SELECT MAX(version) AS v FROM media WHERE project_id = ? AND kind = ? AND COALESCE(shot_id, '') = ?")
+      .get(projectId, kind, shotId ?? '') as { v: number | null };
+    const assetId = uid();
+    ctx.db
+      .prepare('INSERT INTO assets (id, project_id, filename, stored_path, mime, size, kind, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(assetId, projectId, input.filename, file, mime, input.data.length, `media:${kind}`, ts(ctx));
+    const source = input.source || 'manual';
+    const provider = source.startsWith('higgsfield') ? 'higgsfield' : 'manual';
+    const label = input.model || (source === 'higgsfield-unlimited' ? 'Higgsfield · Unlimited' : source === 'higgsfield-credits' ? 'Higgsfield' : 'הועלה ידנית');
+    ctx.db
+      .prepare(
+        `INSERT INTO media (id, project_id, shot_id, kind, version, status, provider, model, prompt, params, asset_id, note, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'ready', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        projectId,
+        shotId,
+        kind,
+        (last?.v ?? 0) + 1,
+        provider,
+        label,
+        input.prompt ?? '',
+        json({ source, hfCredits: input.hfCredits ?? null, sourceUrl: input.sourceUrl ?? null }),
+        assetId,
+        input.note ?? '',
+        ts(ctx),
+        ts(ctx),
+      );
+    ctx.db
+      .prepare(
+        `INSERT INTO stage_gates (project_id, stage, started_at) VALUES (?, ?, ?)
+         ON CONFLICT(project_id, stage) DO UPDATE SET approved_at = NULL, approved_by = NULL, started_at = COALESCE(stage_gates.started_at, excluded.started_at)`,
+      )
+      .run(projectId, stage, ts(ctx));
+    const shot = shotId ? getShot(ctx.db, shotId) : null;
+    emit(ctx, {
+      projectId,
+      type: 'media.ready',
+      actor,
+      message: `${KIND_HE[kind]} חדשה${shot ? ` לשוט ${shot.number}` : ''} · ${label}${input.hfCredits ? ` · ${input.hfCredits} קרדיטים ב-Higgsfield` : source === 'higgsfield-unlimited' ? ' · ללא עלות' : ''}`,
+      payload: { mediaId: id, kind, shotId, source, hfCredits: input.hfCredits ?? null },
+    });
+    void project;
+    return getMedia(ctx.db, id)!;
+  });
+}
+
+/** מה מחכה לייצור ב-Higgsfield: לכל שוט — הפרומפט, ההערה האחרונה, יחס תמונה, ולקליפ גם התמונה המאושרת. */
+export function externalRequests(ctx: Ctx, projectId: string) {
+  const project = mustProject(ctx, projectId);
+  const { latest } = latestMedia(ctx, projectId);
+  const shots = approvedShots(ctx, projectId);
+  const aspect = aspectFor(project.brief.aspectRatio);
+  const gates = listGates(ctx.db, projectId);
+  const pending = (kind: 'frame' | 'clip') =>
+    shots
+      .map((s) => {
+        const cur = latest.get(`${kind}:${s.id}`);
+        if (cur && (cur.status === 'ready' || cur.status === 'approved' || cur.status === 'generating')) return null;
+        const frame = latest.get(`frame:${s.id}`);
+        return {
+          shotId: s.id,
+          shotNumber: s.number,
+          durationSec: s.durationSec,
+          prompt: kind === 'frame' ? shotPrompt(s) : s.animationPrompt || s.action,
+          action: s.action,
+          narration: s.narration,
+          character: s.character,
+          wardrobe: s.wardrobe,
+          feedback: cur?.status === 'rejected' ? cur.note : '',
+          previousVersion: cur?.version ?? 0,
+          ...(kind === 'clip'
+            ? { approvedFrame: frame?.status === 'approved' ? { mediaId: frame.id, fileUrl: `/api/media/${frame.id}/file` } : null }
+            : {}),
+        };
+      })
+      .filter(Boolean);
+  return {
+    project: { id: project.id, name: project.name, generator: project.settings.generator },
+    aspect: aspect.image,
+    characters: project.brief.characters,
+    visualStyle: project.brief.visualStyle,
+    images: pending('frame'),
+    animation: gates.images?.approvedAt ? pending('clip') : [],
+  };
 }

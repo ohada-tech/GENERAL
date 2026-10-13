@@ -112,7 +112,13 @@ export function SettingsTab({ detail, reload, health }: TabProps) {
       </section>
 
       <section className="card">
-        <h2>הפקה (05–09) — דרך KIE</h2>
+        <h2>הפקה (05–09)</h2>
+        <Field label="מי מייצר תמונות וקליפים" hint="Higgsfield: Claude מריץ בשבילך (Unlimited בדפדפן, או קרדיטים דרך MCP — רק באישורך) או שאתה מעלה ידנית. KIE: אוטומטי לגמרי, בתשלום לפי שימוש.">
+          <select value={s.generator} onChange={(e) => setS({ ...s, generator: e.target.value as ProjectSettings['generator'] })}>
+            <option value="higgsfield">Higgsfield (דרך Claude / העלאה ידנית)</option>
+            <option value="kie">KIE (אוטומטי)</option>
+          </select>
+        </Field>
         <div className="grid-2">
           <Field label="מודל תמונות">
             <select value={s.imageModel} onChange={(e) => setS({ ...s, imageModel: e.target.value })}>

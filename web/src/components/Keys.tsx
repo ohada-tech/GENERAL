@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api, useAction } from '../lib/api';
+import { api, useAction, useApi } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
 import { ConfirmButton, Field, InlineError, Modal, Tag } from './ui';
 
@@ -68,6 +68,7 @@ export function KeysModal({ keys, onClose, onChanged }: { keys: Keys; onClose: (
         {ORDER.map((s) => (
           <KeyRow key={s} status={keys[s]} onChanged={onChanged} />
         ))}
+        <OperatorRow />
       </div>
     </Modal>
   );
@@ -161,5 +162,77 @@ function KeyRow({ status, onChanged }: { status: KeyStatus; onChanged: () => Pro
         </button>
       </div>
     </form>
+  );
+}
+
+/** מפתח גישה ל-Claude: מאפשר ל-Claude לעדכן שוטים ולהעלות תוצרים מ-Higgsfield, בלי הסיסמה שלך. ניתן לביטול בכל רגע. */
+function OperatorRow() {
+  const st = useApi<{ active: boolean; last4: string | null; createdAt: string | null }>('/api/settings/operator-token');
+  const [token, setToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const act = useAction();
+  const create = async () => {
+    const r = await act.run(() => api.post<{ token: string }>('/api/settings/operator-token'));
+    if (r) {
+      setToken(r.token);
+      setCopied(false);
+      await st.reload();
+    }
+  };
+  const revoke = async () => {
+    await act.run(() => api.del('/api/settings/operator-token'));
+    setToken(null);
+    await st.reload();
+  };
+  return (
+    <div className="card stack key-row">
+      <div className="row between wrap gap-s">
+        <div>
+          <strong>גישה ל-Claude</strong> <span className="small muted">— כדי ש-Claude יעדכן את המערכת ויעלה שוטים מ-Higgsfield, בלי הסיסמה שלך</span>
+        </div>
+        <Tag tone={st.data?.active ? 'ok' : 'neutral'}>{st.data?.active ? 'פעיל' : 'כבוי'}</Tag>
+      </div>
+      {st.data?.active && !token && (
+        <div className="small muted">
+          מפתח שמסתיים ב-<code>…{st.data.last4}</code>
+          {st.data.createdAt && ` · נוצר ${fmtDateTime(st.data.createdAt)}`}
+        </div>
+      )}
+      {token && (
+        <div className="stack">
+          <div className="notice ok">המפתח מוצג פעם אחת בלבד — העתק אותו עכשיו והדבק ל-Claude.</div>
+          <div className="row gap-s">
+            <input dir="ltr" readOnly value={token} onFocus={(e) => e.currentTarget.select()} />
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(token);
+                  setCopied(true);
+                } catch {
+                  /* העתקה ידנית מהשדה */
+                }
+              }}
+            >
+              {copied ? 'הועתק ✓' : 'העתק'}
+            </button>
+          </div>
+        </div>
+      )}
+      <InlineError error={act.error} onClose={act.clearError} />
+      <div className="row between wrap gap-s">
+        <div>
+          {st.data?.active && (
+            <ConfirmButton onConfirm={revoke} disabled={act.busy}>
+              בטל גישה
+            </ConfirmButton>
+          )}
+        </div>
+        <button type="button" className="btn btn-primary btn-sm" onClick={create} disabled={act.busy}>
+          {st.data?.active ? 'צור מפתח חדש (מבטל את הקודם)' : 'צור מפתח גישה'}
+        </button>
+      </div>
+    </div>
   );
 }

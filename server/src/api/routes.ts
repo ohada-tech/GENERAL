@@ -300,6 +300,58 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/api/projects/:id/production/:stage/reopen', async (req) =>
     prod.reopenStage(ctx, (req.params as any).id, mustStage((req.params as any).stage)),
   );
+  app.get('/api/projects/:id/production/requests', async (req) => prod.externalRequests(ctx, (req.params as any).id));
+  // העלאת תוצר שנוצר מחוץ למערכת (Higgsfield / ידני) — קובץ
+  app.post('/api/projects/:id/media/upload', async (req, reply) => {
+    const q = req.query as Record<string, string>;
+    const file = await req.file();
+    if (!file) throw new GateError('לא נשלח קובץ', 400);
+    const data = await file.toBuffer();
+    reply.code(201);
+    return prod.addExternalMedia(ctx, (req.params as any).id, {
+      kind: q.kind as any,
+      shotId: q.shotId || null,
+      data,
+      mime: file.mimetype,
+      filename: file.filename,
+      model: q.model,
+      prompt: q.prompt,
+      source: q.source || 'manual',
+      hfCredits: q.hfCredits ? Number(q.hfCredits) : null,
+      note: q.note,
+    });
+  });
+  // אותו דבר מקישור (למשל rawUrl מ-Higgsfield) — השרת מוריד בעצמו
+  app.post('/api/projects/:id/media/from-url', async (req, reply) => {
+    const b = (req.body ?? {}) as Body;
+    const url = String(b.url ?? '');
+    if (!/^https:\/\//.test(url)) throw new GateError('נדרש קישור https', 400);
+    let res: Response;
+    try {
+      res = await fetch(url, { signal: AbortSignal.timeout(180_000) });
+    } catch (e) {
+      throw new GateError(`ההורדה נכשלה: ${e instanceof Error ? e.message : String(e)}`, 502);
+    }
+    if (!res.ok) throw new GateError(`ההורדה נכשלה (${res.status})`, 502);
+    const size = Number(res.headers.get('content-length') ?? 0);
+    if (size > 400 * 1024 * 1024) throw new GateError('הקובץ גדול מדי', 413);
+    const data = Buffer.from(await res.arrayBuffer());
+    const name = decodeURIComponent(new URL(url).pathname.split('/').pop() || 'file');
+    reply.code(201);
+    return prod.addExternalMedia(ctx, (req.params as any).id, {
+      kind: b.kind,
+      shotId: b.shotId ?? null,
+      data,
+      mime: res.headers.get('content-type')?.split(';')[0] || 'application/octet-stream',
+      filename: name,
+      model: b.model,
+      prompt: b.prompt,
+      source: b.source || 'higgsfield-unlimited',
+      hfCredits: b.hfCredits ?? null,
+      sourceUrl: url,
+      note: b.note,
+    });
+  });
   app.post('/api/media/:mid/approve', async (req) => prod.setItemApproval(ctx, (req.params as any).mid, true));
   app.post('/api/media/:mid/unapprove', async (req) => prod.setItemApproval(ctx, (req.params as any).mid, false));
   app.post('/api/media/:mid/regenerate', async (req) =>

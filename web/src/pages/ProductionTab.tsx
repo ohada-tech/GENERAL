@@ -23,6 +23,7 @@ interface Overview {
   spentUsd: number;
   budgetUsd: number;
   kieConfigured: boolean;
+  generator: 'kie' | 'higgsfield';
   aspect: { image: string; video: string; out: { w: number; h: number } };
   autoAdvance: boolean;
 }
@@ -83,7 +84,13 @@ export function ProductionTab({ detail, reload }: TabProps) {
             </div>
           </div>
         </div>
-        {!o.kieConfigured && <div className="notice warn">KIE לא מחובר — לחץ על "מפתחות" בסרגל העליון כדי שהמערכת תוכל ליצור תמונות, וידאו וסאונד.</div>}
+        {o.generator === 'higgsfield' ? (
+          <div className="notice">
+            תמונות וקליפים בפרויקט הזה נוצרים ב-Higgsfield: בקש מ-Claude "תריץ תמונות לפרויקט" (Unlimited דרך הדפדפן, או קרדיטים דרך MCP — באישורך), או העלה בעצמך עם "⬆ העלה" בכל שוט.
+          </div>
+        ) : (
+          !o.kieConfigured && <div className="notice warn">KIE לא מחובר — לחץ על "מפתחות" בסרגל העליון כדי שהמערכת תוכל ליצור תמונות, וידאו וסאונד.</div>
+        )}
         <InlineError error={act.error} onClose={act.clearError} />
       </section>
 
@@ -102,6 +109,10 @@ export function ProductionTab({ detail, reload }: TabProps) {
           onApprove={() => run(() => api.post(`/api/projects/${project.id}/production/${st}/approve`, {}))}
           onReopen={() => run(() => api.post(`/api/projects/${project.id}/production/${st}/reopen`))}
           onItem={(path, body) => run(() => api.post(path, body))}
+          onUpload={(kind, shotId, file) =>
+            run(() => api.upload(`/api/projects/${project.id}/media/upload?kind=${kind}${shotId ? `&shotId=${shotId}` : ''}&source=${o.generator === 'higgsfield' ? 'higgsfield-unlimited' : 'manual'}`, file))
+          }
+          external={o.generator === 'higgsfield'}
         />
       ))}
     </div>
@@ -121,6 +132,8 @@ function StageCard(props: {
   onApprove: () => void;
   onReopen: () => void;
   onItem: (path: string, body?: unknown) => void;
+  onUpload: (kind: MediaKind, shotId: string | null, file: File) => void;
+  external: boolean;
 }) {
   const { view: v, next } = props;
   const t = TITLE[v.stage];
@@ -159,7 +172,7 @@ function StageCard(props: {
           {v.blockedReason && !approved && <p className="small muted">⏳ {v.blockedReason}</p>}
         </div>
         <div className="row gap-s wrap">
-          {v.stage !== 'delivery' && v.canStart && !approved && missing > 0 && !generating && (
+          {v.stage !== 'delivery' && v.canStart && !approved && missing > 0 && !generating && !(props.external && (v.stage === 'images' || v.stage === 'animation')) && (
             <button className="btn btn-primary" disabled={props.busy} onClick={props.onStart}>
               ▶ {created ? `צור את החסרים (${missing})` : `הפעל — ${total} פריטים`}
               {v.pendingEstimate.usd > 0 ? ` · ~${usd(v.pendingEstimate.usd)}` : ''}
@@ -199,7 +212,7 @@ function StageCard(props: {
         props.finalMedia?.status === 'approved' || approved ? (
           <div className="small muted">{approved ? `נמסר ואושר ${fmtDateTime(v.gate!.approvedAt!)}` : 'הסרטון הערוך אושר — שלח ללקוח.'}</div>
         ) : null
-      ) : created === 0 ? (
+      ) : created === 0 && !(v.canStart && (props.external || v.stage === 'audio')) ? (
         !v.canStart ? null : <Empty title="עדיין לא נוצר דבר בשלב הזה" />
       ) : (
         <div className={`media-grid kind-${v.items[0]?.kind}`}>
@@ -213,11 +226,13 @@ function StageCard(props: {
                 locked={approved}
                 busy={props.busy}
                 onItem={props.onItem}
+                onUpload={v.canStart && !approved ? (f) => props.onUpload(it.kind, it.shotId, f) : undefined}
               />
             ) : (
               <div key={i} className="media-card media-empty">
                 <div className="small muted">{it.shotId ? `שוט ${props.shotNo(it.shotId)}` : it.label}</div>
-                <div className="small">טרם נוצר</div>
+                <div className="small">{props.external && (it.kind === 'frame' || it.kind === 'clip') ? 'ממתין ל-Higgsfield' : 'טרם נוצר'}</div>
+                {v.canStart && !approved && <UploadButton kind={it.kind} onFile={(f) => props.onUpload(it.kind, it.shotId, f)} />}
               </div>
             ),
           )}
@@ -228,7 +243,43 @@ function StageCard(props: {
   );
 }
 
-function MediaCard({ m, label, aspect, locked, busy, onItem }: { m: Media; label: string; aspect: string; locked: boolean; busy: boolean; onItem: (p: string, b?: unknown) => void }) {
+const ACCEPT: Record<MediaKind, string> = { frame: 'image/*', clip: 'video/*', final: 'video/*', voiceover: 'audio/*', music: 'audio/*' };
+
+function UploadButton({ kind, onFile }: { kind: MediaKind; onFile: (f: File) => void }) {
+  return (
+    <label className="btn btn-sm btn-ghost" title="העלאת קובץ שנוצר מחוץ למערכת (למשל ב-Higgsfield)">
+      ⬆ העלה
+      <input
+        type="file"
+        hidden
+        accept={ACCEPT[kind]}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (f) onFile(f);
+        }}
+      />
+    </label>
+  );
+}
+
+function MediaCard({
+  m,
+  label,
+  aspect,
+  locked,
+  busy,
+  onItem,
+  onUpload,
+}: {
+  m: Media;
+  label: string;
+  aspect: string;
+  locked: boolean;
+  busy: boolean;
+  onItem: (p: string, b?: unknown) => void;
+  onUpload?: (f: File) => void;
+}) {
   const [redo, setRedo] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [showPrompt, setShowPrompt] = useState(false);
@@ -266,6 +317,7 @@ function MediaCard({ m, label, aspect, locked, busy, onItem }: { m: Media; label
         {m.model || '—'}
         {m.durationSec ? ` · ${m.durationSec.toFixed(1)} ש׳` : ''}
         {m.costCredits != null ? ` · ${m.costCredits} קרדיטים (~$${(m.costCredits * 0.005).toFixed(2)})` : ''}
+        {m.provider === 'higgsfield' ? (m.params.hfCredits ? ` · ${String(m.params.hfCredits)} קרדיטים ב-Higgsfield` : ' · ללא עלות') : ''}
       </div>
       {m.note && <div className="small">הערה: {m.note}</div>}
       {m.prompt && (
@@ -292,10 +344,12 @@ function MediaCard({ m, label, aspect, locked, busy, onItem }: { m: Media; label
             </button>
           )}
           <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => setRedo(!redo)}>
-            ↻ צור מחדש
+            ↻ {m.provider === 'higgsfield' || m.provider === 'manual' ? 'בקש גרסה חדשה' : 'צור מחדש'}
           </button>
+          {onUpload && <UploadButton kind={m.kind} onFile={onUpload} />}
         </div>
       )}
+      {!locked && m.status === 'rejected' && onUpload && <UploadButton kind={m.kind} onFile={onUpload} />}
       {redo && (
         <form
           className="stack"
@@ -311,7 +365,11 @@ function MediaCard({ m, label, aspect, locked, busy, onItem }: { m: Media; label
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
           />
-          <div className="small muted">{m.kind === 'frame' || m.kind === 'clip' ? 'Claude ישכתב את הפרומפט לפי ההערה. ' : ''}יצירה מחדש עולה כמו היצירה המקורית.</div>
+          <div className="small muted">
+            {m.provider === 'higgsfield' || m.provider === 'manual'
+              ? 'ההערה נשמרת לשוט, והגרסה הבאה תיווצר ב-Higgsfield.'
+              : `${m.kind === 'frame' || m.kind === 'clip' ? 'Claude ישכתב את הפרומפט לפי ההערה. ' : ''}יצירה מחדש עולה כמו היצירה המקורית.`}
+          </div>
           <button className="btn btn-sm btn-primary" disabled={busy}>
             צור גרסה חדשה
           </button>
