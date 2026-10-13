@@ -22,6 +22,7 @@ import {
 } from '../db/repo.js';
 import { describeProviders } from '../providers/registry.js';
 import { dashboard, projectState } from '../services/views.js';
+import * as time from '../services/time.js';
 import * as cmd from '../workflow/commands.js';
 import { emit } from '../workflow/events.js';
 
@@ -250,5 +251,30 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     reply.header('Content-Type', row.mime);
     reply.header('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(row.filename)}`);
     return reply.send(fs.createReadStream(row.stored_path));
+  });
+
+  /* ---------- זמן עבודה ---------- */
+  app.get('/api/time/running', async () => ({ running: time.runningTimer(ctx) }));
+  app.post('/api/time/stop', async (req) => time.stopTimer(ctx, ((req.body ?? {}) as Body).note));
+  app.get('/api/projects/:id/time', async (req) => {
+    const { id } = req.params as { id: string };
+    mustProject(id);
+    return { summary: time.timeSummary(ctx, id), entries: time.listEntries(ctx, id) };
+  });
+  app.post('/api/projects/:id/time/start', async (req) => {
+    const { id } = req.params as { id: string };
+    const b = (req.body ?? {}) as Body;
+    // ברירת מחדל: השלב הנוכחי של הפרויקט
+    const stage = b.stage || projectState(ctx, mustProject(id)).currentStage;
+    return time.startTimer(ctx, id, { stage, note: b.note });
+  });
+  app.post('/api/projects/:id/time', async (req, reply) => {
+    reply.code(201);
+    return time.addManualEntry(ctx, (req.params as any).id, req.body ?? {});
+  });
+  app.patch('/api/time/:tid', async (req) => time.updateEntry(ctx, (req.params as any).tid, req.body ?? {}));
+  app.delete('/api/time/:tid', async (req, reply) => {
+    time.deleteEntry(ctx, (req.params as any).tid);
+    reply.code(204);
   });
 }

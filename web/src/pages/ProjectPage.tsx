@@ -12,6 +12,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { Health } from '../App';
 import { PipelineStepper } from '../components/PipelineStepper';
+import { ProjectTimerButton } from '../components/TimerWidget';
 import { ErrorBox, Field, InlineError, Loading, ModeTag, Modal, Progress, StatusBadge } from '../components/ui';
 import { api, useAction, useApi } from '../lib/api';
 import { fmtDate, fmtDateTime } from '../lib/format';
@@ -20,6 +21,7 @@ import { BriefTab } from './BriefTab';
 import { ScriptTab } from './ScriptTab';
 import { SettingsTab } from './SettingsTab';
 import { StoryboardTab } from './StoryboardTab';
+import { TimeTab } from './TimeTab';
 
 export interface ProjectDetail {
   project: Project;
@@ -39,6 +41,7 @@ const TABS: Array<{ key: string; label: string }> = [
   { key: 'brief', label: '01 אפיון' },
   { key: 'script', label: '02 תסריט' },
   { key: 'storyboard', label: '03–04 סטורי בורד ורפרנסים' },
+  { key: 'time', label: '⏱ זמן עבודה' },
   { key: 'activity', label: 'היסטוריה' },
   { key: 'jobs', label: 'משימות והרצות' },
   { key: 'settings', label: 'הגדרות' },
@@ -92,6 +95,7 @@ export function ProjectPage({ health }: { health: Health | null }) {
           <div style={{ width: 160 }}>
             <Progress value={state.progress} />
           </div>
+          <ProjectTimerButton projectId={project.id} />
           {state.pipelineState === 'active' ? (
             <>
               <button className="btn" disabled={pipeline.busy} onClick={() => setPipeline('pause')} title="משימות לא ירוצו עד להפעלה מחדש">
@@ -134,6 +138,7 @@ export function ProjectPage({ health }: { health: Health | null }) {
         {tab === 'brief' && <BriefTab {...props} />}
         {tab === 'script' && <ScriptTab {...props} />}
         {tab === 'storyboard' && <StoryboardTab {...props} />}
+        {tab === 'time' && <TimeTab {...props} />}
         {tab === 'activity' && <ActivityTab {...props} />}
         {tab === 'jobs' && <JobsTab {...props} />}
         {tab === 'settings' && <SettingsTab {...props} />}

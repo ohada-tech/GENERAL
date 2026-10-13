@@ -1,5 +1,6 @@
 import { Link, Route, Routes } from 'react-router-dom';
 import { NotificationBell } from './components/NotificationBell';
+import { TimerWidget } from './components/TimerWidget';
 import { Tag } from './components/ui';
 import { useApi } from './lib/api';
 import { Dashboard } from './pages/Dashboard';
@@ -21,6 +22,7 @@ export function App() {
           <span className="brand-mark">▶</span> AI Production OS
         </Link>
         <div className="topbar-side">
+          <TimerWidget />
           {health.error ? (
             <Tag tone="danger">השרת לא זמין</Tag>
           ) : health.data ? (

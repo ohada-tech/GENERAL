@@ -185,9 +185,13 @@ export interface ProjectSummary {
   dueDate: string;
   updatedAt: string;
   state: ProjectState;
+  /** זמן עבודה מתועד בשניות (כולל טיימר רץ) */
+  trackedSec: number;
 }
 
 export interface DashboardData {
   projects: ProjectSummary[];
   unreadNotifications: number;
+  /** זמן עבודה מתועד מתחילת השבוע (יום א') */
+  weekTrackedSec: number;
 }

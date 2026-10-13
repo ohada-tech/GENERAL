@@ -10,6 +10,7 @@ import { getJob, lastEventAt, listProjects, mapJob } from '../db/repo.js';
 import { ProviderError } from '../providers/types.js';
 import { emit } from '../workflow/events.js';
 import { HANDLERS, type JobHandler } from './handlers.js';
+import { checkForgottenTimer } from '../services/time.js';
 
 const WORKER = 'worker';
 
@@ -216,6 +217,7 @@ export function startWorker(ctx: Ctx, isCompleted: (projectId: string) => boolea
           lastMaintenance = Date.now();
           recoverStuckJobs(ctx);
           detectStalledProjects(ctx, isCompleted);
+          checkForgottenTimer(ctx);
         }
         const ran = await runOnce(ctx);
         if (!ran) await new Promise((r) => setTimeout(r, ctx.config.jobs.pollMs));

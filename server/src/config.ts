@@ -14,6 +14,8 @@ export interface Config {
   openai: { apiKey: string; model: string; baseUrl: string; timeoutMs: number };
   jobs: { maxAttempts: number; retryBaseSeconds: number; stuckMinutes: number; pollMs: number };
   stalledProjectDays: number;
+  /** טיימר שרץ מעבר לכך נחשב "נשכח" ונשלחת התראה */
+  timerMaxHours: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -35,5 +37,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       pollMs: num(env.JOB_POLL_MS, 1000),
     },
     stalledProjectDays: num(env.STALLED_PROJECT_DAYS, 3),
+    timerMaxHours: num(env.TIMER_MAX_HOURS, 10),
   };
 }

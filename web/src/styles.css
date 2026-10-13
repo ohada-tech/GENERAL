@@ -139,7 +139,8 @@ input[type='checkbox'], input[type='radio'] { width: auto; }
 .notice.ok { background: var(--ok-bg); color: #14532d; }
 
 /* dashboard */
-.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.kpis-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; }
 .kpi-value { font-size: 26px; font-weight: 700; }
 .kpi-label { color: var(--muted); font-size: 12px; }
@@ -313,6 +314,22 @@ input[type='checkbox'], input[type='radio'] { width: auto; }
 .tl-type { color: #9ca3af; font-size: 11px; }
 .tl-error .tl-msg { color: var(--danger); }
 .sub-row td { background: var(--surface-2); }
+
+/* time tracking */
+.timer-widget { display: flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.1); padding: 4px 6px 4px 10px; border-radius: 999px; }
+.timer-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.3; } }
+.timer-link { color: #fff; font-size: 13px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timer-clock { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--accent); direction: ltr; }
+.btn-timer-on { background: var(--danger-bg); color: var(--danger); border-color: #fca5a5; font-variant-numeric: tabular-nums; }
+.timer-big { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; direction: ltr; }
+.grow { flex: 1; min-width: 180px; }
+.card .row > select { width: auto; }
+.stage-bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.stage-bars li { display: grid; grid-template-columns: 130px 1fr 70px; gap: 10px; align-items: center; font-size: 13px; }
+.sb-track { height: 10px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.sb-fill { display: block; height: 100%; background: var(--info); border-radius: 999px; }
+.sb-value { font-variant-numeric: tabular-nums; text-align: end; }
 
 @media (max-width: 1000px) {
   .kpis { grid-template-columns: repeat(2, 1fr); }

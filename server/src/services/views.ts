@@ -12,6 +12,7 @@ import {
   openBlockers,
 } from '../db/repo.js';
 import { computeProjectState } from '../workflow/state.js';
+import { trackedTotals } from './time.js';
 
 export function projectState(ctx: Ctx, project: Project) {
   const storyboard = currentStoryboard(ctx.db, project.id);
@@ -28,6 +29,7 @@ export function projectState(ctx: Ctx, project: Project) {
 }
 
 export function dashboard(ctx: Ctx): DashboardData {
+  const time = trackedTotals(ctx);
   const projects: ProjectSummary[] = listProjects(ctx.db).map((p) => ({
     id: p.id,
     name: p.name,
@@ -35,9 +37,10 @@ export function dashboard(ctx: Ctx): DashboardData {
     dueDate: p.brief.dueDate,
     updatedAt: p.updatedAt,
     state: projectState(ctx, p),
+    trackedSec: time.byProject[p.id] ?? 0,
   }));
   const unread = ctx.db.prepare('SELECT COUNT(*) AS n FROM notifications WHERE read_at IS NULL').get() as { n: number };
-  return { projects, unreadNotifications: Number(unread.n) };
+  return { projects, unreadNotifications: Number(unread.n), weekTrackedSec: time.weekSec };
 }
 
 export function isProjectCompleted(ctx: Ctx, projectId: string) {

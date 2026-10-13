@@ -1,4 +1,4 @@
-import { STAGE_BY_KEY, STATUS_LABELS, type DashboardData, type Project, type Status } from '@apos/shared';
+import { formatDuration, STAGE_BY_KEY, STATUS_LABELS, type DashboardData, type Project, type Status } from '@apos/shared';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PipelineStepper } from '../components/PipelineStepper';
@@ -64,6 +64,7 @@ export function Dashboard() {
         <Kpi label="ממתינים ללקוח" value={counts.waiting_client ?? 0} tone="info" />
         <Kpi label="חסמים" value={blockers.length} tone={blockers.length ? 'danger' : undefined} />
         <Kpi label="הושלמו" value={counts.completed ?? 0} tone="ok" />
+        <Kpi label="זמן עבודה השבוע" value={formatDuration(data?.weekTrackedSec ?? 0)} />
       </div>
 
       <div className="dash-grid">
@@ -132,6 +133,7 @@ export function Dashboard() {
                 <th>התקדמות</th>
                 <th>סטטוס</th>
                 <th>הפעולה הבאה</th>
+                <th>זמן עבודה</th>
                 <th>יעד</th>
                 <th>עדכון אחרון</th>
               </tr>
@@ -171,6 +173,11 @@ export function Dashboard() {
                         '—'
                       )}
                     </td>
+                    <td>
+                      <Link to={`/projects/${p.id}/time`} className={p.trackedSec ? '' : 'muted'}>
+                        {p.trackedSec ? formatDuration(p.trackedSec) : '—'}
+                      </Link>
+                    </td>
                     <td className={due !== null && due < 0 ? 'danger-text' : due !== null && due <= 3 ? 'warn-text' : ''}>
                       {fmtDate(p.dueDate)}
                       {due !== null && <div className="small muted">{due < 0 ? `באיחור ${-due} ימים` : `עוד ${due} ימים`}</div>}
@@ -197,7 +204,7 @@ export function Dashboard() {
   );
 }
 
-function Kpi({ label, value, tone }: { label: string; value: number; tone?: string }) {
+function Kpi({ label, value, tone }: { label: string; value: number | string; tone?: string }) {
   return (
     <div className={`kpi ${tone ? `kpi-${tone}` : ''}`}>
       <div className="kpi-value">{value}</div>

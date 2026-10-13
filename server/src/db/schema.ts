@@ -175,4 +175,19 @@ export const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL
   );
   `,
+  /* v2 — מעקב זמן עבודה */ `
+  CREATE TABLE time_entries (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    stage TEXT NOT NULL DEFAULT 'brief',
+    started_at TEXT NOT NULL,
+    ended_at TEXT,
+    note TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'timer',
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_time_project ON time_entries(project_id, started_at);
+  -- לכל היותר טיימר אחד רץ בכל רגע
+  CREATE UNIQUE INDEX idx_time_single_running ON time_entries((1)) WHERE ended_at IS NULL;
+  `,
 ];
