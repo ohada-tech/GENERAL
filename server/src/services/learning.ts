@@ -11,8 +11,8 @@ import { enqueueJob } from '../workflow/queue.js';
 export type LessonArea = 'script' | 'storyboard' | 'image' | 'motion' | 'audio' | 'editing' | 'general';
 export const LESSON_AREAS: LessonArea[] = ['script', 'storyboard', 'image', 'motion', 'audio', 'editing', 'general'];
 
-/** כמה הערות חדשות מפעילות סבב למידה */
-export const DISTILL_EVERY = 3;
+/** כל הערה מפעילה סבב למידה מיד — הערה נאמרת פעם אחת בלבד */
+export const DISTILL_EVERY = 1;
 
 export interface Lesson {
   id: string;
@@ -41,6 +41,9 @@ export const clientScope = (client: string) => `client:${client.trim()}`;
 export function recordFeedback(ctx: Ctx, projectId: string | null, area: LessonArea, text: string, kind: 'revision' | 'approval' | 'note' = 'revision') {
   const t = text.trim();
   if (!t) return;
+  // אותה הערה נרשמת לפעמים פעמיים (סימון "נדרשים שינויים" ואז "צור גרסה מתוקנת") — שומרים אותה פעם אחת
+  const dup = ctx.db.prepare('SELECT 1 FROM feedback WHERE project_id IS ? AND text = ? LIMIT 1').get(projectId, t.slice(0, 2000));
+  if (dup) return;
   const client = projectId ? (getProject(ctx.db, projectId)?.clientName ?? '') : '';
   ctx.db
     .prepare('INSERT INTO feedback (id, project_id, client, area, kind, text, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
@@ -80,7 +83,14 @@ export function lessonsFor(ctx: Ctx, client: string, areas: LessonArea[]): strin
       `SELECT * FROM lessons WHERE active = 1 AND (scope = 'global' OR scope = ?) AND area IN (${areas.map(() => '?').join(',')}) ORDER BY scope DESC, created_at`,
     )
     .all(clientScope(client), ...areas) as any[];
-  return rows.map((r) => (r.scope === 'global' ? r.text : `[${client}] ${r.text}`));
+  const learned = rows.map((r) => (r.scope === 'global' ? r.text : `[${client}] ${r.text}`));
+  // הערות שעוד לא זוקקו נכנסות כמו שהן — כדי שאף הערה לא תצטרך להיאמר פעמיים, גם לפני שסבב הלמידה הסתיים
+  const fresh = ctx.db
+    .prepare(
+      `SELECT text, client FROM feedback WHERE distilled = 0 AND kind != 'approval' AND (client = '' OR client = ?) AND area IN (${areas.map(() => '?').join(',')}) ORDER BY created_at`,
+    )
+    .all(client.trim(), ...areas) as Array<{ text: string; client: string }>;
+  return [...learned, ...fresh.map((f) => `הערה אחרונה של הבעלים${f.client ? ` (${f.client})` : ''}: ${f.text.slice(0, 400)}`)];
 }
 
 export function addLesson(ctx: Ctx, input: { scope?: string; area?: string; text: string }) {

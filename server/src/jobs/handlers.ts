@@ -13,6 +13,7 @@ import { emit } from '../workflow/events.js';
 import { MEDIA_HANDLERS } from './media.js';
 import { applyDistilled, DISTILL_SCHEMA, distillPrompts, lessonsFor, type LessonArea } from '../services/learning.js';
 import { playbookFor } from '../services/knowledge.js';
+import { lockToTargets, scopeLabel, targetScenes } from '../workflow/revision-scope.js';
 
 const AREAS_FOR: Record<'script' | 'storyboard', LessonArea[]> = {
   script: ['script', 'audio', 'general'],
@@ -104,7 +105,7 @@ function insertScriptVersion(
       draft.provider,
       draft.model,
       json(content),
-      draft.reviewNotes?.length ? `${opts.changeNote} · ${draft.reviewer ?? 'המבקר'} שיפר: ${draft.reviewNotes.join(' · ')}` : opts.changeNote,
+      draft.reviewNotes?.length ? `${opts.changeNote}: ${draft.reviewNotes.slice(0, 3).join(' · ')}` : opts.changeNote,
       draft.provider,
       ctx.now().toISOString(),
     );
@@ -144,7 +145,7 @@ const scriptGenerate: JobHandler<ScriptRun> = {
   },
 };
 
-const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string }> = {
+const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string; targets?: number[] }> = {
   async run(ctx, job) {
     const baseId = String(job.payload.baseVersionId ?? '');
     const feedback = String(job.payload.feedback ?? '');
@@ -152,15 +153,22 @@ const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string }>
     if (!base) throw new GateError('גרסת הבסיס לא נמצאה');
     const pc = projectContext(ctx, job.projectId, 'script');
     const { provider, model } = textProviderFor(ctx, job.projectId);
-    const draft = await provider.reviseScript(pc, base.content, feedback, { model });
-    return { draft, isDemo: provider.isDemo, baseId, feedback };
+    // הערה שמצטטת שורות / מציינת סצנות = תיקון ממוקד: רק הן משתנות, וזה נאכף בקוד ולא רק בפרומפט
+    const targets = targetScenes(base.content, feedback);
+    const scoped = targets.length
+      ? `${feedback}\n\nSCOPE (mandatory): change ONLY scene${targets.length > 1 ? 's' : ''} ${targets.map((i) => i + 1).join(', ')} (1-based). Every other scene, the title and the logline must stay exactly as they are.`
+      : feedback;
+    const draft = await provider.reviseScript(pc, base.content, scoped, { model });
+    if (targets.length) draft.data = lockToTargets(base.content, draft.data, targets);
+    return { draft, isDemo: provider.isDemo, baseId, feedback, targets };
   },
   persist(ctx, job, r) {
     const base = getScript(ctx.db, r.baseId);
+    const scope = scopeLabel(r.targets ?? []);
     return insertScriptVersion(ctx, job.projectId, r.draft, {
       source: 'ai_revision',
       parentId: r.baseId,
-      changeNote: `תיקון AI ל-v${base?.version ?? '?'} לפי משוב: ${r.feedback}`,
+      changeNote: `תיקון ל-v${base?.version ?? '?'}${scope ? ` (${scope})` : ''}`,
       isDemo: r.isDemo,
     });
   },

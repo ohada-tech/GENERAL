@@ -36,7 +36,7 @@ function learningCtx() {
 }
 
 describe('Learning engine', () => {
-  it('records feedback, distills it into lessons after a few notes, and injects them into the next prompt', async () => {
+  it('records feedback, distills every note into lessons right away, and injects them into the next prompt', async () => {
     const { ctx, seen, distillInputs } = learningCtx();
     const p = projectWithBrief(ctx);
     ctx.db.prepare('UPDATE projects SET client_name = ? WHERE id = ?').run('לקוח בדיקה', p.id);
@@ -45,14 +45,10 @@ describe('Learning engine', () => {
     const v1 = listScripts(ctx.db, p.id)[0];
 
     cmd.requestScriptChanges(ctx, v1.id, { from: 'client', note: 'הטון צעיר מדי', by: 'דנה' });
-    expect(learning.pendingFeedbackCount(ctx)).toBe(1);
-    cmd.requestScriptRevision(ctx, v1.id, 'להראות את המוצר כבר בהתחלה');
-    await drain(ctx);
-    expect(listJobs(ctx.db, p.id).some((j) => j.type === 'lessons.distill')).toBe(false);
-
-    const v2 = listScripts(ctx.db, p.id)[0];
-    cmd.requestScriptRevision(ctx, v2.id, 'פחות מילים בסצנה 2');
+    // הערה אחת מספיקה: סבב למידה נכנס לתור מיד, וההערה נכנסת לפרומפט עוד לפני שזוקקה
     expect(listJobs(ctx.db, p.id).filter((j) => j.type === 'lessons.distill')).toHaveLength(1);
+    expect(learning.lessonsFor(ctx, 'לקוח בדיקה', ['script'])).toEqual(['הערה אחרונה של הבעלים (לקוח בדיקה): הלקוח: הטון צעיר מדי']);
+    expect(learning.lessonsFor(ctx, 'לקוח אחר', ['script'])).toEqual([]);
     await drain(ctx);
 
     expect(distillInputs[0]).toContain('הטון צעיר מדי');
@@ -67,8 +63,18 @@ describe('Learning engine', () => {
     cmd.requestScriptRevision(ctx, v3.id, 'עוד ניסיון');
     await drain(ctx);
     const last = seen.at(-1)!;
-    expect(last.lessons).toEqual(['ההוק חייב להראות את המוצר ב-2 השניות הראשונות', 'כלל עם scope לא תקין', '[לקוח בדיקה] בלי סלנג — טון רשמי']);
+    expect(last.lessons!.slice(0, 3)).toEqual(['ההוק חייב להראות את המוצר ב-2 השניות הראשונות', 'כלל עם scope לא תקין', '[לקוח בדיקה] בלי סלנג — טון רשמי']);
+    // ההערה של הסבב הנוכחי עדיין לא זוקקה — והיא כבר בפנים
+    expect(last.lessons!.at(-1)).toContain('עוד ניסיון');
     expect(briefToText(last)).toContain('HOUSE RULES LEARNED');
+  });
+
+  it('the same note is stored once even if it arrives twice', () => {
+    const { ctx } = learningCtx();
+    const p = projectWithBrief(ctx);
+    learning.recordFeedback(ctx, p.id, 'script', 'רק שתי השורות האחרונות');
+    learning.recordFeedback(ctx, p.id, 'script', 'רק שתי השורות האחרונות');
+    expect(learning.recentFeedback(ctx)).toHaveLength(1);
   });
 
   it('client rules stay with their client', () => {

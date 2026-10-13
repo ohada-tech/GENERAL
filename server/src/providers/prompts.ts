@@ -49,7 +49,7 @@ export function briefToText(ctx: ProjectContext): string {
 /** כללי הבית שנלמדו מהערות קודמות — מחייבים כמו האפיון, אלא אם האפיון אומר אחרת במפורש */
 export function lessonsBlock(lessons: string[]): string {
   return [
-    'HOUSE RULES LEARNED FROM THE OWNER\'S AND CLIENT\'S PAST FEEDBACK (follow them unless this brief explicitly says otherwise):',
+    'HOUSE RULES LEARNED FROM THE OWNER\'S AND CLIENT\'S PAST FEEDBACK. They are mandatory: the owner must never have to give the same note twice. Follow them unless this brief explicitly says otherwise:',
     ...lessons.map((l) => `- ${l}`),
   ].join('\n');
 }
@@ -87,7 +87,7 @@ export function reviseUserPrompt(ctx: ProjectContext, base: ScriptContent, feedb
     `BRIEF:\n${briefToText(ctx)}`,
     `CURRENT SCRIPT (JSON):\n${current}`,
     `FEEDBACK TO APPLY:\n${feedback}`,
-    'Produce a revised full script. Apply the feedback precisely; keep everything that the feedback does not ask to change.',
+    'Produce a revised full script. SURGICAL EDIT: change ONLY what the feedback explicitly targets (if it names specific lines, scenes or words, touch only those). Every other scene, line, word, timing and visual must stay exactly as in the current script, character for character. Do not "improve" anything that was not asked.',
   ].join('\n\n');
 }
 
@@ -212,7 +212,7 @@ export const STORYBOARD_REVIEW_JSON_SCHEMA = {
 } as const;
 
 const reviewNotesRule = (lang: string) =>
-  `reviewNotes: 2–6 short bullet points, written in ${lang || 'the brief language'}, saying what you changed and why (or confirming what was already strong). No preamble.`;
+  `reviewNotes: 1–3 bullet points in ${lang || 'the brief language'}, each at most 10 words, stating only what you changed (e.g. "סצנה 6: תוקנה שגיאת כתיב"). No praise, no explanations, no restating the feedback. If you changed nothing, return one bullet: "ללא שינוי".`;
 
 export function scriptReviewSystemPrompt(ctx: ProjectContext): string {
   return [
@@ -225,10 +225,17 @@ export function scriptReviewSystemPrompt(ctx: ProjectContext): string {
   ].join('\n');
 }
 
-export function scriptReviewUserPrompt(ctx: ProjectContext, draft: ScriptContent | { title: string; logline: string; scenes: unknown[] }, feedback?: string): string {
+type ScriptLike = ScriptContent | { title: string; logline: string; scenes: unknown[] };
+const scriptJson = (x: ScriptLike) =>
+  JSON.stringify({ title: x.title, logline: x.logline, scenes: (x.scenes as Array<Record<string, unknown>>).map(({ id: _id, ...s }) => s) }, null, 2);
+
+export function scriptReviewUserPrompt(ctx: ProjectContext, draft: ScriptLike, feedback?: string, base?: ScriptLike): string {
   const scenes = (draft.scenes as Array<Record<string, unknown>>).map(({ id: _id, ...s }) => s);
   return [
     `BRIEF:\n${briefToText(ctx)}`,
+    base
+      ? `THIS IS A REVISION. PREVIOUS APPROVED-FOR-REVIEW VERSION (JSON):\n${scriptJson(base)}\n\nREVISION RULE: only what the feedback explicitly targets may differ from the previous version. If the draft changed anything else, restore it exactly from the previous version. Inside the changed parts you may only fix clear errors (typos, timing). Do not polish or rewrite anything else.`
+      : '',
     feedback ? `CLIENT/OWNER FEEDBACK THAT THE DRAFT HAD TO APPLY:\n${feedback}` : '',
     `DRAFT SCRIPT (JSON):\n${JSON.stringify({ title: draft.title, logline: draft.logline, scenes }, null, 2)}`,
     'Return reviewNotes and the improved full script.',

@@ -65,15 +65,15 @@ export class CollabTextProvider implements TextProvider {
   async reviseScript(ctx: ProjectContext, base: ScriptContent, feedback: string): Promise<GenResult<ScriptDraft>> {
     this.ensure();
     const draft = await this.writer.reviseScript(ctx, base, feedback);
-    return this.reviewScript(ctx, draft, feedback);
+    return this.reviewScript(ctx, draft, feedback, base);
   }
 
-  private async reviewScript(ctx: ProjectContext, draft: GenResult<ScriptDraft>, feedback?: string): Promise<GenResult<ScriptDraft>> {
+  private async reviewScript(ctx: ProjectContext, draft: GenResult<ScriptDraft>, feedback?: string, base?: ScriptContent): Promise<GenResult<ScriptDraft>> {
     const r = await this.reviewer.json<{ reviewNotes: string[]; script: ScriptDraft }>(
       'script_review',
       SCRIPT_REVIEW_JSON_SCHEMA,
       scriptReviewSystemPrompt(ctx),
-      scriptReviewUserPrompt(ctx, draft.data, feedback),
+      scriptReviewUserPrompt(ctx, draft.data, feedback, base),
     );
     return {
       data: validateScript(r.data?.script),
