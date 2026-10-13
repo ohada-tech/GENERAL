@@ -105,7 +105,11 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
                 <span className="small muted">
                   {SOURCE_LABEL[v.source]} · {fmtDateTime(v.createdAt)}
                 </span>
-                {v.changeNote && <span className="small">{v.changeNote}</span>}
+                {v.changeNote && (
+                  <span className="small clamp-2" title={v.changeNote}>
+                    {v.changeNote}
+                  </span>
+                )}
               </button>
             </li>
           ))}
