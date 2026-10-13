@@ -1,27 +1,46 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Route, Routes } from 'react-router-dom';
 import { BrandLockup } from './components/Brand';
+import { KeysModal, KeysTag, type Keys, type KeyStatus } from './components/Keys';
+import { Login } from './components/Login';
 import { NotificationBell } from './components/NotificationBell';
-import { OpenAIConnectModal, OpenAITag, type OpenAIStatus } from './components/OpenAIConnect';
 import { ThemeToggle } from './components/ThemeToggle';
 import { TimerWidget } from './components/TimerWidget';
-import { Tag } from './components/ui';
-import { isCloud, useApi } from './lib/api';
+import { Loading, Tag } from './components/ui';
+import { api, isCloud, useApi } from './lib/api';
 import { Dashboard } from './pages/Dashboard';
 import { ProjectPage } from './pages/ProjectPage';
 
 export interface Health {
   ok: boolean;
   owner: string;
-  openai: OpenAIStatus & { defaultModel: string };
-  /** מנוע ה-AI: openai (מקומי, עם מפתח) או claude (בגרסת הענן, מובנה) */
+  openai: KeyStatus & { defaultModel: string };
+  keys?: Keys;
+  /** מנוע ה-AI: openai (שרת, עם מפתחות) או claude (בגרסת הענן של claude.ai, מובנה) */
   engine?: 'openai' | 'claude';
   providers: Array<{ id: string; label: string; configured: boolean; demo: boolean }>;
 }
 
+/** שער התחברות: בשרת הענן נדרשת סיסמה; מקומית ובגרסת claude.ai — לא. */
 export function App() {
+  const me = useApi<{ authRequired: boolean; authenticated: boolean }>(isCloud() ? null : '/api/auth/me');
+  useEffect(() => {
+    const on = () => void me.reload();
+    window.addEventListener('apos:unauthorized', on);
+    return () => window.removeEventListener('apos:unauthorized', on);
+  }, [me.reload]);
+  if (!isCloud() && me.loading && !me.data) return <Loading />;
+  if (me.data?.authRequired && !me.data.authenticated) return <Login onDone={me.reload} />;
+  return <Shell canLogout={!!me.data?.authRequired} />;
+}
+
+function Shell({ canLogout }: { canLogout: boolean }) {
   const health = useApi<Health>('/api/health', { pollMs: 30000 });
-  const [connectOpen, setConnectOpen] = useState(false);
+  const [keysOpen, setKeysOpen] = useState(false);
+  const logout = async () => {
+    await api.post('/api/auth/logout');
+    window.dispatchEvent(new Event('apos:unauthorized'));
+  };
   return (
     <div className="app">
       <header className="topbar">
@@ -43,10 +62,15 @@ export function App() {
               </Tag>
             )
           ) : (
-            <OpenAITag status={health.data?.openai} onClick={() => setConnectOpen(true)} />
+            <KeysTag keys={health.data?.keys} onClick={() => setKeysOpen(true)} />
           )}
           {!isCloud() && <ThemeToggle />}
           <NotificationBell />
+          {canLogout && (
+            <button className="btn-link small" onClick={logout} title="יציאה">
+              יציאה
+            </button>
+          )}
         </div>
       </header>
       <main className="main">
@@ -57,9 +81,7 @@ export function App() {
           <Route path="*" element={<div className="empty">העמוד לא נמצא. <Link to="/">לדשבורד</Link></div>} />
         </Routes>
       </main>
-      {connectOpen && health.data && health.data.engine !== 'claude' && (
-        <OpenAIConnectModal status={health.data.openai} onClose={() => setConnectOpen(false)} onChanged={health.reload} />
-      )}
+      {keysOpen && health.data?.keys && <KeysModal keys={health.data.keys} onClose={() => setKeysOpen(false)} onChanged={health.reload} />}
     </div>
   );
 }

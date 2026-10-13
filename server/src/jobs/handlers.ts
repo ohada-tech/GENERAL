@@ -10,16 +10,21 @@ import { getProject, getScript, listScripts } from '../db/repo.js';
 import type { GenResult, ScriptDraft, TextProvider } from '../providers/types.js';
 import { ProviderError } from '../providers/types.js';
 import { emit } from '../workflow/events.js';
+import { MEDIA_HANDLERS } from './media.js';
 
 export interface JobHandler<R = unknown> {
   run(ctx: Ctx, job: Job): Promise<R>;
   persist(ctx: Ctx, job: Job, result: R): Record<string, unknown>;
+  /** נקרא כשהמשימה נכשלה סופית (בלי ניסיונות נוספים) */
+  onFinalFail?(ctx: Ctx, job: Job, err: unknown): void;
 }
 
 function textProviderFor(ctx: Ctx, projectId: string): { provider: TextProvider; model?: string } {
   const project = getProject(ctx.db, projectId);
   if (!project) throw new GateError('הפרויקט נמחק');
-  const provider = ctx.providers.text[project.settings.textProvider];
+  const key =
+    project.settings.textProvider === 'collab' && project.settings.collabWriter === 'claude' ? 'collab:claude' : project.settings.textProvider;
+  const provider = ctx.providers.text[key];
   if (!provider) throw new ProviderError(`ספק טקסט לא מוכר: ${project.settings.textProvider}`, false, 'unknown_provider');
   return { provider, model: project.settings.textModel || undefined };
 }
@@ -59,7 +64,7 @@ function insertScriptVersion(
       draft.provider,
       draft.model,
       json(content),
-      opts.changeNote,
+      draft.reviewNotes?.length ? `${opts.changeNote} · ${draft.reviewer ?? 'המבקר'} שיפר: ${draft.reviewNotes.join(' · ')}` : opts.changeNote,
       draft.provider,
       ctx.now().toISOString(),
     );
@@ -67,13 +72,14 @@ function insertScriptVersion(
     projectId,
     type: 'script.version_created',
     actor: draft.provider,
-    message: `נוצרה טיוטת תסריט v${version} (${opts.isDemo ? 'DEMO — ללא AI' : `${draft.provider} · ${draft.model}`})`,
+    message: `נוצרה טיוטת תסריט v${version} (${opts.isDemo ? 'DEMO — ללא AI' : draft.provider === 'collab' ? draft.model : `${draft.provider} · ${draft.model}`})${draft.reviewNotes?.length ? ` · הערות הביקורת: ${draft.reviewNotes.join(' · ')}` : ''}`,
     payload: {
       scriptVersionId: id,
       version,
       source: opts.source,
-      sourceLabel: opts.isDemo ? 'תוכן הדגמה' : `${draft.provider} · ${draft.model}`,
+      sourceLabel: opts.isDemo ? 'תוכן הדגמה' : draft.provider === 'collab' ? draft.model : `${draft.provider} · ${draft.model}`,
       usage: draft.usage ?? null,
+      reviewNotes: draft.reviewNotes ?? [],
     },
   });
   return { scriptVersionId: id, version, model: draft.model, provider: draft.provider };
@@ -123,6 +129,7 @@ const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string }>
 type StoryboardRun = {
   scriptVersionId: string;
   shots: ShotFields[];
+  reviewNotes?: string[];
   source: 'ai' | 'skeleton' | 'demo';
   provider: string | null;
   model: string | null;
@@ -166,6 +173,7 @@ const storyboardGenerate: JobHandler<StoryboardRun> = {
       source: provider.isDemo ? 'demo' : 'ai',
       provider: res.provider,
       model: res.model,
+      reviewNotes: res.reviewNotes,
     };
   },
   persist(ctx, job, r) {
@@ -191,12 +199,12 @@ const storyboardGenerate: JobHandler<StoryboardRun> = {
     );
     r.shots.forEach((s, i) => ins.run(uid(), id, projectId, i + 1, json(s), ts));
     const label =
-      r.source === 'skeleton' ? 'שלד שוטים לעריכה ידנית' : r.source === 'demo' ? 'DEMO — ללא AI' : `${r.provider} · ${r.model}`;
+      r.source === 'skeleton' ? 'שלד שוטים לעריכה ידנית' : r.source === 'demo' ? 'DEMO — ללא AI' : r.provider === 'collab' ? `${r.model}` : `${r.provider} · ${r.model}`;
     emit(ctx, {
       projectId,
       type: 'storyboard.created',
       actor: r.provider ?? 'system',
-      message: `נוצר סטורי בורד v${version} עם ${r.shots.length} שוטים (${label})`,
+      message: `נוצר סטורי בורד v${version} עם ${r.shots.length} שוטים (${label})${r.reviewNotes?.length ? ` · הערות הביקורת: ${r.reviewNotes.join(' · ')}` : ''}`,
       payload: { storyboardId: id, version, shotCount: r.shots.length, source: r.source },
     });
     return { storyboardId: id, version, shotCount: r.shots.length, source: r.source };
@@ -207,4 +215,5 @@ export const HANDLERS: Record<JobType, JobHandler<any>> = {
   'script.generate': scriptGenerate,
   'script.revise': scriptRevise,
   'storyboard.generate': storyboardGenerate,
+  ...MEDIA_HANDLERS,
 };

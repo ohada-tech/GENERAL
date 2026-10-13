@@ -39,6 +39,8 @@ export default defineConfig({
       { find: /^(node:)?path$/, replacement: stub('path.ts') },
       { find: /^(node:)?stream\/promises$/, replacement: stub('stream.ts') },
       { find: /^node:sqlite$/, replacement: stub('sqlite.ts') },
+      { find: /^(node:)?child_process$/, replacement: stub('child_process.ts') },
+      { find: /^(node:)?util$/, replacement: stub('util.ts') },
     ],
   },
   build: {

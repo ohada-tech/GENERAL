@@ -13,6 +13,7 @@ import {
 } from '../db/repo.js';
 import { computeProjectState } from '../workflow/state.js';
 import { trackedTotals } from './time.js';
+import { productionOverview } from '../workflow/production.js';
 
 export function projectState(ctx: Ctx, project: Project) {
   const storyboard = currentStoryboard(ctx.db, project.id);
@@ -25,7 +26,21 @@ export function projectState(ctx: Ctx, project: Project) {
     jobs: listJobs(ctx.db, project.id, 20),
     blockers: openBlockers(ctx.db, project.id),
     lastActivityAt: lastEventAt(ctx.db, project.id),
+    production: productionSummary(ctx, project.id),
   });
+}
+
+function productionSummary(ctx: Ctx, projectId: string) {
+  const o = productionOverview(ctx, projectId);
+  return {
+    kieConfigured: o.kieConfigured,
+    stages: o.stages.map((s) => ({
+      stage: s.stage,
+      approved: !!s.gate?.approvedAt,
+      items: s.items.map((it) => it.media?.status ?? null),
+      pendingUsd: s.pendingEstimate.usd,
+    })),
+  };
 }
 
 export function dashboard(ctx: Ctx): DashboardData {

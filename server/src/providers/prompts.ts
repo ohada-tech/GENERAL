@@ -82,7 +82,7 @@ export function storyboardSystemPrompt(defaults: { imageModel: string; animation
     'imagePrompt: a detailed English prompt for a photorealistic still frame (subject, action, environment, camera, lens, lighting, color grade, realistic human skin texture when people appear, aspect ratio). No brand names of AI tools inside the prompt.',
     'animationPrompt: an English prompt describing only the motion over the shot duration (subject motion, camera motion, pacing). Keep it consistent with the still frame.',
     `imageModel: default "${defaults.imageModel}" unless there is a clear reason otherwise.`,
-    `animationModel: choose "Kling (Unlimited)" for simple/moderate motion, budget or speed priority; choose "Seedance" when the shot needs very high realism, complex human motion, emotional performance or cinematic quality. Default "${defaults.animationModel}". Explain the choice briefly in animationModelReason.`,
+    `animationModel: choose "Kling 2.6" for simple or moderate motion; "Seedance 1.5 Pro" when the shot needs very high realism, complex human motion, emotional performance or cinematic quality; "Hailuo 2.3" for simple, budget-friendly shots. Default "${defaults.animationModel}". Explain the choice briefly in animationModelReason.`,
     'Fields other than imagePrompt / animationPrompt may be written in the same language as the script.',
     'sceneIndex is the zero-based index of the script scene the shot belongs to; narration is the exact narration part covered by the shot (empty string if none).',
   ].join('\n');
@@ -171,3 +171,70 @@ export const STORYBOARD_JSON_SCHEMA = {
     },
   },
 } as const;
+
+/* ---------- שיתוף פעולה: מודל אחד כותב, השני מבקר ומשפר ---------- */
+
+export const SCRIPT_REVIEW_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['reviewNotes', 'script'],
+  properties: {
+    reviewNotes: { type: 'array', items: str },
+    script: SCRIPT_JSON_SCHEMA,
+  },
+} as const;
+
+export const STORYBOARD_REVIEW_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['reviewNotes', 'shots'],
+  properties: {
+    reviewNotes: { type: 'array', items: str },
+    shots: STORYBOARD_JSON_SCHEMA.properties.shots,
+  },
+} as const;
+
+const reviewNotesRule = (lang: string) =>
+  `reviewNotes: 2–6 short bullet points, written in ${lang || 'the brief language'}, saying what you changed and why (or confirming what was already strong). No preamble.`;
+
+export function scriptReviewSystemPrompt(ctx: ProjectContext): string {
+  return [
+    scriptSystemPrompt(ctx),
+    '',
+    'ROLE NOW: you are the reviewing creative director. Another AI wrote the draft below. Review it strictly against the brief and return an improved, complete script.',
+    'Check: the hook lands in the first 1–3 seconds; the key message is clear; every claim is supported by the brief; tone and language fit the audience; narration sounds natural aloud; timing per scene and in total fits the target duration; visualAction is concrete and filmable for AI generation; the CTA matches the goal.',
+    'Keep what works. Do not rewrite for the sake of rewriting.',
+    reviewNotesRule(ctx.brief.language),
+  ].join('\n');
+}
+
+export function scriptReviewUserPrompt(ctx: ProjectContext, draft: ScriptContent | { title: string; logline: string; scenes: unknown[] }, feedback?: string): string {
+  const scenes = (draft.scenes as Array<Record<string, unknown>>).map(({ id: _id, ...s }) => s);
+  return [
+    `BRIEF:\n${briefToText(ctx)}`,
+    feedback ? `CLIENT/OWNER FEEDBACK THAT THE DRAFT HAD TO APPLY:\n${feedback}` : '',
+    `DRAFT SCRIPT (JSON):\n${JSON.stringify({ title: draft.title, logline: draft.logline, scenes }, null, 2)}`,
+    'Return reviewNotes and the improved full script.',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+export function storyboardReviewSystemPrompt(defaults: { imageModel: string; animationModel: string }, lang: string): string {
+  return [
+    storyboardSystemPrompt(defaults),
+    '',
+    'ROLE NOW: you are the reviewing director of photography. Another AI drafted the shots below. Review and return the improved complete shot list.',
+    'Check: every scene is covered and shot durations add up; imagePrompt is specific enough for a consistent photorealistic frame (same character identity, wardrobe, product look across shots); animationPrompt describes motion only and is achievable in the shot duration; camera choices vary with purpose; the chosen animation model fits the motion complexity.',
+    'Keep what works.',
+    reviewNotesRule(lang),
+  ].join('\n');
+}
+
+export function storyboardReviewUserPrompt(ctx: ProjectContext, script: ScriptContent, shots: unknown[]): string {
+  return [
+    storyboardUserPrompt(ctx, script),
+    `DRAFT SHOTS (JSON):\n${JSON.stringify(shots, null, 2)}`,
+    'Return reviewNotes and the improved full shot list.',
+  ].join('\n\n');
+}

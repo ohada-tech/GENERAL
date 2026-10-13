@@ -1,4 +1,6 @@
 import {
+  imageModel,
+  KIE_USD_PER_CREDIT,
   ANIMATION_MODEL_OPTIONS,
   IMAGE_MODEL_OPTIONS,
   REFERENCE_CATEGORIES,
@@ -106,7 +108,7 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
           </select>
           <ModeTag mode={sourceMode} />
           <span className="small muted">
-            {sb.source === 'skeleton' ? 'שלד מהתסריט' : sb.provider ? `${sb.provider} · ${sb.model}` : ''} · {fmtDateTime(sb.createdAt)}
+            {sb.source === 'skeleton' ? 'שלד מהתסריט' : sb.provider ? (sb.provider === "collab" ? sb.model : `${sb.provider} · ${sb.model}`) : ''} · {fmtDateTime(sb.createdAt)}
           </span>
           <StatusBadge status={sbStage.status} />
           <Tag>
@@ -127,6 +129,9 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
                 title={approvedCount !== shots.length ? 'יש לאשר את כל השוטים קודם' : 'אישור לפני יצירת התמונות'}
               >
                 ✓ אשר סטורי בורד
+                {project.settings.autoAdvance && shots.length > 0
+                  ? ` ← יתחיל ${shots.length} תמונות (~$${(shots.length * imageModel(project.settings.imageModel).credits * KIE_USD_PER_CREDIT).toFixed(2)})`
+                  : ''}
               </button>
             </>
           )}

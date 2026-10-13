@@ -6,6 +6,7 @@ import type { Config } from '../../../server/src/config';
 import type { Ctx } from '../../../server/src/context';
 import { startWorker } from '../../../server/src/jobs/worker';
 import { DemoTextProvider } from '../../../server/src/providers/demo';
+import { KieClient } from '../../../server/src/providers/kie';
 import { isProjectCompleted } from '../../../server/src/services/views';
 import { App } from '../App';
 import { TimerProvider } from '../lib/timer';
@@ -24,7 +25,10 @@ const config: Config = {
   dataDir: '/cloud',
   ownerName: 'owner',
   openai: { apiKey: '', model: 'Claude', baseUrl: '', timeoutMs: 180_000 },
-  jobs: { maxAttempts: 3, retryBaseSeconds: 15, stuckMinutes: 10, pollMs: 1000 },
+  anthropic: { apiKey: '', model: 'Claude', timeoutMs: 600_000 },
+  kie: { apiKey: '', baseUrl: 'https://api.kie.ai', uploadUrl: 'https://kieai.redpandaai.co', pollMs: 4000, timeoutMinutes: 25 },
+  auth: { password: '', sessionSecret: '' },
+  jobs: { maxAttempts: 3, retryBaseSeconds: 15, stuckMinutes: 10, pollMs: 1000, concurrency: 2 },
   stalledProjectDays: 3,
   timerMaxHours: 10,
 };
@@ -57,10 +61,15 @@ async function boot(): Promise<Booted> {
   }
   db = await openBrowserDb(bytes, () => store?.markDirty());
   // DB הדפדפני מממש את אותו API שהשרת משתמש בו
+  const claudeText = new ClaudeTextProvider(sample);
   const ctx: Ctx = {
     db: db as unknown as Ctx['db'],
     config,
-    providers: { text: { openai: new ClaudeTextProvider(sample), demo: new DemoTextProvider() } },
+    // בגרסת claude.ai יש מודל אחד (Claude) — כל מצבי הכתיבה ממופים אליו. הפקת מדיה (KIE) זמינה רק בשרת.
+    providers: {
+      text: { collab: claudeText, 'collab:claude': claudeText, openai: claudeText, claude: claudeText, demo: new DemoTextProvider() },
+      media: new KieClient(config.kie),
+    },
     now: () => new Date(),
   };
   const app = new MiniApp();

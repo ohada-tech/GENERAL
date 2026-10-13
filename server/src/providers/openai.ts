@@ -25,7 +25,7 @@ type FetchFn = typeof fetch;
 
 export class OpenAITextProvider implements TextProvider {
   readonly id = 'openai';
-  readonly label = 'OpenAI (ChatGPT API)';
+  readonly label = 'ChatGPT (OpenAI API)';
   readonly isDemo = false;
 
   constructor(
@@ -111,6 +111,19 @@ export class OpenAITextProvider implements TextProvider {
       throw new ProviderError('המודל החזיר סטורי בורד ריק', true, 'empty_output');
     }
     return { data: data.shots.map((s) => shotFieldsSchema.parse(s)), provider: this.id, model, usage };
+  }
+
+  /** קריאה כללית עם JSON Schema — משמשת גם את מצב השיתוף (ChatGPT + Claude). */
+  async json<T>(name: string, schema: object, system: string, user: string, modelOverride?: string) {
+    return this.complete<T>(
+      name,
+      schema,
+      [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+      modelOverride,
+    );
   }
 
   private async complete<T>(

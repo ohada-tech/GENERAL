@@ -195,7 +195,7 @@ function VersionView({
             {version.source === 'demo' ? <ModeTag mode="demo" /> : version.source === 'manual' ? <ModeTag mode="manual" /> : <ModeTag mode="auto" />}
           </h2>
           <div className="small muted">
-            {version.provider ? `${version.provider} · ${version.model}` : `נכתב ע"י ${version.createdBy}`} · {fmtDateTime(version.createdAt)}
+            {version.provider ? (version.provider === "collab" ? version.model : `${version.provider} · ${version.model}`) : `נכתב ע"י ${version.createdBy}`} · {fmtDateTime(version.createdAt)}
             {!isLatest && ' · גרסה ישנה (לקריאה)'}
           </div>
         </div>

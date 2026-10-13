@@ -315,12 +315,12 @@ describe('Jobs: retry, failure, pause, stuck', () => {
 });
 
 describe('Project state', () => {
-  it('progress grows with milestones and planned stages are reported honestly', async () => {
+  it('progress grows with milestones; production stages wait for earlier approvals', async () => {
     const ctx = makeCtx();
     const p = cmd.createProject(ctx, { name: 'A', clientName: 'B' });
     const s0 = state(ctx, p.id);
     expect(s0.progress).toBe(0);
-    expect(s0.stages.find((s) => s.key === 'images')!.availability).toBe('planned');
+    expect(s0.stages.find((s) => s.key === 'images')!.status).toBe('not_started');
 
     const { p: p2 } = await toClientApprovedScript(ctx);
     await drain(ctx);

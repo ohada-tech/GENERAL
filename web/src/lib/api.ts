@@ -29,6 +29,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   } catch {
     throw new ApiError('אין חיבור לשרת. ודא שהשרת רץ (npm run dev).', 0);
   }
+  if (res.status === 401 && !url.startsWith('/api/auth/')) window.dispatchEvent(new Event('apos:unauthorized'));
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   const data = text ? JSON.parse(text) : undefined;

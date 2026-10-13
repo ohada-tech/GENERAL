@@ -20,6 +20,9 @@ export interface GenResult<T> {
   provider: string;
   model: string;
   usage?: { inputTokens?: number; outputTokens?: number };
+  /** במצב שיתוף: מה המודל המבקר שינה ולמה */
+  reviewNotes?: string[];
+  reviewer?: string;
 }
 
 export interface ScriptDraftScene {

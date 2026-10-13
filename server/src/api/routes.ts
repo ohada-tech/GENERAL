@@ -26,6 +26,8 @@ import * as secrets from '../services/secrets.js';
 import * as time from '../services/time.js';
 import * as cmd from '../workflow/commands.js';
 import { emit } from '../workflow/events.js';
+import * as prod from '../workflow/production.js';
+import { getMedia } from '../db/repo.js';
 
 type Body = Record<string, any>;
 
@@ -40,6 +42,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     ok: true,
     owner: ctx.config.ownerName,
     openai: { ...secrets.openaiStatus(ctx.config), defaultModel: ctx.config.openai.model },
+    keys: secrets.allKeyStatus(ctx.config),
     providers: describeProviders(ctx.providers),
   }));
 
@@ -278,6 +281,68 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     time.deleteEntry(ctx, (req.params as any).tid);
     reply.code(204);
   });
+
+  /* ---------- הפקה אוטומטית 05–09 ---------- */
+  const mustStage = (v: string) => {
+    if (!(prod.PRODUCTION_STAGES as readonly string[]).includes(v)) throw new GateError('שלב לא מוכר', 400);
+    return v as prod.ProductionStage;
+  };
+  app.get('/api/projects/:id/production', async (req) => prod.productionOverview(ctx, (req.params as any).id));
+  app.post('/api/projects/:id/production/:stage/start', async (req) =>
+    prod.startStage(ctx, (req.params as any).id, mustStage((req.params as any).stage)),
+  );
+  app.post('/api/projects/:id/production/:stage/approve', async (req) =>
+    prod.approveStage(ctx, (req.params as any).id, mustStage((req.params as any).stage), ((req.body ?? {}) as Body).note ?? ''),
+  );
+  app.post('/api/projects/:id/production/:stage/reopen', async (req) =>
+    prod.reopenStage(ctx, (req.params as any).id, mustStage((req.params as any).stage)),
+  );
+  app.post('/api/media/:mid/approve', async (req) => prod.setItemApproval(ctx, (req.params as any).mid, true));
+  app.post('/api/media/:mid/unapprove', async (req) => prod.setItemApproval(ctx, (req.params as any).mid, false));
+  app.post('/api/media/:mid/regenerate', async (req) =>
+    prod.regenerateItem(ctx, (req.params as any).mid, String(((req.body ?? {}) as Body).feedback ?? '')),
+  );
+  app.get('/api/media/:mid/file', async (req, reply) => {
+    const m = getMedia(ctx.db, (req.params as any).mid);
+    const row = m?.assetId ? getAssetRow(ctx.db, m.assetId) : null;
+    if (!row || !fs.existsSync(row.stored_path)) throw new NotFoundError('קובץ');
+    const size = fs.statSync(row.stored_path).size;
+    const download = (req.query as any).download === '1';
+    const project = getProject(ctx.db, m!.projectId);
+    const name = download ? `${project?.name ?? 'video'}-${m!.kind}-v${m!.version}${path.extname(row.stored_path)}` : row.filename;
+    reply.header('Content-Type', row.mime);
+    reply.header('Accept-Ranges', 'bytes');
+    reply.header('Content-Disposition', `${download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(name)}`);
+    // Range — כדי שאפשר יהיה לדלג בנגן הווידאו
+    const range = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? ''));
+    if (range && (range[1] || range[2])) {
+      const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
+      const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+      if (start >= size || start > end) {
+        reply.code(416).header('Content-Range', `bytes */${size}`);
+        return reply.send();
+      }
+      reply.code(206).header('Content-Range', `bytes ${start}-${end}/${size}`).header('Content-Length', end - start + 1);
+      return reply.send(fs.createReadStream(row.stored_path, { start, end }));
+    }
+    reply.header('Content-Length', size);
+    return reply.send(fs.createReadStream(row.stored_path));
+  });
+
+  /* ---------- מפתחות API (OpenAI / Anthropic / KIE) — נשמרים בשרת בלבד ---------- */
+  const mustService = (v: string) => {
+    if (!(secrets.KEY_SERVICES as string[]).includes(v)) throw new GateError('שירות לא מוכר', 400);
+    return v as secrets.KeyService;
+  };
+  app.get('/api/settings/keys', async () => secrets.allKeyStatus(ctx.config));
+  app.post('/api/settings/keys/:service', async (req, reply) => {
+    const b = (req.body ?? {}) as Body;
+    const r = await secrets.saveKey(ctx, mustService((req.params as any).service), { apiKey: b.apiKey, model: b.model });
+    if (!r.ok) reply.code(422);
+    return r.ok ? r.status : { error: r.error, status: r.status };
+  });
+  app.post('/api/settings/keys/:service/test', async (req) => secrets.testKey(ctx, mustService((req.params as any).service)));
+  app.delete('/api/settings/keys/:service', async (req) => secrets.clearKey(ctx, mustService((req.params as any).service)));
 
   /* ---------- חיבור OpenAI מתוך הממשק (המפתח נשאר בשרת) ---------- */
   app.get('/api/settings/openai', async () => secrets.openaiStatus(ctx.config));

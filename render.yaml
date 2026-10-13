@@ -1,0 +1,29 @@
+# Render Blueprint — פריסה בלחיצה: Render → New → Blueprint → בחירת הריפו.
+# דיסק קבוע ב-/data שומר את מסד הנתונים, הקבצים והמפתחות בין הפעלות (דורש תוכנית בתשלום).
+services:
+  - type: web
+    name: ai-production-ap
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    healthCheckPath: /healthz
+    autoDeploy: true
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 10
+    envVars:
+      # סיסמת הכניסה למערכת — Render יבקש אותה בזמן ההקמה
+      - key: APP_PASSWORD
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: OWNER_NAME
+        value: אוהד
+      # אופציונלי: אפשר גם להדביק את המפתחות מתוך המערכת ("מפתחות" בסרגל העליון)
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: KIE_API_KEY
+        sync: false

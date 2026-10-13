@@ -30,6 +30,21 @@ export interface StateInput {
   jobs: Job[]; // מהחדשה לישנה
   blockers: Blocker[]; // פתוחים
   lastActivityAt: string | null;
+  /** מצב שלבי ההפקה 05–09 (אופציונלי בבדיקות) */
+  production?: ProductionSummary;
+}
+
+export interface ProductionStageSummary {
+  stage: 'images' | 'animation' | 'audio' | 'editing' | 'delivery';
+  approved: boolean;
+  /** סטטוס הגרסה האחרונה של כל פריט מתוכנן (null = טרם נוצר) */
+  items: Array<'generating' | 'ready' | 'approved' | 'rejected' | 'failed' | null>;
+  pendingUsd: number;
+}
+
+export interface ProductionSummary {
+  stages: ProductionStageSummary[];
+  kieConfigured: boolean;
 }
 
 const TAB: Record<StageKey, string> = {
@@ -37,11 +52,11 @@ const TAB: Record<StageKey, string> = {
   script: 'script',
   storyboard: 'storyboard',
   references: 'storyboard',
-  images: 'overview',
-  animation: 'overview',
-  audio: 'overview',
-  editing: 'overview',
-  delivery: 'overview',
+  images: 'production',
+  animation: 'production',
+  audio: 'production',
+  editing: 'production',
+  delivery: 'production',
 };
 
 function latestJobFor(jobs: Job[], stage: StageKey) {
@@ -197,41 +212,85 @@ export function computeProjectState(input: StateInput): ProjectState {
     }
   }
 
-  /* 04 References — בשלב זה: הוספה ובדיקה ידניות לכל שוט */
+  /* 04 References — אופציונלי: רפרנסים מאושרים משמשים כתמונות ייחוס ביצירת התמונות */
   {
     const withApproved = new Set(refs.filter((r) => r.status === 'approved').map((r) => r.shotId));
     const pending = refs.filter((r) => r.status === 'candidate').length;
     const covered = shots.filter((s) => withApproved.has(s.id)).length;
-    const milestones = [{ label: `שוטים עם רפרנס מאושר (${covered}/${shots.length})`, done: shots.length > 0 && covered === shots.length }];
+    const milestones = [{ label: `רפרנסים מאושרים (${covered}/${shots.length} שוטים) — לא חובה`, done: sbDone || (shots.length > 0 && covered === shots.length) }];
     if (!storyboard || shots.length === 0) {
       set('references', { status: 'not_started', detail: 'ממתין לסטורי בורד', milestones });
-    } else if (covered === shots.length) {
-      set('references', { status: 'completed', detail: 'לכל השוטים יש רפרנס מאושר', milestones });
-    } else if (pending > 0) {
-      set('references', { status: 'waiting_internal', detail: `${pending} רפרנסים ממתינים לבדיקה · ${covered}/${shots.length} שוטים מכוסים`, milestones });
-      actions.push({ kind: 'approval', stage: 'references', label: `סקור ${pending} רפרנסים מועמדים`, tab: 'storyboard' });
-    } else {
+    } else if (sbDone || covered === shots.length) {
       set('references', {
-        status: refs.length ? 'in_progress' : 'not_started',
-        detail: `${covered}/${shots.length} שוטים עם רפרנס מאושר (הוספה ידנית — חיפוש אוטומטי ב-Phase 3)`,
+        status: 'completed',
+        detail: covered ? `${covered} שוטים עם רפרנס מאושר — ישמשו כתמונות ייחוס` : 'ללא רפרנסים (לא חובה)',
         milestones,
       });
-      actions.push({
-        kind: 'task',
-        stage: 'references',
-        label: `הוסף רפרנסים ל-${shots.length - covered} שוטים`,
-        tab: 'storyboard',
+    } else {
+      set('references', {
+        status: pending ? 'waiting_internal' : 'in_progress',
+        detail: `${covered}/${shots.length} שוטים עם רפרנס מאושר · לא חובה — מה שיאושר ישמש כתמונת ייחוס`,
+        milestones,
       });
+      if (pending) actions.push({ kind: 'approval', stage: 'references', label: `סקור ${pending} רפרנסים מועמדים`, tab: 'storyboard' });
     }
   }
 
-  /* 05–09 — שלבים מתוכננים: מוצגים בכנות כ"טרם נבנה" */
-  for (const def of STAGES.filter((s) => s.availability === 'planned')) {
-    set(def.key, {
-      status: 'not_started',
-      detail: `טרם נבנה במערכת (Phase ${def.phase}) — בינתיים עבודה ידנית מחוץ למערכת`,
-      milestones: [{ label: 'השלב הושלם', done: false }],
-    });
+  /* 05–09 — הפקה אוטומטית */
+  {
+    const prod = input.production;
+    const LABEL: Record<string, string> = { images: 'התמונות', animation: 'ההנפשה', audio: 'הסאונד', editing: 'העריכה', delivery: 'המסירה' };
+    let prevDone = sbDone;
+    for (const ps of prod?.stages ?? []) {
+      const key = ps.stage as StageKey;
+      const total = ps.items.length;
+      const created = ps.items.filter((x) => x !== null).length;
+      const generating = ps.items.filter((x) => x === 'generating').length;
+      const failed = ps.items.filter((x) => x === 'failed' || x === 'rejected').length;
+      const ready = ps.items.filter((x) => x === 'ready' || x === 'approved').length;
+      const milestones =
+        key === 'delivery'
+          ? [{ label: 'הסרטון אושר ע"י הלקוח', done: ps.approved }]
+          : [
+              { label: `נוצרו (${ready}/${total})`, done: total > 0 && ready === total },
+              { label: 'השלב אושר', done: ps.approved },
+            ];
+      if (ps.approved) {
+        set(key, { status: 'completed', detail: key === 'delivery' ? 'הסרטון נמסר ואושר ע"י הלקוח' : `אושר (${total} פריטים)`, milestones });
+      } else if (!prevDone) {
+        set(key, { status: 'not_started', detail: 'ממתין לאישור השלב הקודם', milestones });
+      } else if (key === 'delivery') {
+        set(key, { status: 'waiting_client', detail: 'הסרטון הסופי מוכן — שלח ללקוח וסמן את אישורו', milestones });
+        actions.push({ kind: 'approval', stage: key, label: 'שלח את הסרטון ללקוח וסמן את אישורו', tab: 'production' });
+      } else if (generating) {
+        set(key, { status: paused ? 'in_progress' : 'in_progress', detail: `${paused ? 'מושהה · ' : ''}נוצרים ${generating} פריטים · ${ready}/${total} מוכנים`, milestones });
+      } else if (failed && created === total) {
+        set(key, { status: 'needs_revision', detail: `${failed} פריטים נכשלו או נדחו — צור אותם מחדש`, milestones });
+        actions.push({ kind: 'fix', stage: key, label: `${LABEL[key]}: צור מחדש ${failed} פריטים`, tab: 'production' });
+      } else if (total > 0 && ready === total) {
+        set(key, { status: 'waiting_internal', detail: `כל ${total} הפריטים מוכנים — בדוק ואשר`, milestones });
+        actions.push({ kind: 'approval', stage: key, label: `בדוק ואשר את ${LABEL[key]}`, tab: 'production' });
+      } else {
+        const blockedKie = !prod?.kieConfigured && key !== 'editing';
+        set(key, {
+          status: 'not_started',
+          detail: blockedKie ? 'חבר KIE כדי להפעיל את השלב' : `מוכן להפעלה · עלות משוערת ~$${ps.pendingUsd}`,
+          milestones,
+        });
+        actions.push({
+          kind: 'task',
+          stage: key,
+          label: blockedKie ? 'חבר מפתח KIE כדי ליצור תמונות, וידאו וסאונד' : `הפעל את ${LABEL[key]} (~$${ps.pendingUsd})`,
+          tab: 'production',
+        });
+      }
+      prevDone = ps.approved;
+    }
+    if (!prod) {
+      for (const def of STAGES.filter((d) => ['images', 'animation', 'audio', 'editing', 'delivery'].includes(d.key))) {
+        set(def.key, { status: 'not_started', detail: 'ממתין לשלבים הקודמים', milestones: [{ label: 'השלב הושלם', done: false }] });
+      }
+    }
   }
 
   /* חסמים ידניים חוסמים את השלב שלהם */
@@ -267,14 +326,7 @@ export function computeProjectState(input: StateInput): ProjectState {
   actions.sort((a, b) => stageOrder(a.stage) - stageOrder(b.stage));
   let nextAction: ActionItem | null =
     actions.find((a) => a.kind === 'fix') ?? actions.find((a) => a.stage === current.key) ?? actions[0] ?? null;
-  if (!nextAction && current.availability === 'planned') {
-    nextAction = {
-      kind: 'task',
-      stage: current.key,
-      label: `שלב "${STAGES[currentIdx].label}" טרם נבנה — המשך ידנית עם חבילת הפרומפטים`,
-      tab: 'storyboard',
-    };
-  }
+
 
   return {
     stages: ordered,

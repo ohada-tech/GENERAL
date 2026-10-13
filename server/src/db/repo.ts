@@ -19,6 +19,7 @@ import {
   type Storyboard,
 } from '@apos/shared';
 import { parse, type DB } from './db.js';
+import type { Media, MediaKind } from '@apos/shared';
 
 type Row = Record<string, any>;
 
@@ -297,3 +298,54 @@ export const listAssets = (db: DB, projectId: string) =>
 
 export const getAssetRow = (db: DB, id: string) =>
   db.prepare('SELECT * FROM assets WHERE id = ?').get(id) as Row | undefined;
+
+export const mapMedia = (r: Row): Media => ({
+  id: r.id,
+  projectId: r.project_id,
+  shotId: r.shot_id ?? null,
+  kind: r.kind,
+  version: r.version,
+  status: r.status,
+  provider: r.provider,
+  model: r.model,
+  prompt: r.prompt,
+  params: parse(r.params, {}),
+  assetId: r.asset_id ?? null,
+  mime: r.mime ?? null,
+  durationSec: r.duration_sec ?? null,
+  costCredits: r.cost_credits ?? null,
+  error: r.error ?? null,
+  note: r.note,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+});
+
+const MEDIA_SELECT = 'SELECT m.*, a.mime AS mime FROM media m LEFT JOIN assets a ON a.id = m.asset_id';
+
+export const getMedia = (db: DB, id: string) => {
+  const r = db.prepare(`${MEDIA_SELECT} WHERE m.id = ?`).get(id);
+  return r ? mapMedia(r as Row) : null;
+};
+
+/** כל תוצרי המדיה של הפרויקט (מהחדש לישן) */
+export const listMedia = (db: DB, projectId: string, kind?: MediaKind) =>
+  (kind
+    ? db.prepare(`${MEDIA_SELECT} WHERE m.project_id = ? AND m.kind = ? ORDER BY m.created_at DESC, m.version DESC`).all(projectId, kind)
+    : db.prepare(`${MEDIA_SELECT} WHERE m.project_id = ? ORDER BY m.created_at DESC, m.version DESC`).all(projectId)
+  ).map((r) => mapMedia(r as Row));
+
+export interface StageGate {
+  stage: string;
+  startedAt: string | null;
+  approvedAt: string | null;
+  approvedBy: string | null;
+  note: string;
+}
+
+export const listGates = (db: DB, projectId: string): Record<string, StageGate> =>
+  Object.fromEntries(
+    (db.prepare('SELECT * FROM stage_gates WHERE project_id = ?').all(projectId) as Row[]).map((r) => [
+      r.stage,
+      { stage: r.stage, startedAt: r.started_at ?? null, approvedAt: r.approved_at ?? null, approvedBy: r.approved_by ?? null, note: r.note },
+    ]),
+  );

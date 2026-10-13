@@ -22,6 +22,7 @@ import { ScriptTab } from './ScriptTab';
 import { SettingsTab } from './SettingsTab';
 import { StoryboardTab } from './StoryboardTab';
 import { TimeTab } from './TimeTab';
+import { ProductionTab } from './ProductionTab';
 
 export interface ProjectDetail {
   project: Project;
@@ -41,6 +42,7 @@ const TABS: Array<{ key: string; label: string }> = [
   { key: 'brief', label: '01 אפיון' },
   { key: 'script', label: '02 תסריט' },
   { key: 'storyboard', label: '03–04 סטורי בורד ורפרנסים' },
+  { key: 'production', label: '05–09 הפקה' },
   { key: 'time', label: '⏱ זמן עבודה' },
   { key: 'activity', label: 'היסטוריה' },
   { key: 'jobs', label: 'משימות והרצות' },
@@ -52,6 +54,11 @@ const STAGE_TAB: Partial<Record<StageKey, string>> = {
   script: 'script',
   storyboard: 'storyboard',
   references: 'storyboard',
+  images: 'production',
+  animation: 'production',
+  audio: 'production',
+  editing: 'production',
+  delivery: 'production',
 };
 
 export function ProjectPage({ health }: { health: Health | null }) {
@@ -138,6 +145,7 @@ export function ProjectPage({ health }: { health: Health | null }) {
         {tab === 'brief' && <BriefTab {...props} />}
         {tab === 'script' && <ScriptTab {...props} />}
         {tab === 'storyboard' && <StoryboardTab {...props} />}
+        {tab === 'production' && <ProductionTab {...props} />}
         {tab === 'time' && <TimeTab {...props} />}
         {tab === 'activity' && <ActivityTab {...props} />}
         {tab === 'jobs' && <JobsTab {...props} />}

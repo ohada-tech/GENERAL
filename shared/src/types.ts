@@ -3,17 +3,28 @@ import type { Brief, BriefValidation } from './brief.js';
 import type { PipelineState, StageAvailability, StageKey, Status } from './stages.js';
 
 export const projectSettingsSchema = z.object({
-  /** ספק טקסט: openai = אינטגרציה אמיתית; demo = תוכן הדגמה מסומן, ללא API */
-  textProvider: z.enum(['openai', 'demo']).default('openai'),
-  /** דורס את OPENAI_MODEL לפרויקט זה (ריק = ברירת מחדל מהשרת) */
+  /** ספק טקסט: collab = מודל אחד כותב והשני מבקר ומשפר; openai/claude = מודל יחיד; demo = תוכן הדגמה מסומן */
+  textProvider: z.enum(['collab', 'openai', 'claude', 'demo']).default('collab'),
+  /** במצב שיתוף: מי כותב את הטיוטה (השני מבקר ומשפר) */
+  collabWriter: z.enum(['openai', 'claude']).default('openai'),
+  /** דורס את מודל ברירת המחדל לפרויקט זה (במצב מודל יחיד; ריק = ברירת מחדל מהשרת) */
   textModel: z.string().default(''),
-  /** script_only: ChatGPT לתסריט בלבד, שוטים נבנים כשלד לעריכה ידנית.
-   *  script_and_visual: ChatGPT מפתח גם קונספט חזותי ופרומפטים לשוטים. */
+  /** script_only: AI לתסריט בלבד, שוטים נבנים כשלד לעריכה ידנית.
+   *  script_and_visual: AI מפתח גם קונספט חזותי ופרומפטים לשוטים. */
   chatgptScope: z.enum(['script_only', 'script_and_visual']).default('script_and_visual'),
   autoGenerateScript: z.boolean().default(true),
   autoGenerateStoryboard: z.boolean().default(true),
-  defaultImageModel: z.string().default('Higgsfield · Nano Banana Pro'),
-  defaultAnimationModel: z.string().default('Kling (Unlimited)'),
+  defaultImageModel: z.string().default('Nano Banana 2'),
+  defaultAnimationModel: z.string().default('Kling 2.6'),
+  /** הפקה (05–09) דרך KIE */
+  imageModel: z.string().default('nano-banana-2'),
+  videoModel: z.string().default('kling-2.6'),
+  voiceId: z.string().default('EkK5I93UQWFDigLMpZcX'),
+  music: z.boolean().default(true),
+  /** אישור שלב מפעיל אוטומטית את השלב הבא (העלות מוצגת על כפתור האישור) */
+  autoAdvance: z.boolean().default(true),
+  /** תקרת עלות יצירה לפרויקט בדולרים — יצירה שתעבור אותה נחסמת */
+  budgetUsd: z.number().nonnegative().default(25),
 });
 
 export type ProjectSettings = z.infer<typeof projectSettingsSchema>;
@@ -31,18 +42,36 @@ export interface Project {
 }
 
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
-export type JobType = 'script.generate' | 'script.revise' | 'storyboard.generate';
+export type JobType =
+  | 'script.generate'
+  | 'script.revise'
+  | 'storyboard.generate'
+  | 'frame.generate'
+  | 'clip.generate'
+  | 'voiceover.generate'
+  | 'music.generate'
+  | 'edit.render';
 
 export const JOB_LABELS: Record<JobType, string> = {
   'script.generate': 'יצירת טיוטת תסריט',
   'script.revise': 'יצירת גרסה מתוקנת לתסריט',
   'storyboard.generate': 'יצירת סטורי בורד',
+  'frame.generate': 'יצירת תמונה לשוט',
+  'clip.generate': 'הנפשת שוט',
+  'voiceover.generate': 'יצירת קריינות',
+  'music.generate': 'יצירת מוזיקה',
+  'edit.render': 'עריכת הסרטון',
 };
 
 export const JOB_STAGE: Record<JobType, StageKey> = {
   'script.generate': 'script',
   'script.revise': 'script',
   'storyboard.generate': 'storyboard',
+  'frame.generate': 'images',
+  'clip.generate': 'animation',
+  'voiceover.generate': 'audio',
+  'music.generate': 'audio',
+  'edit.render': 'editing',
 };
 
 export interface Job {

@@ -28,7 +28,11 @@ export function enqueueJob(ctx: Ctx, input: EnqueueInput): EnqueueResult {
   const existingByKey = ctx.db.prepare('SELECT * FROM jobs WHERE idempotency_key = ?').get(input.idempotencyKey);
   if (existingByKey) return { job: mapJob(existingByKey as any), created: false, reason: 'duplicate_key' };
 
-  const active = ctx.db
+  // משימות מדיה הן לכל פריט בנפרד (שוט/גרסה) — הכפילות נמנעת לפי מזהה הפריט במפתח
+  const perItem = input.type.startsWith('frame.') || input.type.startsWith('clip.') || input.type.startsWith('voiceover.') || input.type.startsWith('music.') || input.type.startsWith('edit.');
+  const active = perItem
+    ? null
+    : ctx.db
     .prepare(
       "SELECT * FROM jobs WHERE project_id = ? AND type = ? AND status IN ('queued','running') ORDER BY created_at DESC LIMIT 1",
     )

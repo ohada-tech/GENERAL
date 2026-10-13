@@ -64,7 +64,7 @@ function closeAttempt(ctx: Ctx, job: Job, ok: boolean, error: string | null) {
 }
 
 /** מטפל בכישלון: Retry אם אפשר, אחרת failed (הפרויקט יוצג כחסום בשלב המתאים). */
-export function failJob(ctx: Ctx, job: Job, err: unknown) {
+export function failJob(ctx: Ctx, job: Job, err: unknown, handlers: Record<JobType, JobHandler<any>> = HANDLERS) {
   const message = err instanceof Error ? err.message : String(err);
   const retryable = isRetryable(err);
   tx(ctx.db, () => {
@@ -88,6 +88,7 @@ export function failJob(ctx: Ctx, job: Job, err: unknown) {
       ctx.db
         .prepare("UPDATE jobs SET status = 'failed', finished_at = ?, last_error = ? WHERE id = ?")
         .run(ctx.now().toISOString(), message, cur.id);
+      handlers[cur.type]?.onFinalFail?.(ctx, cur, err);
       emit(ctx, {
         projectId: cur.projectId,
         type: 'job.failed',
@@ -101,6 +102,14 @@ export function failJob(ctx: Ctx, job: Job, err: unknown) {
 
 async function execute(ctx: Ctx, job: Job, handlers: Record<JobType, JobHandler<any>>) {
   const handler = handlers[job.type];
+  // דופק: משימות ארוכות (וידאו) לא ייחשבו תקועות כל עוד התהליך חי
+  const beat = setInterval(() => {
+    try {
+      ctx.db.prepare("UPDATE jobs SET heartbeat_at = ? WHERE id = ? AND status = 'running'").run(ctx.now().toISOString(), job.id);
+    } catch {
+      /* ignore */
+    }
+  }, 30_000);
   try {
     if (!handler) throw new GateError(`אין מטפל למשימה ${job.type}`);
     const result = await handler.run(ctx, job);
@@ -130,7 +139,9 @@ async function execute(ctx: Ctx, job: Job, handlers: Record<JobType, JobHandler<
       });
     });
   } catch (err) {
-    failJob(ctx, job, err);
+    failJob(ctx, job, err, handlers);
+  } finally {
+    clearInterval(beat);
   }
 }
 
@@ -210,6 +221,8 @@ export function startWorker(ctx: Ctx, isCompleted: (projectId: string) => boolea
   let running: Promise<void> = Promise.resolve();
   let lastMaintenance = 0;
 
+  // כמה משימות במקביל (יצירת תמונות/וידאו לכמה שוטים בבת אחת)
+  const inFlight = new Set<Promise<void>>();
   const loop = async () => {
     while (!stopped) {
       try {
@@ -219,13 +232,21 @@ export function startWorker(ctx: Ctx, isCompleted: (projectId: string) => boolea
           detectStalledProjects(ctx, isCompleted);
           checkForgottenTimer(ctx);
         }
-        const ran = await runOnce(ctx);
-        if (!ran) await new Promise((r) => setTimeout(r, ctx.config.jobs.pollMs));
+        let claimed = false;
+        while (inFlight.size < Math.max(1, ctx.config.jobs.concurrency)) {
+          const job = claimNext(ctx);
+          if (!job) break;
+          claimed = true;
+          const p: Promise<void> = execute(ctx, job, HANDLERS).finally(() => inFlight.delete(p));
+          inFlight.add(p);
+        }
+        if (!claimed) await new Promise((r) => setTimeout(r, ctx.config.jobs.pollMs));
       } catch (err) {
         console.error('[worker] loop error', err);
         await new Promise((r) => setTimeout(r, ctx.config.jobs.pollMs));
       }
     }
+    await Promise.allSettled([...inFlight]);
   };
   running = loop();
   return {

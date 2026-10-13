@@ -190,4 +190,37 @@ export const MIGRATIONS: string[] = [
   -- לכל היותר טיימר אחד רץ בכל רגע
   CREATE UNIQUE INDEX idx_time_single_running ON time_entries((1)) WHERE ended_at IS NULL;
   `,
+  /* v3 — הפקה אוטומטית (05–09): תוצרי מדיה ואישורי שלבים */ `
+  CREATE TABLE media (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    shot_id TEXT REFERENCES shots(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'generating',
+    provider TEXT NOT NULL DEFAULT 'kie',
+    model TEXT NOT NULL DEFAULT '',
+    prompt TEXT NOT NULL DEFAULT '',
+    params TEXT NOT NULL DEFAULT '{}',
+    asset_id TEXT REFERENCES assets(id) ON DELETE SET NULL,
+    duration_sec REAL,
+    cost_credits REAL,
+    error TEXT,
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_media_project ON media(project_id, kind, created_at);
+  CREATE INDEX idx_media_shot ON media(shot_id, kind, version);
+
+  CREATE TABLE stage_gates (
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    stage TEXT NOT NULL,
+    started_at TEXT,
+    approved_at TEXT,
+    approved_by TEXT,
+    note TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (project_id, stage)
+  );
+  `,
 ];

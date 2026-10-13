@@ -25,7 +25,7 @@ function setup(responder: (url: string, key: string) => number) {
   const ctx: Ctx = {
     db: openDb(':memory:'),
     config,
-    providers: { text: { openai: new OpenAITextProvider(config.openai, fetchFn), demo: new DemoTextProvider() } },
+    providers: { text: { openai: new OpenAITextProvider(config.openai, fetchFn), demo: new DemoTextProvider() }, media: undefined as any },
     now: () => new Date(),
   };
   return { ctx, dataDir, calls };

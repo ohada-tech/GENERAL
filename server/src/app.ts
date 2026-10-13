@@ -7,6 +7,7 @@ import { ZodError } from 'zod';
 import { registerRoutes } from './api/routes.js';
 import { REPO_ROOT } from './config.js';
 import { GateError, type Ctx } from './context.js';
+import { registerAuth } from './auth.js';
 
 export async function buildApp(ctx: Ctx, opts: { logger?: boolean; serveWeb?: boolean } = {}) {
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 5 * 1024 * 1024 });
@@ -37,6 +38,9 @@ export async function buildApp(ctx: Ctx, opts: { logger?: boolean; serveWeb?: bo
     return reply.code(status).send({ error: status >= 500 ? `שגיאת שרת: ${e.message}` : e.message });
   });
 
+  // בדיקת חיים לשרת הענן (ללא נתונים, ללא התחברות)
+  app.get('/healthz', async () => ({ ok: true }));
+  registerAuth(app, ctx.config);
   await registerRoutes(app, ctx);
 
   const webDist = path.join(REPO_ROOT, 'web', 'dist');
