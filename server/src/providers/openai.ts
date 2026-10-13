@@ -37,6 +37,35 @@ export class OpenAITextProvider implements TextProvider {
     return Boolean(this.cfg.apiKey);
   }
 
+  /**
+   * בדיקת חיבור אמיתית מול OpenAI: האם המפתח תקף והאם המודל זמין לחשבון.
+   * GET /models/{model} — לא צורך טוקנים ולא עולה כסף.
+   */
+  async verify(apiKey = this.cfg.apiKey, model = this.cfg.model): Promise<{ ok: true; model: string } | { ok: false; code: string; message: string }> {
+    if (!apiKey) return { ok: false, code: 'missing_api_key', message: 'לא הוזן מפתח' };
+    let res: Response;
+    try {
+      res = await this.fetchFn(`${this.cfg.baseUrl}/models/${encodeURIComponent(model)}`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(20_000),
+      });
+    } catch (e) {
+      return { ok: false, code: 'network', message: `אין חיבור ל-OpenAI: ${e instanceof Error ? e.message : String(e)}` };
+    }
+    if (res.ok) return { ok: true, model };
+    let msg = '';
+    try {
+      msg = ((await res.json()) as any)?.error?.message ?? '';
+    } catch {
+      /* ignore */
+    }
+    if (res.status === 401) return { ok: false, code: 'auth', message: 'המפתח לא תקף (ייתכן שבוטל או הועתק חלקית)' };
+    if (res.status === 403) return { ok: false, code: 'forbidden', message: `למפתח אין הרשאה: ${msg}` };
+    if (res.status === 404) return { ok: false, code: 'model_not_found', message: `המפתח תקף, אבל המודל "${model}" לא זמין לחשבון` };
+    if (res.status === 429) return { ok: false, code: 'rate_limit', message: `OpenAI הגביל בקשות: ${msg}` };
+    return { ok: false, code: 'error', message: `OpenAI החזיר ${res.status}: ${msg}` };
+  }
+
   async generateScript(ctx: ProjectContext, opts?: { model?: string }): Promise<GenResult<ScriptDraft>> {
     const { data, model, usage } = await this.complete<ScriptDraft>(
       'script',
@@ -92,7 +121,7 @@ export class OpenAITextProvider implements TextProvider {
   ): Promise<{ data: T; model: string; usage?: GenResult<T>['usage'] }> {
     if (!this.cfg.apiKey) {
       throw new ProviderError(
-        'OPENAI_API_KEY לא מוגדר בשרת. הוסף מפתח בקובץ .env או בחר ספק "demo" בהגדרות הפרויקט.',
+        'OpenAI לא מחובר. לחץ על "חבר OpenAI" בסרגל העליון והדבק מפתח API, או בחר ספק "demo" בהגדרות הפרויקט.',
         false,
         'missing_api_key',
       );

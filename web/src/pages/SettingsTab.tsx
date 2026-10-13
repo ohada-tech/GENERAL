@@ -58,7 +58,7 @@ export function SettingsTab({ detail, reload, health }: TabProps) {
         </div>
         {s.textProvider === 'openai' && openai && !openai.configured && (
           <div className="notice warn">
-            לא הוגדר OPENAI_API_KEY בשרת. משימות AI ייכשלו ויסומנו כחסומות עד להגדרה. שים לב: מנוי ChatGPT אינו כולל גישה ל-API.
+            OpenAI לא מחובר — לחץ על "חבר OpenAI" בסרגל העליון והדבק מפתח API. עד אז משימות AI ייכשלו ויסומנו כחסומות.
           </div>
         )}
         <Field label="היקף השימוש ב-ChatGPT בפרויקט" group>

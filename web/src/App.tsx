@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { Link, Route, Routes } from 'react-router-dom';
 import { BrandLockup } from './components/Brand';
 import { NotificationBell } from './components/NotificationBell';
+import { OpenAIConnectModal, OpenAITag, type OpenAIStatus } from './components/OpenAIConnect';
 import { ThemeToggle } from './components/ThemeToggle';
 import { TimerWidget } from './components/TimerWidget';
 import { Tag } from './components/ui';
@@ -11,12 +13,13 @@ import { ProjectPage } from './pages/ProjectPage';
 export interface Health {
   ok: boolean;
   owner: string;
-  openai: { configured: boolean; defaultModel: string };
+  openai: OpenAIStatus & { defaultModel: string };
   providers: Array<{ id: string; label: string; configured: boolean; demo: boolean }>;
 }
 
 export function App() {
   const health = useApi<Health>('/api/health', { pollMs: 30000 });
+  const [connectOpen, setConnectOpen] = useState(false);
   return (
     <div className="app">
       <header className="topbar">
@@ -27,17 +30,9 @@ export function App() {
           <TimerWidget />
           {health.error ? (
             <Tag tone="danger">השרת לא זמין</Tag>
-          ) : health.data ? (
-            health.data.openai.configured ? (
-              <Tag tone="auto" title={`מודל ברירת מחדל: ${health.data.openai.defaultModel}`}>
-                OpenAI מחובר
-              </Tag>
-            ) : (
-              <Tag tone="warn" title="הגדר OPENAI_API_KEY בקובץ .env בשרת">
-                OpenAI לא מוגדר
-              </Tag>
-            )
-          ) : null}
+          ) : (
+            <OpenAITag status={health.data?.openai} onClick={() => setConnectOpen(true)} />
+          )}
           <ThemeToggle />
           <NotificationBell />
         </div>
@@ -50,6 +45,9 @@ export function App() {
           <Route path="*" element={<div className="empty">העמוד לא נמצא. <Link to="/">לדשבורד</Link></div>} />
         </Routes>
       </main>
+      {connectOpen && health.data && (
+        <OpenAIConnectModal status={health.data.openai} onClose={() => setConnectOpen(false)} onChanged={health.reload} />
+      )}
     </div>
   );
 }

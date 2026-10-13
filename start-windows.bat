@@ -23,12 +23,14 @@ if not exist node_modules (
 
 if not exist .env (
   copy .env.example .env >nul
-  echo  Created .env - add your OPENAI_API_KEY there to enable AI script writing.
 )
 
 echo  Building the web interface...
 call npm run build
 if errorlevel 1 ( echo  Build failed - see the error above. & pause & exit /b 1 )
+
+REM desktop shortcut (one-click launch next time, no window)
+wscript "%~dp0AI Production AP.vbs" /shortcut
 
 REM open the browser after the server has had a few seconds to start
 start "" cmd /c "timeout /t 5 >nul & start http://127.0.0.1:3001"

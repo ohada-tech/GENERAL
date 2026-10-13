@@ -22,6 +22,7 @@ import {
 } from '../db/repo.js';
 import { describeProviders } from '../providers/registry.js';
 import { dashboard, projectState } from '../services/views.js';
+import * as secrets from '../services/secrets.js';
 import * as time from '../services/time.js';
 import * as cmd from '../workflow/commands.js';
 import { emit } from '../workflow/events.js';
@@ -38,7 +39,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
   app.get('/api/health', async () => ({
     ok: true,
     owner: ctx.config.ownerName,
-    openai: { configured: Boolean(ctx.config.openai.apiKey), defaultModel: ctx.config.openai.model },
+    openai: { ...secrets.openaiStatus(ctx.config), defaultModel: ctx.config.openai.model },
     providers: describeProviders(ctx.providers),
   }));
 
@@ -277,4 +278,15 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     time.deleteEntry(ctx, (req.params as any).tid);
     reply.code(204);
   });
+
+  /* ---------- חיבור OpenAI מתוך הממשק (המפתח נשאר בשרת) ---------- */
+  app.get('/api/settings/openai', async () => secrets.openaiStatus(ctx.config));
+  app.post('/api/settings/openai', async (req, reply) => {
+    const b = (req.body ?? {}) as Body;
+    const r = await secrets.saveOpenAI(ctx, { apiKey: b.apiKey, model: b.model });
+    if (!r.ok) reply.code(422);
+    return r.ok ? r.status : { error: r.error, status: r.status };
+  });
+  app.post('/api/settings/openai/test', async () => secrets.testOpenAI(ctx));
+  app.delete('/api/settings/openai', async () => secrets.clearOpenAI(ctx));
 }
