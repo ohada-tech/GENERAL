@@ -27,8 +27,12 @@ function browserDbPlugin(): Plugin {
   };
 }
 
+// CLOUD_SINGLE=1 → קובץ אחד; ברירת מחדל: עמוד קטן + קבצי JS/CSS/גופנים נפרדים (מתאים ל-Artifact מרובה קבצים)
+const single = process.env.CLOUD_SINGLE === '1';
+
 export default defineConfig({
-  plugins: [browserDbPlugin(), react(), viteSingleFile({ removeViteModuleLoader: true })],
+  base: './',
+  plugins: [browserDbPlugin(), react(), ...(single ? [viteSingleFile({ removeViteModuleLoader: true })] : [])],
   resolve: {
     alias: [
       { find: /^(node:)?fs$/, replacement: stub('fs.ts') },
@@ -41,7 +45,8 @@ export default defineConfig({
     outDir: 'dist-cloud',
     emptyOutDir: true,
     target: 'es2022',
-    assetsInlineLimit: 100_000_000,
+    assetsInlineLimit: single ? 100_000_000 : 0,
+    modulePreload: false,
     rollupOptions: { input: path.resolve(here, 'cloud.html') },
   },
 });
