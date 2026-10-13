@@ -1,5 +1,7 @@
 import { Link, Route, Routes } from 'react-router-dom';
+import { BrandLockup } from './components/Brand';
 import { NotificationBell } from './components/NotificationBell';
+import { ThemeToggle } from './components/ThemeToggle';
 import { TimerWidget } from './components/TimerWidget';
 import { Tag } from './components/ui';
 import { useApi } from './lib/api';
@@ -18,8 +20,8 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <Link to="/" className="brand">
-          <span className="brand-mark">▶</span> AI Production OS
+        <Link to="/" className="brand" aria-label="Production OS — לדשבורד">
+          <BrandLockup />
         </Link>
         <div className="topbar-side">
           <TimerWidget />
@@ -36,6 +38,7 @@ export function App() {
               </Tag>
             )
           ) : null}
+          <ThemeToggle />
           <NotificationBell />
         </div>
       </header>

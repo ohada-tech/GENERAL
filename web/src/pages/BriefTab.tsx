@@ -172,7 +172,7 @@ export function BriefTab({ detail, reload }: TabProps) {
             <input value={draft.brandLogo} onChange={(e) => set('brandLogo', e.target.value)} />
           </Field>
           <Field label="צבעי מותג">
-            <input value={draft.brandColors} onChange={(e) => set('brandColors', e.target.value)} placeholder="#111827, #F59E0B…" />
+            <input value={draft.brandColors} onChange={(e) => set('brandColors', e.target.value)} placeholder="#C8A6FF, #7EE6E6…" />
           </Field>
           <Field label="פונטים">
             <input value={draft.brandFonts} onChange={(e) => set('brandFonts', e.target.value)} />
