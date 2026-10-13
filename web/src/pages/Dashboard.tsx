@@ -2,7 +2,7 @@ import { formatDuration, STAGE_BY_KEY, STATUS_LABELS, type DashboardData, type P
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PipelineStepper } from '../components/PipelineStepper';
-import { Empty, ErrorBox, Field, InlineError, Loading, Modal, Progress, StatusBadge } from '../components/ui';
+import { Empty, ErrorBox, Field, InlineError, Loading, Modal, Progress, StatusBadge, Tag } from '../components/ui';
 import { api, useAction, useApi } from '../lib/api';
 import { daysUntil, fmtDate, fmtRelative } from '../lib/format';
 
@@ -53,9 +53,12 @@ export function Dashboard() {
           <h1>הפקות</h1>
           <p className="muted">מה הושלם, מה מתבצע, מה ממתין לך ומה תקוע.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setCreating(true)}>
-          + פרויקט חדש
-        </button>
+        <div className="row gap-s">
+          <ImportButton onDone={reload} />
+          <button className="btn btn-primary" onClick={() => setCreating(true)}>
+            + פרויקט חדש
+          </button>
+        </div>
       </div>
 
       <div className="kpis">
@@ -243,5 +246,41 @@ function NewProjectModal({ onClose }: { onClose: () => void }) {
         </div>
       </form>
     </Modal>
+  );
+}
+
+/** ייבוא פרויקטים קיימים מקובץ JSON — במצב האמיתי שלהם, בלי להפעיל AI או יצירה בתשלום */
+function ImportButton({ onDone }: { onDone: () => Promise<void> | void }) {
+  const act = useAction();
+  const [msg, setMsg] = useState<string | null>(null);
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    setMsg(null);
+    const r = await act.run(async () => {
+      let data: unknown;
+      try {
+        data = JSON.parse(await f.text());
+      } catch {
+        throw new Error('הקובץ אינו JSON תקין');
+      }
+      return api.post<{ imported: number; results: Array<{ name: string; skipped?: string }> }>('/api/import', data);
+    });
+    if (r) {
+      const skipped = r.results.filter((x) => x.skipped).map((x) => x.name);
+      setMsg(`יובאו ${r.imported} פרויקטים${skipped.length ? ` · דולגו (כבר קיימים): ${skipped.join(', ')}` : ''}`);
+      await onDone();
+    }
+  };
+  return (
+    <span className="row gap-s">
+      <label className="btn" title="ייבוא פרויקטים קיימים מקובץ — בלי להפעיל AI ובלי עלות">
+        ⬆ ייבוא פרויקטים
+        <input type="file" accept="application/json,.json" hidden onChange={onFile} disabled={act.busy} />
+      </label>
+      {msg && <Tag tone="ok">{msg}</Tag>}
+      <InlineError error={act.error} onClose={act.clearError} />
+    </span>
   );
 }

@@ -27,6 +27,7 @@ import * as time from '../services/time.js';
 import * as cmd from '../workflow/commands.js';
 import { emit } from '../workflow/events.js';
 import * as prod from '../workflow/production.js';
+import { importProjects } from '../workflow/import.js';
 import { getMedia } from '../db/repo.js';
 
 type Body = Record<string, any>;
@@ -78,6 +79,8 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!['pause', 'resume', 'stop'].includes(action)) throw new GateError('פעולה לא חוקית', 400);
     return cmd.setPipelineState(ctx, id, action);
   });
+
+  app.post('/api/import', async (req) => importProjects(ctx, req.body ?? {}));
 
   /* ---------- brief ---------- */
   app.put('/api/projects/:id/brief', async (req) => {
