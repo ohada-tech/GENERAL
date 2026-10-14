@@ -6,7 +6,7 @@ export const projectSettingsSchema = z.object({
   /** ספק טקסט: collab = מודל אחד כותב והשני מבקר ומשפר; openai/claude = מודל יחיד; demo = תוכן הדגמה מסומן */
   textProvider: z.enum(['collab', 'openai', 'claude', 'demo']).default('collab'),
   /** במצב שיתוף: מי כותב את הטיוטה (השני מבקר ומשפר) */
-  collabWriter: z.enum(['openai', 'claude']).default('openai'),
+  collabWriter: z.enum(['openai', 'claude']).default('claude'),
   /** דורס את מודל ברירת המחדל לפרויקט זה (במצב מודל יחיד; ריק = ברירת מחדל מהשרת) */
   textModel: z.string().default(''),
   /** script_only: AI לתסריט בלבד, שוטים נבנים כשלד לעריכה ידנית.

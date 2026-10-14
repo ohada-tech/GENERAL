@@ -434,7 +434,12 @@ function ApprovalPanel({
 
       {version.status === 'internal_approved' && (
         <div className="approval-row">
-          <span className="small">הצג את התסריט ללקוח. לאחר שאישר:</span>
+          {!isCloud() && (
+            <a className="btn" href={`/api/scripts/${version.id}/docx`} download>
+              ⬇ Word לשליחה ללקוח
+            </a>
+          )}
+          <span className="small">שלח את התסריט ללקוח. לאחר שאישר:</span>
           <input placeholder={`מי אישר מטעם ${clientName || 'הלקוח'}`} value={clientBy} onChange={(e) => setClientBy(e.target.value)} />
           <input placeholder="הערה / ערוץ (מייל, וואטסאפ…)" value={note} onChange={(e) => setNote(e.target.value)} />
           <button

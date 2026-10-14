@@ -1,5 +1,5 @@
 import { IMAGE_MODELS, KIE_USD_PER_CREDIT, VIDEO_MODELS, VOICES, type ProjectSettings } from '@apos/shared';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Field, InlineError, Tag } from '../components/ui';
 import { api, useAction, useApi } from '../lib/api';
 import type { TabProps } from './ProjectPage';
@@ -8,14 +8,38 @@ export function SettingsTab({ detail, reload, health }: TabProps) {
   const { project } = detail;
   const [name, setName] = useState(project.name);
   const [clientName, setClientName] = useState(project.clientName);
-  const [s, setS] = useState<ProjectSettings>(project.settings);
+  const [s, setLocal] = useState<ProjectSettings>(project.settings);
   const [saved, setSaved] = useState(false);
   const act = useAction();
+  const pending = useRef<number | undefined>(undefined);
+  const dirty = useRef(false);
+  // הנתונים מתרעננים ברקע — לא דורסים בחירה שעוד לא נשמרה
+  const serverSettings = JSON.stringify(project.settings);
   useEffect(() => {
-    setS(project.settings);
+    if (!dirty.current) setLocal(project.settings);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverSettings]);
+  useEffect(() => {
     setName(project.name);
     setClientName(project.clientName);
-  }, [project.settings, project.name, project.clientName]);
+  }, [project.name, project.clientName]);
+  useEffect(() => () => window.clearTimeout(pending.current), []);
+
+  /** כל שינוי בהגדרות נשמר מיד (שדות טקסט — אחרי הפסקה קצרה בהקלדה) */
+  const setS = (next: ProjectSettings, delayMs = 0) => {
+    setLocal(next);
+    dirty.current = true;
+    window.clearTimeout(pending.current);
+    pending.current = window.setTimeout(async () => {
+      const r = await act.run(() => api.patch(`/api/projects/${project.id}`, { settings: next }));
+      dirty.current = false;
+      if (r) {
+        setSaved(true);
+        window.setTimeout(() => setSaved(false), 1500);
+        await reload();
+      }
+    }, delayMs);
+  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,7 +100,7 @@ export function SettingsTab({ detail, reload, health }: TabProps) {
                 </Field>
               ) : s.textProvider !== 'demo' ? (
                 <Field label="מודל" hint="ריק = ברירת המחדל שבחיבור">
-                  <input dir="ltr" value={s.textModel} onChange={(e) => setS({ ...s, textModel: e.target.value })} />
+                  <input dir="ltr" value={s.textModel} onChange={(e) => setS({ ...s, textModel: e.target.value }, 700)} />
                 </Field>
               ) : null}
             </div>
@@ -160,7 +184,7 @@ export function SettingsTab({ detail, reload, health }: TabProps) {
                 </select>
               </Field>
               <Field label="מודל קריינות" hint="eleven_v3 תומך בעברית">
-                <input dir="ltr" value={s.elevenModel} onChange={(e) => setS({ ...s, elevenModel: e.target.value })} />
+                <input dir="ltr" value={s.elevenModel} onChange={(e) => setS({ ...s, elevenModel: e.target.value }, 700)} />
               </Field>
             </>
           ) : (
@@ -175,7 +199,7 @@ export function SettingsTab({ detail, reload, health }: TabProps) {
             </Field>
           )}
           <Field label="תקרת עלות לפרויקט ($)" hint="יצירה שתעבור את התקרה נחסמת עם הסבר — אפשר להגדיל כאן.">
-            <input type="number" min={0} step={1} value={s.budgetUsd} onChange={(e) => setS({ ...s, budgetUsd: Number(e.target.value) || 0 })} />
+            <input type="number" min={0} step={1} value={s.budgetUsd} onChange={(e) => setS({ ...s, budgetUsd: Number(e.target.value) || 0 }, 700)} />
           </Field>
         </div>
         <label className="check">
@@ -191,9 +215,9 @@ export function SettingsTab({ detail, reload, health }: TabProps) {
 
       <InlineError error={act.error} onClose={act.clearError} />
       <div className="row end gap-s">
-        {saved && <Tag tone="ok">נשמר</Tag>}
+        {saved ? <Tag tone="ok">נשמר ✓</Tag> : <span className="muted small">ההגדרות נשמרות אוטומטית</span>}
         <button className="btn btn-primary" disabled={act.busy}>
-          שמור הגדרות
+          שמור שם ולקוח
         </button>
       </div>
     </form>
