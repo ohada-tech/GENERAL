@@ -97,7 +97,7 @@ export function revokeOperatorToken(config: Config) {
   return operatorStatus(config);
 }
 
-function validBearer(config: Config, req: FastifyRequest) {
+export function validBearer(config: Config, req: FastifyRequest) {
   const h = String(req.headers.authorization ?? '');
   if (!h.startsWith('Bearer apos_')) return false;
   const t = readOperator(config);

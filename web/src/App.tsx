@@ -11,6 +11,7 @@ import { api, isCloud, useApi } from './lib/api';
 import { Dashboard } from './pages/Dashboard';
 import { LessonsPage } from './pages/LessonsPage';
 import { InstallApp } from './components/InstallApp';
+import { DevChat } from './components/DevChat';
 import { ProjectPage } from './pages/ProjectPage';
 
 export interface Health {
@@ -88,6 +89,7 @@ function Shell({ canLogout }: { canLogout: boolean }) {
           <Route path="*" element={<div className="empty">העמוד לא נמצא. <Link to="/">לדשבורד</Link></div>} />
         </Routes>
       </main>
+      {!isCloud() && <DevChat />}
       {keysOpen && health.data?.keys && <KeysModal keys={health.data.keys} onClose={() => setKeysOpen(false)} onChanged={health.reload} />}
     </div>
   );

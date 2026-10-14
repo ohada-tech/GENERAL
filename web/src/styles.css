@@ -593,3 +593,20 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .login-card { width: min(380px, 100%); text-align: center; }
 .login-card .brand-logo { margin: 0 auto 6px; }
 .key-row { box-shadow: none; }
+
+/* צ'אט "שינויים במערכת" */
+.devchat-fab { position: fixed; inset-inline-start: 18px; bottom: 18px; z-index: 60; display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 999px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; box-shadow: var(--shadow-pop); }
+.devchat-fab:hover { background: var(--surface-2); }
+.devchat-fab .bell-count { position: static; }
+.devchat-panel { position: fixed; inset-inline-start: 18px; bottom: 70px; z-index: 61; width: min(420px, calc(100vw - 36px)); height: min(640px, calc(100vh - 110px)); display: flex; flex-direction: column; background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--r-lg); box-shadow: var(--shadow-pop); overflow: hidden; }
+.devchat-body { flex: 1; overflow: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+.devchat-msg { max-width: 88%; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
+.devchat-msg.mine { align-self: flex-start; background: var(--surface-2); }
+.devchat-msg.theirs { align-self: flex-end; background: var(--info-bg); border-color: transparent; }
+.devchat-text { white-space: pre-wrap; word-break: break-word; }
+.devchat-img { max-width: 100%; max-height: 180px; border-radius: 8px; display: block; }
+.devchat-compose { border-top: 1px solid var(--border); padding: 10px 12px; }
+.devchat-compose textarea { width: 100%; resize: vertical; }
+.devchat-thumb { position: relative; display: inline-block; }
+.devchat-thumb img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; display: block; }
+.devchat-thumb .icon-btn { position: absolute; top: -6px; inset-inline-end: -6px; padding: 0 4px; background: var(--surface); border-radius: 50%; }

@@ -272,4 +272,17 @@ export const MIGRATIONS: string[] = [
   /* v7 — דגלים לתיקונים חד-פעמיים */ `
   CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `,
+  /* v8 — צ'אט "שינויים במערכת": בקשות שלך ותשובות של Claude (המפתח) */ `
+  CREATE TABLE dev_messages (
+    id TEXT PRIMARY KEY,
+    role TEXT NOT NULL,
+    text TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'new',
+    attachments TEXT NOT NULL DEFAULT '[]',
+    reply_to TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_dev_messages_created ON dev_messages(created_at);
+  `,
 ];
