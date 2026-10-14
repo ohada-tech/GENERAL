@@ -254,6 +254,32 @@ export function saveScriptVersion(
   });
 }
 
+/**
+ * "שמור" (בלי גרסה חדשה): מעדכן את הגרסה עצמה. גרסה שהלקוח אישר נעולה — רק גרסה חדשה.
+ * גרסה שאושרה פנימית חוזרת לטיוטה, כי התוכן שאושר השתנה.
+ */
+export function updateScriptVersion(ctx: Ctx, versionId: string, input: { content: unknown; changeNote?: string }) {
+  const v = getScript(ctx.db, versionId);
+  if (!v) throw new NotFoundError('גרסת תסריט');
+  if (v.status === 'client_approved') throw new GateError('הלקוח אישר את הגרסה הזו — שמור את השינויים כגרסה חדשה');
+  const content = scriptContentSchema.parse(input.content);
+  content.scenes = content.scenes.map((s) => ({ ...s, id: s.id || uid() }));
+  const reset = v.status === 'internal_approved';
+  return tx(ctx.db, () => {
+    ctx.db
+      .prepare(`UPDATE script_versions SET content = ?, change_note = ?, status = ? WHERE id = ?`)
+      .run(json(content), input.changeNote?.trim() || v.changeNote, reset ? 'draft' : v.status, v.id);
+    emit(ctx, {
+      projectId: v.projectId,
+      type: 'script.version_updated',
+      actor: owner(ctx),
+      message: `תסריט v${v.version} עודכן (עריכה ידנית)${reset ? ' · חזר לטיוטה — צריך לאשר שוב' : ''}`,
+      payload: { scriptVersionId: v.id, version: v.version },
+    });
+    return getScript(ctx.db, v.id)!;
+  });
+}
+
 function mustLatestScript(ctx: Ctx, versionId: string) {
   const v = getScript(ctx.db, versionId);
   if (!v) throw new NotFoundError('גרסת תסריט');

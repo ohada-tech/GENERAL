@@ -210,8 +210,8 @@ function VersionView({
               ⬇ הורד כ-Word
             </a>
           )}
-          <button className="btn" onClick={onEdit} title="עריכה תישמר כגרסה חדשה">
-            ✎ ערוך (גרסה חדשה)
+            <button className="btn" onClick={onEdit} title="בסיום תבחר: לשמור על הגרסה הזו או כגרסה חדשה">
+            ✎ ערוך
           </button>
         </div>
       </div>
@@ -282,21 +282,44 @@ function ScriptEditor({
       [s[i], s[j]] = [s[j], s[i]];
       return { ...x, scenes: s };
     });
-  const save = async () => {
+  const saveNew = async () => {
     const r = await act.run(() =>
       api.post(`/api/projects/${projectId}/scripts`, { content: c, parentId: base?.id ?? null, changeNote: note }),
     );
     if (r) await onSaved();
   };
+  /** שמירה על אותה גרסה (בלי ליצור גרסה חדשה) */
+  const saveInPlace = async () => {
+    if (!base) return;
+    const r = await act.run(() => api.put(`/api/scripts/${base.id}`, { content: c, changeNote: note }));
+    if (r) await onSaved();
+  };
+  const lockedBase = base?.status === 'client_approved';
   return (
     <section className="card">
       <div className="row between">
-        <h2>{base ? `עריכה על בסיס v${base.version} → גרסה חדשה` : 'תסריט חדש (ידני)'}</h2>
+        <h2>{base ? `עריכת v${base.version}` : 'תסריט חדש (ידני)'}</h2>
         <div className="row gap-s">
           <button className="btn btn-ghost" onClick={onCancel}>
             ביטול
           </button>
-          <button className="btn btn-primary" onClick={save} disabled={act.busy || c.scenes.length === 0}>
+          {base && (
+            <button
+              className="btn"
+              onClick={saveInPlace}
+              disabled={act.busy || c.scenes.length === 0 || lockedBase}
+              title={
+                lockedBase
+                  ? 'הלקוח אישר את הגרסה הזו — אפשר לשמור רק כגרסה חדשה'
+                  : base.status === 'internal_approved'
+                    ? `מעדכן את v${base.version} עצמה. היא אושרה פנימית — אחרי השמירה תחזור לטיוטה ותצטרך לאשר שוב`
+                    : `מעדכן את v${base.version} עצמה, בלי ליצור גרסה חדשה`
+              }
+            >
+              {act.busy ? 'שומר…' : `שמור (v${base.version})`}
+            </button>
+          )}
+          <button className="btn btn-primary" onClick={saveNew} disabled={act.busy || c.scenes.length === 0}>
             {act.busy ? 'שומר…' : 'שמור כגרסה חדשה'}
           </button>
         </div>

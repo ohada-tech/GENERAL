@@ -86,3 +86,27 @@ describe('Improve with one model', () => {
     expect(v2.content.scenes.every((s) => s.narration.endsWith('!'))).toBe(true);
   });
 });
+
+describe('Save in place vs. save as new version', () => {
+  it('updates the same version, resets an internal approval, and locks client-approved versions', async () => {
+    const ctx = makeCtx();
+    const p = projectWithBrief(ctx);
+    cmd.completeBrief(ctx, p.id);
+    await drain(ctx);
+    const v1 = listScripts(ctx.db, p.id)[0];
+    const edited = { ...v1.content, title: 'כותרת שנערכה' };
+    cmd.updateScriptVersion(ctx, v1.id, { content: edited });
+    let all = listScripts(ctx.db, p.id);
+    expect(all).toHaveLength(1);
+    expect(all[0].content.title).toBe('כותרת שנערכה');
+
+    cmd.approveScriptInternal(ctx, v1.id);
+    cmd.updateScriptVersion(ctx, v1.id, { content: { ...edited, logline: 'חדש' } });
+    all = listScripts(ctx.db, p.id);
+    expect(all[0].status).toBe('draft');
+
+    cmd.approveScriptInternal(ctx, v1.id);
+    cmd.recordClientApproval(ctx, v1.id, { approvedBy: 'טל' });
+    expect(() => cmd.updateScriptVersion(ctx, v1.id, { content: edited })).toThrow(/גרסה חדשה/);
+  });
+});

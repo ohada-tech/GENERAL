@@ -107,6 +107,10 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     reply.code(201);
     return cmd.saveScriptVersion(ctx, (req.params as any).id, b as any);
   });
+  app.put('/api/scripts/:vid', async (req) => {
+    const b = (req.body ?? {}) as { content?: unknown; changeNote?: string };
+    return cmd.updateScriptVersion(ctx, (req.params as any).vid, { content: b.content, changeNote: b.changeNote });
+  });
   app.post('/api/scripts/:vid/improve', async (req) => {
     const b = (req.body ?? {}) as { by?: string; note?: string };
     return cmd.requestScriptImprove(ctx, (req.params as any).vid, b.by ?? 'openai', b.note ?? '');
