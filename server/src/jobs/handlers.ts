@@ -3,10 +3,10 @@
  * - run: עבודה אסינכרונית מול ספק (ללא כתיבה ל-DB).
  * - persist: כתיבת התוצר בטרנזקציה, רק אם המשימה עדיין פעילה (לא בוטלה בזמן הריצה).
  */
-import { shotFieldsSchema, type Job, type JobType, type ScriptContent, type ShotFields } from '@apos/shared';
+import { shotFieldsSchema, versionLabel, type Job, type JobType, type ScriptContent, type ShotFields } from '@apos/shared';
 import { GateError, type Ctx } from '../context.js';
 import { json, uid } from '../db/db.js';
-import { getProject, getScript, listScripts } from '../db/repo.js';
+import { getProject, getScript, nextScriptVersion } from '../db/repo.js';
 import type { GenResult, ScriptDraft, TextProvider } from '../providers/types.js';
 import { ProviderError } from '../providers/types.js';
 import { emit } from '../workflow/events.js';
@@ -84,23 +84,25 @@ function insertScriptVersion(
   draft: GenResult<ScriptDraft>,
   opts: { source: 'ai' | 'ai_revision' | 'demo'; parentId: string | null; changeNote: string; isDemo: boolean },
 ) {
-  const versions = listScripts(ctx.db, projectId);
-  const version = (versions[0]?.version ?? 0) + 1;
   const id = uid();
   const content: ScriptContent = {
     title: draft.data.title,
     logline: draft.data.logline,
     scenes: draft.data.scenes.map((s) => ({ id: uid(), ...s })),
   };
+  const { version, major, minor } = nextScriptVersion(ctx.db, projectId, opts.parentId, content);
+  const label = versionLabel(major, minor);
   ctx.db
     .prepare(
-      `INSERT INTO script_versions (id, project_id, version, parent_id, source, provider, model, status, content, change_note, created_by, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)`,
+      `INSERT INTO script_versions (id, project_id, version, major, minor, parent_id, source, provider, model, status, content, change_note, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)`,
     )
     .run(
       id,
       projectId,
       version,
+      major,
+      minor,
       opts.parentId,
       opts.isDemo ? 'demo' : opts.source,
       draft.provider,
@@ -114,17 +116,18 @@ function insertScriptVersion(
     projectId,
     type: 'script.version_created',
     actor: draft.provider,
-    message: `נוצרה טיוטת תסריט v${version} (${opts.isDemo ? 'DEMO — ללא AI' : draft.provider === 'collab' ? draft.model : `${draft.provider} · ${draft.model}`})${draft.reviewNotes?.length ? ` · הערות הביקורת: ${draft.reviewNotes.join(' · ')}` : ''}`,
+    message: `נוצרה טיוטת תסריט v${label} (${opts.isDemo ? 'DEMO — ללא AI' : draft.provider === 'collab' ? draft.model : `${draft.provider} · ${draft.model}`})${draft.reviewNotes?.length ? ` · הערות הביקורת: ${draft.reviewNotes.join(' · ')}` : ''}`,
     payload: {
       scriptVersionId: id,
       version,
+      label,
       source: opts.source,
       sourceLabel: opts.isDemo ? 'תוכן הדגמה' : draft.provider === 'collab' ? draft.model : `${draft.provider} · ${draft.model}`,
       usage: draft.usage ?? null,
       reviewNotes: draft.reviewNotes ?? [],
     },
   });
-  return { scriptVersionId: id, version, model: draft.model, provider: draft.provider };
+  return { scriptVersionId: id, version, label, model: draft.model, provider: draft.provider };
 }
 
 type ScriptRun = { draft: GenResult<ScriptDraft>; isDemo: boolean };
@@ -179,7 +182,7 @@ const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string; t
     return insertScriptVersion(ctx, job.projectId, r.draft, {
       source: 'ai_revision',
       parentId: r.baseId,
-      changeNote: `${who ? `שיפור ${who}` : 'תיקון'} ל-v${base?.version ?? '?'}${scope ? ` (${scope})` : ''}`,
+      changeNote: `${who ? `שיפור ${who}` : 'תיקון'} ל-v${base?.label ?? '?'}${scope ? ` (${scope})` : ''}`,
       isDemo: r.isDemo,
     });
   },

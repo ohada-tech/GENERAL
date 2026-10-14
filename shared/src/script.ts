@@ -47,7 +47,13 @@ export type ScriptSource = 'ai' | 'ai_revision' | 'manual' | 'demo';
 export interface ScriptVersion {
   id: string;
   projectId: string;
+  /** מספר רץ פנימי (סדר יצירה) */
   version: number;
+  /** מספר הגרסה שמוצג: major.minor — שינוי קטן מעלה minor (v6.1), שינוי כולל מעלה major (v7) */
+  major: number;
+  minor: number;
+  /** "6" או "6.1" */
+  label: string;
   parentId: string | null;
   source: ScriptSource;
   provider: string | null;
@@ -129,4 +135,31 @@ export function diffScripts(a: ScriptContent, b: ScriptContent): SceneDiff[] {
     }
   }
   return out;
+}
+
+export const versionLabel = (major: number, minor: number) => (minor ? `${major}.${minor}` : `${major}`);
+
+/**
+ * גודל השינוי בין שתי גרסאות: "major" רק כשגם הקריינות וגם הוויזואל השתנו ברוב הסצנות
+ * (או שהמבנה השתנה מהותית). כל השאר — תיקון שורה, טקסט, תזמון — "minor".
+ */
+export function scriptChangeSize(a: ScriptContent, b: ScriptContent): 'major' | 'minor' {
+  const n = Math.max(a.scenes.length, b.scenes.length);
+  if (!n) return 'minor';
+  const diff = diffScripts(a, b);
+  const touched = (field: keyof Scene) =>
+    diff.filter((d) => d.status === 'added' || d.status === 'removed' || (d.status === 'changed' && d.fields.includes(field))).length / n;
+  return touched('narration') >= 0.5 && touched('visualAction') >= 0.5 ? 'major' : 'minor';
+}
+
+/** המספר הבא: minor → אותו major של הגרסה שעליה עבדת, minor פנוי הבא; major → major חדש */
+export function nextScriptNumbers(
+  existing: Array<{ major: number; minor: number }>,
+  base: { major: number } | null,
+  size: 'major' | 'minor',
+): { major: number; minor: number } {
+  const maxMajor = existing.reduce((m, v) => Math.max(m, v.major), 0);
+  if (!base || size === 'major' || !maxMajor) return { major: maxMajor + 1, minor: 0 };
+  const minor = existing.filter((v) => v.major === base.major).reduce((m, v) => Math.max(m, v.minor), 0) + 1;
+  return { major: base.major, minor };
 }

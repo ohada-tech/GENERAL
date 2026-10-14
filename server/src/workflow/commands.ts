@@ -13,6 +13,7 @@ import {
   shotPatchSchema,
   STAGE_KEYS,
   validateBrief,
+  versionLabel,
   type Brief,
   type ProjectSettings,
   type StageKey,
@@ -30,6 +31,7 @@ import {
   getShot,
   getStoryboard,
   listScripts,
+  nextScriptVersion,
   listShots,
 } from '../db/repo.js';
 import { emit } from './events.js';
@@ -235,20 +237,21 @@ export function saveScriptVersion(
   content.scenes = content.scenes.map((s) => ({ ...s, id: s.id || uid() }));
   if (input.parentId && !getScript(ctx.db, input.parentId)) throw new NotFoundError('גרסת בסיס');
   return tx(ctx.db, () => {
-    const version = (listScripts(ctx.db, projectId)[0]?.version ?? 0) + 1;
+    const { version, major, minor } = nextScriptVersion(ctx.db, projectId, input.parentId ?? null, content);
+    const label = versionLabel(major, minor);
     const id = uid();
     ctx.db
       .prepare(
-        `INSERT INTO script_versions (id, project_id, version, parent_id, source, provider, model, status, content, change_note, created_by, created_at)
-         VALUES (?, ?, ?, ?, 'manual', NULL, NULL, 'draft', ?, ?, ?, ?)`,
+        `INSERT INTO script_versions (id, project_id, version, major, minor, parent_id, source, provider, model, status, content, change_note, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'manual', NULL, NULL, 'draft', ?, ?, ?, ?)`,
       )
-      .run(id, projectId, version, input.parentId ?? null, json(content), input.changeNote?.trim() ?? '', owner(ctx), ts(ctx));
+      .run(id, projectId, version, major, minor, input.parentId ?? null, json(content), input.changeNote?.trim() ?? '', owner(ctx), ts(ctx));
     emit(ctx, {
       projectId,
       type: 'script.version_saved',
       actor: owner(ctx),
-      message: `נשמרה גרסת תסריט v${version} (עריכה ידנית)${input.changeNote ? `: ${input.changeNote}` : ''}`,
-      payload: { scriptVersionId: id, version },
+      message: `נשמרה גרסת תסריט v${label} (עריכה ידנית)${input.changeNote ? `: ${input.changeNote}` : ''}`,
+      payload: { scriptVersionId: id, version, label },
     });
     return getScript(ctx.db, id)!;
   });
@@ -273,8 +276,8 @@ export function updateScriptVersion(ctx: Ctx, versionId: string, input: { conten
       projectId: v.projectId,
       type: 'script.version_updated',
       actor: owner(ctx),
-      message: `תסריט v${v.version} עודכן (עריכה ידנית)${reset ? ' · חזר לטיוטה — צריך לאשר שוב' : ''}`,
-      payload: { scriptVersionId: v.id, version: v.version },
+      message: `תסריט v${v.label} עודכן (עריכה ידנית)${reset ? ' · חזר לטיוטה — צריך לאשר שוב' : ''}`,
+      payload: { scriptVersionId: v.id, version: v.version, label: v.label },
     });
     return getScript(ctx.db, v.id)!;
   });
@@ -285,7 +288,7 @@ function mustLatestScript(ctx: Ctx, versionId: string) {
   if (!v) throw new NotFoundError('גרסת תסריט');
   const latest = listScripts(ctx.db, v.projectId)[0];
   if (latest?.id !== v.id) {
-    throw new GateError(`ניתן לאשר רק את הגרסה האחרונה (v${latest?.version}). לשחזור גרסה ישנה שמור אותה כגרסה חדשה.`);
+    throw new GateError(`ניתן לאשר רק את הגרסה האחרונה (v${latest?.label}). לשחזור גרסה ישנה שמור אותה כגרסה חדשה.`);
   }
   return v;
 }
@@ -311,8 +314,8 @@ export function approveScriptInternal(ctx: Ctx, versionId: string, note = '') {
       projectId: v.projectId,
       type: 'script.internal_approved',
       actor: owner(ctx),
-      message: `תסריט v${v.version} אושר פנימית${note ? `: ${note}` : ''}`,
-      payload: { scriptVersionId: v.id, version: v.version },
+      message: `תסריט v${v.label} אושר פנימית${note ? `: ${note}` : ''}`,
+      payload: { scriptVersionId: v.id, version: v.version, label: v.label },
     });
     recordFeedback(ctx, v.projectId, 'script', note, 'approval');
     return getScript(ctx.db, v.id)!;
@@ -343,8 +346,8 @@ export function recordClientApproval(ctx: Ctx, versionId: string, input: { appro
       projectId: v.projectId,
       type: 'script.client_approved',
       actor: owner(ctx),
-      message: `הלקוח (${by}) אישר את תסריט v${v.version}`,
-      payload: { scriptVersionId: v.id, version: v.version, approvedBy: by },
+      message: `הלקוח (${by}) אישר את תסריט v${v.label}`,
+      payload: { scriptVersionId: v.id, version: v.version, label: v.label, approvedBy: by },
     });
     recordFeedback(ctx, v.projectId, 'script', input.note ?? '', 'approval');
     return getScript(ctx.db, v.id)!;
@@ -371,8 +374,8 @@ export function requestScriptChanges(ctx: Ctx, versionId: string, input: { from:
       projectId: v.projectId,
       type: 'script.changes_requested',
       actor: owner(ctx),
-      message: `נדרשים שינויים בתסריט v${v.version} (${input.from === 'client' ? 'לקוח' : 'פנימי'}): ${input.note.trim()}`,
-      payload: { scriptVersionId: v.id, version: v.version, from: input.from },
+      message: `נדרשים שינויים בתסריט v${v.label} (${input.from === 'client' ? 'לקוח' : 'פנימי'}): ${input.note.trim()}`,
+      payload: { scriptVersionId: v.id, version: v.version, label: v.label, from: input.from },
     });
     recordFeedback(ctx, v.projectId, 'script', `${input.from === 'client' ? 'הלקוח: ' : ''}${input.note}`);
     return getScript(ctx.db, v.id)!;

@@ -1,4 +1,7 @@
 import {
+  nextScriptNumbers,
+  scriptChangeSize,
+  versionLabel,
   computeTiming,
   diffScripts,
   SCRIPT_STATUS_LABELS,
@@ -99,7 +102,7 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
             <li key={v.id}>
               <button className={`version-item ${selected?.id === v.id ? 'on' : ''}`} onClick={() => { setSelectedId(v.id); setEditing(null); }}>
                 <span className="row between">
-                  <strong>v{v.version}</strong>
+                  <strong>v{v.label}</strong>
                   <StatusBadge status={statusTone(v.status)} label={SCRIPT_STATUS_LABELS[v.status]} />
                 </span>
                 <span className="small muted">
@@ -129,6 +132,7 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
             initial={editing}
             language={project.brief.language}
             target={project.brief.durationSec}
+            versions={versions}
             onCancel={() => setEditing(null)}
             onSaved={async () => {
               setEditing(null);
@@ -196,7 +200,7 @@ function VersionView({
       <div className="row between">
         <div>
           <h2>
-            v{version.version} · {c.title || 'ללא כותרת'}{' '}
+            v{version.label} · {c.title || 'ללא כותרת'}{' '}
             {version.source === 'demo' ? <ModeTag mode="demo" /> : version.source === 'manual' ? <ModeTag mode="manual" /> : <ModeTag mode="auto" />}
           </h2>
           <div className="small muted">
@@ -258,10 +262,12 @@ function ScriptEditor({
   initial,
   language,
   target,
+  versions,
   onCancel,
   onSaved,
 }: {
   projectId: string;
+  versions: ScriptVersion[];
   base: ScriptVersion | null;
   initial: ScriptContent;
   language: string;
@@ -295,10 +301,13 @@ function ScriptEditor({
     if (r) await onSaved();
   };
   const lockedBase = base?.status === 'client_approved';
+  // תצוגה מקדימה של מספר הגרסה: שינוי קטן → v6.1, שינוי כולל בקריינות וגם בוויזואל → v7
+  const next = nextScriptNumbers(versions, base, base ? scriptChangeSize(base.content, c) : 'major');
+  const nextLabel = versionLabel(next.major, next.minor);
   return (
-    <section className="card">
+    <section className="card" data-editing="true">
       <div className="row between">
-        <h2>{base ? `עריכת v${base.version}` : 'תסריט חדש (ידני)'}</h2>
+        <h2>{base ? `עריכת v${base.label}` : 'תסריט חדש (ידני)'}</h2>
         <div className="row gap-s">
           <button className="btn btn-ghost" onClick={onCancel}>
             ביטול
@@ -312,15 +321,15 @@ function ScriptEditor({
                 lockedBase
                   ? 'הלקוח אישר את הגרסה הזו — אפשר לשמור רק כגרסה חדשה'
                   : base.status === 'internal_approved'
-                    ? `מעדכן את v${base.version} עצמה. היא אושרה פנימית — אחרי השמירה תחזור לטיוטה ותצטרך לאשר שוב`
-                    : `מעדכן את v${base.version} עצמה, בלי ליצור גרסה חדשה`
+                    ? `מעדכן את v${base.label} עצמה. היא אושרה פנימית — אחרי השמירה תחזור לטיוטה ותצטרך לאשר שוב`
+                    : `מעדכן את v${base.label} עצמה, בלי ליצור גרסה חדשה`
               }
             >
-              {act.busy ? 'שומר…' : `שמור (v${base.version})`}
+              {act.busy ? 'שומר…' : `שמור (v${base.label})`}
             </button>
           )}
           <button className="btn btn-primary" onClick={saveNew} disabled={act.busy || c.scenes.length === 0}>
-            {act.busy ? 'שומר…' : 'שמור כגרסה חדשה'}
+            {act.busy ? 'שומר…' : `שמור כגרסה חדשה (v${nextLabel})`}
           </button>
         </div>
       </div>
@@ -438,7 +447,7 @@ function ApprovalPanel({
 
   return (
     <section className="card approval">
-      <h2>אישורים — v{version.version}</h2>
+      <h2>אישורים — v{version.label}</h2>
       <div className="gates">
         <Gate n={1} title="טיוטת AI / עריכה" done />
         <Gate n={2} title="אישור פנימי שלי" done={version.status === 'internal_approved' || version.status === 'client_approved'} />
@@ -555,12 +564,12 @@ function Compare({
       <div className="row between">
         <h2>השוואת גרסאות</h2>
         <select value={compareId} onChange={(e) => setCompareId(e.target.value)}>
-          <option value="">השווה את v{selected.version} מול…</option>
+          <option value="">השווה את v{selected.label} מול…</option>
           {versions
             .filter((v) => v.id !== selected.id)
             .map((v) => (
               <option key={v.id} value={v.id}>
-                v{v.version}
+                v{v.label}
               </option>
             ))}
         </select>
@@ -570,8 +579,8 @@ function Compare({
           <thead>
             <tr>
               <th>#</th>
-              <th>v{other.version}</th>
-              <th>v{selected.version}</th>
+              <th>v{other.label}</th>
+              <th>v{selected.label}</th>
             </tr>
           </thead>
           <tbody>
@@ -626,7 +635,7 @@ function Comments({
   };
   return (
     <section className="card">
-      <h2>הערות ל-v{version.version}</h2>
+      <h2>הערות ל-v{version.label}</h2>
       {comments.length === 0 && <div className="muted small">אין הערות</div>}
       <ul className="comments">
         {comments.map((c) => (

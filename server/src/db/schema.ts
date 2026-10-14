@@ -265,4 +265,8 @@ export const MIGRATIONS: string[] = [
     updated_at TEXT NOT NULL
   );
   `,
+  /* v6 — מספור גרסאות תסריט major.minor (v6.1 לשינוי קטן) */ `
+  ALTER TABLE script_versions ADD COLUMN major INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE script_versions ADD COLUMN minor INTEGER NOT NULL DEFAULT 0;
+  `,
 ];

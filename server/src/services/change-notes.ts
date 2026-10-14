@@ -10,8 +10,8 @@ type JsonProvider = { isConfigured(): boolean; json?: <T>(n: string, s: object, 
 
 /** הקידומת הקבועה: "תיקון ל-vN" / "טיוטה ראשונה מהאפיון" */
 export function notePrefix(note: string): string {
-  const m = /^תיקון(?: AI)? ל-v(\d+)( \([^)]*בלבד\))?/.exec(note);
-  if (m) return `תיקון ל-v${m[1]}${m[2] ?? ''}`;
+  const m = /^(?:תיקון(?: AI)?|שיפור \S+) ל-v([\d.]+)( \([^)]*בלבד\))?/.exec(note);
+  if (m) return `${note.startsWith('שיפור') ? note.split(' ל-v')[0] : 'תיקון'} ל-v${m[1]}${m[2] ?? ''}`;
   if (note.startsWith('טיוטה ראשונה')) return 'טיוטה ראשונה';
   return '';
 }
@@ -19,7 +19,7 @@ export function notePrefix(note: string): string {
 export function mechanicalShort(note: string): string {
   const prefix = notePrefix(note);
   const rest = note
-    .replace(/^תיקון(?: AI)? ל-v\d+ לפי משוב:[\s\S]*?(?= · |$)/, '')
+    .replace(/^תיקון(?: AI)? ל-v[\d.]+ לפי משוב:[\s\S]*?(?= · |$)/, '')
     .replace(/^טיוטה ראשונה מהאפיון/, '')
     .replace(/^\s*·\s*[^:]{0,20}שיפר:\s*/, '')
     .trim();

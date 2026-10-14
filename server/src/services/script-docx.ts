@@ -100,7 +100,7 @@ export async function scriptDocx(input: {
     para(
       [
         run('גרסה: ', { bold: true, size: 20 }),
-        run(`v${v.version}`, { size: 20 }),
+        run(`v${v.label}`, { size: 20 }),
         run('   ·   תאריך: ', { bold: true, size: 20 }),
         run(fmtDate(v.createdAt), { size: 20 }),
         ...(total ? [run('   ·   אורך משוער: ', { bold: true, size: 20 }), run(`${Math.round(total)} שניות`, { size: 20 })] : []),
@@ -153,7 +153,7 @@ export async function scriptDocx(input: {
 
   const doc = new Document({
     creator: input.studio ?? 'Ohad Alfi · AI Production Studio',
-    title: `${input.projectName} — תסריט v${v.version}`,
+    title: `${input.projectName} — תסריט v${v.label}`,
     styles: { default: { document: { run: { font: FONT, rightToLeft: true } } } },
     sections: [
       {
@@ -164,7 +164,7 @@ export async function scriptDocx(input: {
               new Paragraph({
                 bidirectional: true,
                 alignment: AlignmentType.CENTER,
-                children: [run(`${input.projectName} · תסריט v${v.version} · עמוד `, { size: 16, color: MUTED }), new TextRun({ children: [PageNumber.CURRENT], size: 16, color: MUTED, font: FONT })],
+                children: [run(`${input.projectName} · תסריט v${v.label} · עמוד `, { size: 16, color: MUTED }), new TextRun({ children: [PageNumber.CURRENT], size: 16, color: MUTED, font: FONT })],
               }),
             ],
           }),

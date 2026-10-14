@@ -38,7 +38,7 @@ export function applyRules(ctx: Ctx, e: ProjectEvent) {
       notify(ctx, {
         projectId,
         kind: 'approval_needed',
-        title: `טיוטת תסריט v${p.version} מוכנה לבדיקה`,
+        title: `טיוטת תסריט v${p.label ?? p.version} מוכנה לבדיקה`,
         body: `${project.name} — ${p.sourceLabel ?? ''}`.trim(),
         link: `/projects/${projectId}/script`,
         dedupeKey: `script.version_created:${p.scriptVersionId}`,
@@ -50,7 +50,7 @@ export function applyRules(ctx: Ctx, e: ProjectEvent) {
       notify(ctx, {
         projectId,
         kind: 'approval_needed',
-        title: `תסריט v${p.version} אושר פנימית — ממתין לאישור לקוח`,
+        title: `תסריט v${p.label ?? p.version} אושר פנימית — ממתין לאישור לקוח`,
         body: `${project.name}: הצג ללקוח וסמן את אישורו במערכת.`,
         link: `/projects/${projectId}/script`,
         dedupeKey: `script.internal_approved:${p.scriptVersionId}`,

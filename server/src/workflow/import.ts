@@ -82,8 +82,8 @@ export function importProjects(ctx: Ctx, input: unknown) {
         };
         ctx.db
           .prepare(
-            `INSERT INTO script_versions (id, project_id, version, parent_id, source, provider, model, status, content, change_note, created_by, created_at)
-             VALUES (?, ?, 1, NULL, 'manual', NULL, NULL, ?, ?, ?, ?, ?)`,
+            `INSERT INTO script_versions (id, project_id, version, major, minor, parent_id, source, provider, model, status, content, change_note, created_by, created_at)
+             VALUES (?, ?, 1, 1, 0, NULL, 'manual', NULL, NULL, ?, ?, ?, ?, ?)`,
           )
           .run(scriptId, id, p.script.status, json(content), p.script.note, owner, t);
         if (p.script.status !== 'draft') {

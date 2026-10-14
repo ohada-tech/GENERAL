@@ -2,6 +2,8 @@
  * התקנה כאפליקציה (PWA): במחשב — Chrome/Edge מתקינים את המערכת כחלון נפרד עם אייקון משלה.
  * האירוע beforeinstallprompt יכול להגיע לפני ש-React עולה, לכן נתפס כאן מוקדם ונשמר.
  */
+import { startAutoUpdate } from './autoUpdate';
+
 type InstallPrompt = Event & { prompt(): Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };
 
 let deferred: InstallPrompt | null = null;
@@ -23,6 +25,7 @@ export function registerInstall() {
   if ('serviceWorker' in navigator && import.meta.env.PROD && location.protocol === 'https:') {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
+  if (import.meta.env.PROD) startAutoUpdate();
 }
 
 export const isInstalledApp = () =>

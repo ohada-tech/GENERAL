@@ -5,6 +5,7 @@ import type { Ctx } from './context.js';
 import { openDb } from './db/db.js';
 import { startWorker } from './jobs/worker.js';
 import { resumeDigests } from './services/knowledge.js';
+import { renumberLegacyScripts } from './db/repo.js';
 import { compactChangeNotes } from './services/change-notes.js';
 import { createProviders } from './providers/registry.js';
 import { KEY_SERVICES, keyLabel, keyStatus, loadSecrets, testKey } from './services/secrets.js';
@@ -23,6 +24,7 @@ const ctx: Ctx = { db, config, providers: createProviders(config), now: () => ne
 
 const app = await buildApp(ctx, { logger: true, serveWeb: true });
 const worker = startWorker(ctx, (id) => isProjectCompleted(ctx, id));
+renumberLegacyScripts(ctx.db);
 resumeDigests(ctx);
 void compactChangeNotes(ctx).catch(() => {});
 

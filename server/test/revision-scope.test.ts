@@ -110,3 +110,38 @@ describe('Save in place vs. save as new version', () => {
     expect(() => cmd.updateScriptVersion(ctx, v1.id, { content: edited })).toThrow(/גרסה חדשה/);
   });
 });
+
+describe('Version numbers v6 → v6.1 → v7', () => {
+  it('a line change is a minor version; a full narration + visual rewrite is a new major', async () => {
+    const ctx = makeCtx();
+    const p = projectWithBrief(ctx);
+    cmd.completeBrief(ctx, p.id);
+    await drain(ctx);
+    const v1 = listScripts(ctx.db, p.id)[0];
+    expect(v1.label).toBe('1');
+    const lineFix = { ...v1.content, scenes: v1.content.scenes.map((s, i) => (i === 0 ? { ...s, narration: `${s.narration} (תוקן)` } : s)) };
+    const a = cmd.saveScriptVersion(ctx, p.id, { content: lineFix, parentId: v1.id });
+    expect(a.label).toBe('1.1');
+    const b = cmd.saveScriptVersion(ctx, p.id, { content: { ...lineFix, title: 'כותרת אחרת' }, parentId: a.id });
+    expect(b.label).toBe('1.2');
+    const rewrite = { ...lineFix, scenes: lineFix.scenes.map((s) => ({ ...s, narration: `חדש ${s.id}`, visualAction: `ויזואל חדש ${s.id}` })) };
+    const c = cmd.saveScriptVersion(ctx, p.id, { content: rewrite, parentId: b.id });
+    expect(c.label).toBe('2');
+    expect(listScripts(ctx.db, p.id).map((v) => v.label)).toEqual(['2', '1.2', '1.1', '1']);
+  });
+
+  it('old versions get numbered once from their changes', async () => {
+    const ctx = makeCtx();
+    const p = projectWithBrief(ctx);
+    cmd.completeBrief(ctx, p.id);
+    await drain(ctx);
+    const v1 = listScripts(ctx.db, p.id)[0];
+    const fix = { ...v1.content, scenes: v1.content.scenes.map((s, i) => (i === 0 ? { ...s, narration: 'שונה' } : s)) };
+    cmd.saveScriptVersion(ctx, p.id, { content: fix, parentId: v1.id });
+    ctx.db.prepare('UPDATE script_versions SET major = 0, minor = 0').run();
+    const { renumberLegacyScripts } = await import('../src/db/repo.js');
+    expect(renumberLegacyScripts(ctx.db)).toBe(2);
+    expect(listScripts(ctx.db, p.id).map((v) => v.label)).toEqual(['1.1', '1']);
+    expect(renumberLegacyScripts(ctx.db)).toBe(0);
+  });
+});

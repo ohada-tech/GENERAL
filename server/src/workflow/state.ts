@@ -124,7 +124,7 @@ export function computeProjectState(input: StateInput): ProjectState {
       },
       { label: 'אישור לקוח', done: scriptDone },
     ];
-    const v = latestScript ? `v${latestScript.version}` : '';
+    const v = latestScript ? `v${latestScript.label}` : '';
     if (!project.briefCompletedAt && !latestScript) {
       set('script', { status: 'not_started', detail: 'ממתין להשלמת האפיון', milestones });
     } else if (isActive(job)) {

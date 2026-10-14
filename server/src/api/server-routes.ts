@@ -17,10 +17,10 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
       language: p.brief.language,
       targetSec: p.brief.durationSec ?? null,
     });
-    const name = `${p.name} - תסריט v${v.version}.docx`.replace(/[\\/:*?"<>|]+/g, ' ');
+    const name = `${p.name} - תסריט v${v.label}.docx`.replace(/[\\/:*?"<>|]+/g, ' ');
     reply
       .header('content-type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-      .header('content-disposition', `attachment; filename="script-v${v.version}.docx"; filename*=UTF-8''${encodeURIComponent(name)}`);
+      .header('content-disposition', `attachment; filename="script-v${v.label}.docx"; filename*=UTF-8''${encodeURIComponent(name)}`);
     return reply.send(buf);
   });
 }

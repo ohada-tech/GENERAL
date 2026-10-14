@@ -1,8 +1,12 @@
 /** שכבת גישה לנתונים: מיפוי שורות SQLite לטיפוסי הדומיין. ללא לוגיקה עסקית. */
 import {
   briefSchema,
+  nextScriptNumbers,
   projectSettingsSchema,
+  scriptChangeSize,
   scriptContentSchema,
+  versionLabel,
+  type ScriptContent,
   shotFieldsSchema,
   type Approval,
   type Asset,
@@ -39,6 +43,9 @@ export const mapScript = (r: Row): ScriptVersion => ({
   id: r.id,
   projectId: r.project_id,
   version: r.version,
+  major: Number(r.major) || Number(r.version),
+  minor: Number(r.major) ? Number(r.minor) : 0,
+  label: versionLabel(Number(r.major) || Number(r.version), Number(r.major) ? Number(r.minor) : 0),
   parentId: r.parent_id ?? null,
   source: r.source,
   provider: r.provider ?? null,
@@ -201,6 +208,32 @@ export const listScripts = (db: DB, projectId: string) =>
   (db.prepare('SELECT * FROM script_versions WHERE project_id = ? ORDER BY version DESC').all(projectId) as Row[]).map(
     mapScript,
   );
+
+/** מספרים לגרסה חדשה: מספר רץ + major.minor לפי גודל השינוי מול הגרסה שעליה עבדת */
+export function nextScriptVersion(db: DB, projectId: string, baseId: string | null, content: ScriptContent) {
+  const all = listScripts(db, projectId);
+  const base = baseId ? (all.find((v) => v.id === baseId) ?? null) : null;
+  const size = base ? scriptChangeSize(base.content, content) : 'major';
+  return { version: (all[0]?.version ?? 0) + 1, ...nextScriptNumbers(all, base, size) };
+}
+
+/** גרסאות ישנות (לפני המספור החדש): נותנים major.minor לפי השינוי מול גרסת האב. רץ פעם אחת. */
+export function renumberLegacyScripts(db: DB) {
+  const rows = db.prepare('SELECT * FROM script_versions WHERE major = 0 ORDER BY project_id, version').all() as Row[];
+  if (!rows.length) return 0;
+  const done = new Map<string, Array<{ id: string; major: number; minor: number; content: ScriptContent }>>();
+  const upd = db.prepare('UPDATE script_versions SET major = ?, minor = ? WHERE id = ?');
+  for (const r of rows) {
+    const list = done.get(r.project_id) ?? [];
+    const content = scriptContentSchema.parse(parse(r.content, {}));
+    const base = (r.parent_id && list.find((x) => x.id === r.parent_id)) || list.at(-1) || null;
+    const n = nextScriptNumbers(list, base, base ? scriptChangeSize(base.content, content) : 'major');
+    upd.run(n.major, n.minor, r.id);
+    list.push({ id: r.id, ...n, content });
+    done.set(r.project_id, list);
+  }
+  return rows.length;
+}
 
 export const getScript = (db: DB, id: string) => {
   const r = db.prepare('SELECT * FROM script_versions WHERE id = ?').get(id) as Row | undefined;
