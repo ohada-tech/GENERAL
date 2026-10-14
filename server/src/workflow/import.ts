@@ -43,6 +43,8 @@ const projectIn = z.object({
       approvedShots: z.array(z.number().int().positive()).optional(),
     })
     .optional(),
+  /** שלבי הפקה (05–09) שכבר בוצעו מחוץ למערכת — מסומנים כמאושרים */
+  stagesDone: z.array(z.enum(['images', 'animation', 'audio', 'editing', 'delivery'])).default([]),
   /** הערה שתופיע בהיסטוריה (מה המצב ומה הצעד הבא) */
   statusNote: z.string().default(''),
 });
@@ -110,6 +112,9 @@ export function importProjects(ctx: Ctx, input: unknown) {
         const ins = ctx.db.prepare('INSERT INTO shots (id, storyboard_id, project_id, number, fields, approval, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
         p.storyboard.shots.forEach((s, i) => ins.run(uid(), sbId, id, i + 1, json(shotFieldsSchema.parse(s)), approvedSet.has(i + 1) ? 'approved' : 'pending', t));
       }
+
+      const gate = ctx.db.prepare('INSERT OR REPLACE INTO stage_gates (project_id, stage, approved_at, approved_by, note) VALUES (?, ?, ?, ?, ?)');
+      for (const st of p.stagesDone) gate.run(id, st, t, owner, 'בוצע מחוץ למערכת (יובא)');
 
       // אירוע ייבוא בלבד — לא brief.completed, כדי שלא יופעלו אוטומציות בתשלום
       emit(ctx, {

@@ -45,6 +45,8 @@ export interface ProductionStageSummary {
 export interface ProductionSummary {
   stages: ProductionStageSummary[];
   kieConfigured: boolean;
+  /** higgsfield = Claude מייצר ב-Higgsfield ומעלה (או העלאה ידנית) — לא צריך KIE */
+  generator?: 'kie' | 'higgsfield';
 }
 
 const TAB: Record<StageKey, string> = {
@@ -271,16 +273,25 @@ export function computeProjectState(input: StateInput): ProjectState {
         set(key, { status: 'waiting_internal', detail: `כל ${total} הפריטים מוכנים — בדוק ואשר`, milestones });
         actions.push({ kind: 'approval', stage: key, label: `בדוק ואשר את ${LABEL[key]}`, tab: 'production' });
       } else {
-        const blockedKie = !prod?.kieConfigured && key !== 'editing';
+        const external = prod?.generator === 'higgsfield' && (key === 'images' || key === 'animation');
+        const blockedKie = !external && !prod?.kieConfigured && key !== 'editing' && key !== 'audio';
         set(key, {
           status: 'not_started',
-          detail: blockedKie ? 'חבר KIE כדי להפעיל את השלב' : `מוכן להפעלה · עלות משוערת ~$${ps.pendingUsd}`,
+          detail: external
+            ? 'Higgsfield — Claude מייצר ומעלה, או העלאה ידנית'
+            : blockedKie
+              ? 'חבר KIE כדי להפעיל את השלב'
+              : `מוכן להפעלה · עלות משוערת ~$${ps.pendingUsd}`,
           milestones,
         });
         actions.push({
           kind: 'task',
           stage: key,
-          label: blockedKie ? 'חבר מפתח KIE כדי ליצור תמונות, וידאו וסאונד' : `הפעל את ${LABEL[key]} (~$${ps.pendingUsd})`,
+          label: external
+            ? `Higgsfield: לייצר ולהעלות את ${LABEL[key]}`
+            : blockedKie
+              ? 'חבר מפתח KIE כדי ליצור תמונות, וידאו וסאונד'
+              : `הפעל את ${LABEL[key]} (~$${ps.pendingUsd})`,
           tab: 'production',
         });
       }

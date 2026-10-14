@@ -34,6 +34,7 @@ function productionSummary(ctx: Ctx, projectId: string) {
   const o = productionOverview(ctx, projectId);
   return {
     kieConfigured: o.kieConfigured,
+    generator: o.generator,
     stages: o.stages.map((s) => ({
       stage: s.stage,
       approved: !!s.gate?.approvedAt,

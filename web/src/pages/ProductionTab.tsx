@@ -108,6 +108,7 @@ export function ProductionTab({ detail, reload }: TabProps) {
           onStart={() => run(() => api.post(`/api/projects/${project.id}/production/${st}/start`))}
           onApprove={() => run(() => api.post(`/api/projects/${project.id}/production/${st}/approve`, {}))}
           onReopen={() => run(() => api.post(`/api/projects/${project.id}/production/${st}/reopen`))}
+          onDoneExternally={() => run(() => api.post(`/api/projects/${project.id}/production/${st}/done-externally`, {}))}
           onItem={(path, body) => run(() => api.post(path, body))}
           onUpload={(kind, shotId, file) =>
             run(() => api.upload(`/api/projects/${project.id}/media/upload?kind=${kind}${shotId ? `&shotId=${shotId}` : ''}&source=${o.generator === 'higgsfield' ? 'higgsfield-unlimited' : 'manual'}`, file))
@@ -131,6 +132,7 @@ function StageCard(props: {
   onStart: () => void;
   onApprove: () => void;
   onReopen: () => void;
+  onDoneExternally: () => void;
   onItem: (path: string, body?: unknown) => void;
   onUpload: (kind: MediaKind, shotId: string | null, file: File) => void;
   external: boolean;
@@ -193,6 +195,16 @@ function StageCard(props: {
                 ✓ הלקוח אישר — סגור פרויקט
               </button>
             </>
+          )}
+          {!approved && v.stage !== 'delivery' && !generating && (
+            <ConfirmButton
+              className="btn btn-sm btn-ghost"
+              onConfirm={props.onDoneExternally}
+              disabled={props.busy}
+              confirmLabel="לסמן כבוצע? לחץ שוב"
+            >
+              ✓ בוצע מחוץ למערכת
+            </ConfirmButton>
           )}
           {approved && v.stage !== 'delivery' && (
             <ConfirmButton className="btn btn-sm" onConfirm={props.onReopen} disabled={props.busy} confirmLabel="לפתוח? אישור השלבים הבאים יתבטל">

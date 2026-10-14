@@ -401,6 +401,27 @@ export function approveStage(ctx: Ctx, projectId: string, stage: ProductionStage
   return result;
 }
 
+/** "בוצע מחוץ למערכת": השלב נעשה ידנית (Higgsfield, עריכה בתוכנה אחרת) — מסמנים אותו כמאושר בלי פריטים */
+export function markStageDoneExternally(ctx: Ctx, projectId: string, stage: ProductionStage, note = '', actor = ctx.config.ownerName) {
+  mustProject(ctx, projectId);
+  return tx(ctx.db, () => {
+    ctx.db
+      .prepare(
+        `INSERT INTO stage_gates (project_id, stage, approved_at, approved_by, note) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(project_id, stage) DO UPDATE SET approved_at = excluded.approved_at, approved_by = excluded.approved_by, note = excluded.note`,
+      )
+      .run(projectId, stage, ts(ctx), actor, note || 'בוצע מחוץ למערכת');
+    emit(ctx, {
+      projectId,
+      type: 'stage.done_externally',
+      actor,
+      message: `שלב "${STAGE_HE[stage]}" סומן כבוצע מחוץ למערכת${note ? `: ${note}` : ''}`,
+      payload: { stage },
+    });
+    return { stage, approved: true };
+  });
+}
+
 export function reopenStage(ctx: Ctx, projectId: string, stage: ProductionStage) {
   mustProject(ctx, projectId);
   ctx.db.prepare('UPDATE stage_gates SET approved_at = NULL, approved_by = NULL WHERE project_id = ? AND stage = ?').run(projectId, stage);

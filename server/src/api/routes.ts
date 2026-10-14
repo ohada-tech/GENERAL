@@ -307,6 +307,9 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/api/projects/:id/production/:stage/approve', async (req) =>
     prod.approveStage(ctx, (req.params as any).id, mustStage((req.params as any).stage), ((req.body ?? {}) as Body).note ?? ''),
   );
+  app.post('/api/projects/:id/production/:stage/done-externally', async (req) =>
+    prod.markStageDoneExternally(ctx, (req.params as any).id, mustStage((req.params as any).stage), ((req.body ?? {}) as Body).note ?? ''),
+  );
   app.post('/api/projects/:id/production/:stage/reopen', async (req) =>
     prod.reopenStage(ctx, (req.params as any).id, mustStage((req.params as any).stage)),
   );

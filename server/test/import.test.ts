@@ -33,3 +33,18 @@ describe('Import existing projects', () => {
     expect(importProjects(ctx, input).imported).toBe(0); // ייבוא חוזר לא מכפיל
   });
 });
+
+describe('Stages done outside the system', () => {
+  it('import can mark production stages done, and a stage can be marked done later', async () => {
+    const { makeCtx: mk } = await import('./helpers.js');
+    const { importProjects } = await import('../src/workflow/import.js');
+    const prod = await import('../src/workflow/production.js');
+    const { listGates } = await import('../src/db/repo.js');
+    const ctx = mk();
+    const r = importProjects(ctx, { projects: [{ name: 'X', stagesDone: ['images', 'animation'] }] });
+    const id = r.results[0].id!;
+    expect(Object.keys(listGates(ctx.db, id)).sort()).toEqual(['animation', 'images']);
+    prod.markStageDoneExternally(ctx, id, 'audio', 'הוקלט ב-ElevenLabs');
+    expect(listGates(ctx.db, id).audio?.approvedAt).toBeTruthy();
+  });
+});
