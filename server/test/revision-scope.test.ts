@@ -60,3 +60,29 @@ describe('Scoped script revisions', () => {
     expect(v2.changeNote).toBe(`תיקון ל-v1 (סצנה ${v1.content.scenes.length} בלבד)`);
   });
 });
+
+describe('Improve with one model', () => {
+  it('ChatGPT reviews the whole script and a new version is saved with a short note', async () => {
+    const ctx = makeCtx();
+    const p = projectWithBrief(ctx);
+    cmd.completeBrief(ctx, p.id);
+    await drain(ctx);
+    const v1 = listScripts(ctx.db, p.id)[0];
+    let reviewed = '';
+    (ctx.fake as any).json = async (name: string, _s: object, _sys: string, user: string) => {
+      if (name !== 'script_review') return { data: { lessons: [] } };
+      reviewed = user;
+      return {
+        data: { reviewNotes: ['חיזוק ההוק'], script: { title: v1.content.title, logline: v1.content.logline, scenes: v1.content.scenes.map(({ id: _id, ...s }) => ({ ...s, narration: `${s.narration}!` })) } },
+        model: 'gpt-x',
+      };
+    };
+    cmd.requestScriptImprove(ctx, v1.id, 'openai');
+    await drain(ctx);
+    const v2 = listScripts(ctx.db, p.id)[0];
+    expect(reviewed).toContain('DRAFT SCRIPT');
+    expect(v2.version).toBe(2);
+    expect(v2.changeNote).toBe('שיפור ChatGPT ל-v1: חיזוק ההוק');
+    expect(v2.content.scenes.every((s) => s.narration.endsWith('!'))).toBe(true);
+  });
+});

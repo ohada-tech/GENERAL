@@ -144,6 +144,7 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
               target={project.brief.durationSec}
               onEdit={() => setEditing(structuredClone(selected.content))}
             />
+            {selected.id === latest?.id && <ImproveBar version={selected} running={running} onDone={refresh} />}
             {selected.id === latest?.id && (
               <ApprovalPanel version={selected} approvals={data!.approvals} running={running} onDone={refresh} clientName={project.clientName} />
             )}
@@ -621,6 +622,38 @@ function Comments({
         </button>
       </form>
       <InlineError error={act.error} />
+    </section>
+  );
+}
+
+/** "שפר עם ChatGPT / Claude": מודל אחד עובר על כל התסריט כבמאי ומחזיר גרסה משופרת. הערה אופציונלית מכוונת אותו. */
+function ImproveBar({ version, running, onDone }: { version: ScriptVersion; running: boolean; onDone: () => Promise<void> | void }) {
+  const act = useAction();
+  const [note, setNote] = useState('');
+  const go = async (by: 'openai' | 'claude') => {
+    const r = await act.run(() => api.post(`/api/scripts/${version.id}/improve`, { by, note }));
+    if (r) {
+      setNote('');
+      await onDone();
+    }
+  };
+  return (
+    <section className="card stack">
+      <div className="row gap-s">
+        <input
+          className="grow"
+          placeholder="שיפור כללי של כל התסריט — אפשר לכוון (למשל: הוק חזק יותר, ניסוח טבעי יותר)"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+        <button className="btn" disabled={act.busy || running} onClick={() => go('openai')} title="ChatGPT עובר על התסריט ומשפר — נוצרת גרסה חדשה">
+          ✨ שפר עם ChatGPT
+        </button>
+        <button className="btn btn-ghost" disabled={act.busy || running} onClick={() => go('claude')}>
+          שפר עם Claude
+        </button>
+      </div>
+      <InlineError error={act.error} onClose={act.clearError} />
     </section>
   );
 }

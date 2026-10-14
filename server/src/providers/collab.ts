@@ -22,6 +22,30 @@ export interface JsonCapableProvider extends TextProvider {
 }
 
 const NAMES: Record<string, string> = { openai: 'ChatGPT', claude: 'Claude' };
+
+/** "שפר עם ChatGPT/Claude": מודל אחד עובר על גרסה קיימת כבמאי ומחזיר גרסה משופרת + מה שינה */
+export async function improveScript(
+  reviewer: JsonCapableProvider,
+  ctx: ProjectContext,
+  base: ScriptContent,
+  note?: string,
+): Promise<GenResult<ScriptDraft>> {
+  if (!reviewer.isConfigured()) throw new ProviderError(`${NAMES[reviewer.id] ?? reviewer.label} לא מחובר — הוסף מפתח בחלון "מפתחות"`, false, 'not_configured');
+  const r = await reviewer.json<{ reviewNotes: string[]; script: ScriptDraft }>(
+    'script_review',
+    SCRIPT_REVIEW_JSON_SCHEMA,
+    scriptReviewSystemPrompt(ctx),
+    scriptReviewUserPrompt(ctx, base, note?.trim() || undefined),
+  );
+  return {
+    data: validateScript(r.data?.script),
+    provider: reviewer.id,
+    model: r.model,
+    usage: r.usage,
+    reviewNotes: notes(r.data?.reviewNotes),
+    reviewer: nameOf(reviewer),
+  };
+}
 const nameOf = (p: TextProvider) => NAMES[p.id] ?? p.label;
 
 export class CollabTextProvider implements TextProvider {

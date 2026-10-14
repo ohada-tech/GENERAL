@@ -14,6 +14,7 @@ import { MEDIA_HANDLERS } from './media.js';
 import { applyDistilled, DISTILL_SCHEMA, distillPrompts, lessonsFor, type LessonArea } from '../services/learning.js';
 import { playbookFor } from '../services/knowledge.js';
 import { lockToTargets, scopeLabel, targetScenes } from '../workflow/revision-scope.js';
+import { improveScript, type JsonCapableProvider } from '../providers/collab.js';
 
 const AREAS_FOR: Record<'script' | 'storyboard', LessonArea[]> = {
   script: ['script', 'audio', 'general'],
@@ -145,13 +146,22 @@ const scriptGenerate: JobHandler<ScriptRun> = {
   },
 };
 
-const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string; targets?: number[] }> = {
+const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string; targets?: number[]; improveBy?: 'openai' | 'claude' }> = {
   async run(ctx, job) {
     const baseId = String(job.payload.baseVersionId ?? '');
     const feedback = String(job.payload.feedback ?? '');
     const base = getScript(ctx.db, baseId);
     if (!base) throw new GateError('גרסת הבסיס לא נמצאה');
     const pc = projectContext(ctx, job.projectId, 'script');
+    const improveBy = job.payload.improveBy as 'openai' | 'claude' | undefined;
+    if (improveBy) {
+      const reviewer = ctx.providers.text[improveBy] as unknown as JsonCapableProvider | undefined;
+      if (!reviewer?.json) throw new ProviderError('המודל לא זמין לשיפור', false, 'unknown_provider');
+      const targets = feedback ? targetScenes(base.content, feedback) : [];
+      const draft = await improveScript(reviewer, pc, base.content, feedback);
+      if (targets.length) draft.data = lockToTargets(base.content, draft.data, targets);
+      return { draft, isDemo: false, baseId, feedback, targets, improveBy };
+    }
     const { provider, model } = textProviderFor(ctx, job.projectId);
     // הערה שמצטטת שורות / מציינת סצנות = תיקון ממוקד: רק הן משתנות, וזה נאכף בקוד ולא רק בפרומפט
     const targets = targetScenes(base.content, feedback);
@@ -165,10 +175,11 @@ const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string; t
   persist(ctx, job, r) {
     const base = getScript(ctx.db, r.baseId);
     const scope = scopeLabel(r.targets ?? []);
+    const who = r.improveBy === 'openai' ? 'ChatGPT' : r.improveBy === 'claude' ? 'Claude' : '';
     return insertScriptVersion(ctx, job.projectId, r.draft, {
       source: 'ai_revision',
       parentId: r.baseId,
-      changeNote: `תיקון ל-v${base?.version ?? '?'}${scope ? ` (${scope})` : ''}`,
+      changeNote: `${who ? `שיפור ${who}` : 'תיקון'} ל-v${base?.version ?? '?'}${scope ? ` (${scope})` : ''}`,
       isDemo: r.isDemo,
     });
   },

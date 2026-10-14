@@ -206,6 +206,24 @@ export function requestScriptRevision(ctx: Ctx, versionId: string, feedback: str
   });
 }
 
+/** "שפר עם ChatGPT/Claude": מודל אחד עובר על הגרסה ומחזיר גרסה משופרת (הערה אופציונלית מכוונת אותו) */
+export function requestScriptImprove(ctx: Ctx, versionId: string, by: string, note = '') {
+  const v = getScript(ctx.db, versionId);
+  if (!v) throw new NotFoundError('גרסת תסריט');
+  requireBriefComplete(ctx, v.projectId);
+  if (by !== 'openai' && by !== 'claude') throw new GateError('יש לבחור ChatGPT או Claude', 400);
+  return tx(ctx.db, () => {
+    if (note.trim()) recordFeedback(ctx, v.projectId, 'script', note);
+    return enqueueJob(ctx, {
+      projectId: v.projectId,
+      type: 'script.revise',
+      payload: { baseVersionId: versionId, feedback: note.trim(), improveBy: by },
+      idempotencyKey: `script.improve:${versionId}:${uid()}`,
+      actor: owner(ctx),
+    });
+  });
+}
+
 /** שמירת עריכה ידנית — תמיד כגרסה חדשה (היסטוריה נשמרת). */
 export function saveScriptVersion(
   ctx: Ctx,
