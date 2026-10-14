@@ -153,6 +153,7 @@ export const FULL_BRIEF = {
   goal: 'הגדלת הרשמות',
   productOrService: 'אפליקציית כושר',
   targetAudience: 'נשים 25-40',
+  targetMarket: 'ישראל',
   keyMessage: 'אימון של 10 דקות ביום מספיק',
   platforms: ['Instagram Reels'],
   aspectRatio: '9:16',

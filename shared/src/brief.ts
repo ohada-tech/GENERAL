@@ -21,7 +21,11 @@ export const briefSchema = z.object({
   goal: z.string().default(''),
   productOrService: z.string().default(''),
   targetAudience: z.string().default(''),
+  /** איפה הקהל: מדינה / שוק (ישראל, ארה"ב, אירופה…) — קובע שפה, תרבות, מטבע ורגולציה */
+  targetMarket: z.string().default(''),
   keyMessage: z.string().default(''),
+  /** מה הצופה צריך לעשות בסוף (להשאיר פרטים, לקנות, להוריד…) */
+  cta: z.string().default(''),
   platforms: z.array(z.string()).default([]),
   aspectRatio: z.string().default(''),
   durationSec: z.number().int().nonnegative().nullable().default(null),
@@ -79,7 +83,9 @@ export const BRIEF_FIELD_LABELS: Partial<Record<keyof Brief, string>> = {
   goal: 'מטרת הסרטון',
   productOrService: 'מוצר / שירות',
   targetAudience: 'קהל יעד',
+  targetMarket: 'שוק / מדינת יעד',
   keyMessage: 'המסר המרכזי',
+  cta: 'קריאה לפעולה',
   platforms: 'פלטפורמת הפצה',
   aspectRatio: 'פורמט (יחס תמונה)',
   durationSec: 'אורך הסרטון',
@@ -102,6 +108,7 @@ export function validateBrief(brief: Brief): BriefValidation {
     'goal',
     'productOrService',
     'targetAudience',
+    'targetMarket',
     'keyMessage',
     'platforms',
     'aspectRatio',
@@ -111,7 +118,7 @@ export function validateBrief(brief: Brief): BriefValidation {
     'dueDate',
   ];
   if (brief.voiceoverNeeded) required.push('tone');
-  const recommended: Array<keyof Brief> = ['inspirations', 'brandLogo', 'brandColors', 'characters', 'budget'];
+  const recommended: Array<keyof Brief> = ['cta', 'inspirations', 'brandLogo', 'brandColors', 'characters', 'budget'];
 
   const check = (field: keyof Brief, level: 'required' | 'recommended'): BriefFieldCheck => ({
     field,
@@ -130,4 +137,45 @@ export function validateBrief(brief: Brief): BriefValidation {
     requiredDone: req.length - missingRequired.length,
     requiredTotal: req.length,
   };
+}
+
+/**
+ * שאלון אפיון לבעל העסק — כדי לא לפספס שום נקודה קריטית (למשל: הקהל בארה"ב ובאנגלית ולא בישראל).
+ * שאלה שמחוברת לשדה נחשבת "נענתה" כשהשדה מולא.
+ */
+export interface DiscoveryQuestion {
+  group: string;
+  q: string;
+  field?: keyof Brief;
+  critical?: boolean;
+}
+
+export const DISCOVERY_QUESTIONS: DiscoveryQuestion[] = [
+  { group: 'מטרה', q: 'מה המטרה העסקית של הסרטון — לידים, מכירות, הורדות, מודעות, גיוס?', field: 'goal', critical: true },
+  { group: 'מטרה', q: 'מה הצופה צריך לעשות מיד אחרי הצפייה? (להשאיר פרטים, לקנות, להוריד, להתקשר)', field: 'cta', critical: true },
+  { group: 'מטרה', q: 'איך תמדדו הצלחה? (מספר לידים, מחיר לליד, צפיות, מכירות)' },
+  { group: 'קהל', q: 'באיזו מדינה / שוק נמצא הקהל? (ישראל, ארה"ב, אירופה, עולמי)', field: 'targetMarket', critical: true },
+  { group: 'קהל', q: 'מי בדיוק הקהל — גיל, מקצוע, תפקיד, מה הכאב העיקרי שלו?', field: 'targetAudience', critical: true },
+  { group: 'קהל', q: 'מה הקהל כבר יודע עליכם? (לא מכיר בכלל / מכיר / לקוח קיים)' },
+  { group: 'מוצר ומסר', q: 'מה בדיוק המוצר / השירות, ומה מבדל אותו מהמתחרים?', field: 'productOrService', critical: true },
+  { group: 'מוצר ומסר', q: 'אם הצופה זוכר רק משפט אחד — מה הוא?', field: 'keyMessage', critical: true },
+  { group: 'מוצר ומסר', q: 'אילו טענות, מספרים, מחירים או מבצעים מותר להזכיר — ומה אסור?' },
+  { group: 'מוצר ומסר', q: 'מי המתחרים, והאם יש סרטונים שלהם (או אחרים) שאהבתם / לא אהבתם?', field: 'inspirations' },
+  { group: 'שפה וטון', q: 'באיזו שפה הסרטון — קריינות וטקסטים על המסך? (גם אם הקהל בחו"ל)', field: 'language', critical: true },
+  { group: 'שפה וטון', q: 'איזה טון — רציני, חם, אנרגטי, יוקרתי, הומוריסטי?', field: 'tone' },
+  { group: 'שפה וטון', q: 'קול קריין: גבר / אישה, גיל, מבטא (אמריקאי, בריטי…)?', field: 'voiceNotes' },
+  { group: 'הפצה ופורמט', q: 'איפה הסרטון יעלה? (אינסטגרם, טיקטוק, יוטיוב, לינקדאין, אתר, מודעות ממומנות)', field: 'platforms', critical: true },
+  { group: 'הפצה ופורמט', q: 'איזה אורך ואיזה פורמט — אנכי 9:16, אופקי 16:9, ריבועי? צריך כמה גרסאות?', field: 'durationSec', critical: true },
+  { group: 'מותג', q: 'יש לוגו, צבעים, פונטים וחומרים (תמונות מוצר, צילומי מסך) שחייבים להופיע?', field: 'brandLogo' },
+  { group: 'מותג', q: 'דמויות / אנשים בסרטון — מי, איך הם נראים, יש צורך בדמות קבועה?', field: 'characters' },
+  { group: 'לוחות זמנים ואישורים', q: 'מתי הסרטון חייב להיות מוכן, ולמה (השקה, קמפיין, אירוע)?', field: 'dueDate', critical: true },
+  { group: 'לוחות זמנים ואישורים', q: 'מי מאשר את התסריט ואת הסרטון מטעם הלקוח?' },
+  { group: 'לוחות זמנים ואישורים', q: 'יש מגבלות רגולציה / משפטיות / ניסוח שחייבים לבדוק?', field: 'constraints' },
+];
+
+const answered = (brief: Brief, q: DiscoveryQuestion) => (q.field ? filled(brief[q.field]) : false);
+
+/** השאלות שעוד לא נענו באפיון (קודם הקריטיות) */
+export function openDiscoveryQuestions(brief: Brief): DiscoveryQuestion[] {
+  return DISCOVERY_QUESTIONS.filter((q) => !answered(brief, q)).sort((a, b) => Number(!!b.critical) - Number(!!a.critical));
 }

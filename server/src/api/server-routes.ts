@@ -7,6 +7,10 @@ import fs from 'node:fs';
 import { GateError } from '../context.js';
 import * as dev from '../services/dev-chat.js';
 import { scriptDocx } from '../services/script-docx.js';
+import { briefSchema, openDiscoveryQuestions } from '@apos/shared';
+import { briefToText } from '../providers/prompts.js';
+import { lessonsFor } from '../services/learning.js';
+import { ProviderError } from '../providers/types.js';
 
 export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
   app.get('/api/scripts/:vid/docx', async (req, reply) => {
@@ -55,5 +59,40 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!f) throw new NotFoundError('קובץ');
     reply.header('content-type', f.mime).header('cache-control', 'private, max-age=86400');
     return reply.send(fs.createReadStream(f.path));
+  });
+
+  /** Claude עובר על האפיון ומחזיר את השאלות שעוד צריך לשאול את בעל העסק — לפי הפרויקט הזה */
+  app.post('/api/projects/:id/brief/questions', async (req) => {
+    const p = getProject(ctx.db, (req.params as { id: string }).id);
+    if (!p) throw new NotFoundError('פרויקט');
+    const body = (req.body ?? {}) as { brief?: unknown };
+    const brief = body.brief ? briefSchema.parse(body.brief) : p.brief;
+    const prov = [ctx.providers.text.claude, ctx.providers.text.openai].find((x) => x?.isConfigured()) as
+      | { json?: <T>(n: string, s: object, sys: string, user: string) => Promise<{ data: T }> }
+      | undefined;
+    if (!prov?.json) throw new ProviderError('אין מנוע כתיבה מחובר (Claude או ChatGPT)', false, 'not_configured');
+    const open = openDiscoveryQuestions(brief).map((q) => q.q);
+    const r = await prov.json<{ questions: Array<{ q: string; why: string }> }>(
+      'brief_questions',
+      {
+        type: 'object',
+        additionalProperties: false,
+        required: ['questions'],
+        properties: {
+          questions: {
+            type: 'array',
+            items: { type: 'object', additionalProperties: false, required: ['q', 'why'], properties: { q: { type: 'string' }, why: { type: 'string' } } },
+          },
+        },
+      },
+      [
+        'You are a senior producer preparing a discovery call with a business owner before writing a marketing video script.',
+        'Read the brief and list the follow-up questions that must be answered so the script hits the business goal and nothing important is missed.',
+        'Focus on gaps, ambiguities and assumptions: target market/country and language (never assume Israel/Hebrew), the exact audience and their pain, the offer and allowed claims, CTA and where it leads, success metric, platform and format versions, brand assets, approvals, legal limits.',
+        'Ask only what this brief does not already answer clearly. At most 8 questions, most critical first. Write in Hebrew, short and concrete, phrased so they can be sent to the client as-is. "why": a few words on why it matters.',
+      ].join('\n'),
+      `BRIEF:\n${briefToText({ name: p.name, clientName: p.clientName, brief, lessons: lessonsFor(ctx, p.clientName, ['general', 'script']) })}\n\nSTANDARD QUESTIONS NOT ANSWERED YET:\n${open.map((q) => `- ${q}`).join('\n') || '(none)'}`,
+    );
+    return { questions: (r.data.questions ?? []).slice(0, 8) };
   });
 }

@@ -1,4 +1,4 @@
-import { ASPECT_RATIOS, validateBrief, type Asset, type Brief } from '@apos/shared';
+import { ASPECT_RATIOS, openDiscoveryQuestions, validateBrief, type Asset, type Brief, type DiscoveryQuestion } from '@apos/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { Field, InlineError, Tag } from '../components/ui';
 import { api, assetUrl, useAction } from '../lib/api';
@@ -97,6 +97,8 @@ export function BriefTab({ detail, reload }: TabProps) {
         <div className="notice">שינוי האפיון אחרי שהושלם לא ייצור תסריט מחדש אוטומטית. ניתן להריץ שוב מלשונית התסריט.</div>
       )}
 
+      <DiscoveryCard projectId={project.id} draft={draft} />
+
       <section className="card">
         <h2>הסרטון</h2>
         <div className="grid-2">
@@ -111,6 +113,12 @@ export function BriefTab({ detail, reload }: TabProps) {
           </Field>
           <Field label="קהל יעד" required missing={missing.has('targetAudience')}>
             <textarea rows={2} value={draft.targetAudience} onChange={(e) => set('targetAudience', e.target.value)} />
+          </Field>
+          <Field label="שוק / מדינת יעד" required missing={missing.has('targetMarket')} hint="איפה הקהל — קובע שפה, תרבות, מטבע ורגולציה">
+            <input value={draft.targetMarket} onChange={(e) => set('targetMarket', e.target.value)} placeholder='ישראל / ארה"ב / אירופה / עולמי' />
+          </Field>
+          <Field label="קריאה לפעולה (CTA)" hint="מה הצופה עושה בסוף, ולאן זה מוביל">
+            <input value={draft.cta} onChange={(e) => set('cta', e.target.value)} placeholder="השאירו פרטים באתר, תאמו הדגמה…" />
           </Field>
         </div>
         <Field label="המסר המרכזי" required missing={missing.has('keyMessage')}>
@@ -220,7 +228,7 @@ export function BriefTab({ detail, reload }: TabProps) {
         </label>
         <div className="grid-3">
           <Field label="שפה" required missing={missing.has('language')}>
-            <input value={draft.language} onChange={(e) => set('language', e.target.value)} placeholder="עברית" />
+            <input value={draft.language} onChange={(e) => set('language', e.target.value)} placeholder="לפי שוק היעד — עברית / English…" />
           </Field>
           <Field label="טון" required={draft.voiceoverNeeded} missing={missing.has('tone')}>
             <input value={draft.tone} onChange={(e) => set('tone', e.target.value)} placeholder="חם, אנרגטי, יוקרתי…" />
@@ -335,5 +343,95 @@ function Attachments({
         </ul>
       )}
     </div>
+  );
+}
+
+/**
+ * שאלון לבעל העסק: השאלות הסטנדרטיות שעוד לא נענו באפיון + שאלות ש-Claude מזהה כחסרות בפרויקט הזה.
+ * אפשר להעתיק הכל ולשלוח ללקוח בוואטסאפ.
+ */
+function DiscoveryCard({ projectId, draft }: { projectId: string; draft: Brief }) {
+  const open = openDiscoveryQuestions(draft);
+  const ai = useAction();
+  const [aiQs, setAiQs] = useState<Array<{ q: string; why: string }> | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [show, setShow] = useState(open.some((q) => q.critical));
+  const groups = open.reduce<Record<string, DiscoveryQuestion[]>>((m, q) => ((m[q.group] ??= []).push(q), m), {});
+  const ask = async () => {
+    const r = await ai.run(() => api.post<{ questions: Array<{ q: string; why: string }> }>(`/api/projects/${projectId}/brief/questions`, { brief: draft }));
+    if (r) {
+      setAiQs(r.questions);
+      setShow(true);
+    }
+  };
+  const copy = async () => {
+    const lines = [
+      'כמה שאלות כדי שהסרטון יפגע בדיוק במטרה:',
+      ...open.map((q, i) => `${i + 1}. ${q.q}`),
+      ...(aiQs ?? []).filter((x) => !open.some((q) => q.q === x.q)).map((x, i) => `${open.length + i + 1}. ${x.q}`),
+    ];
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* דפדפן חסם העתקה */
+    }
+  };
+  const critical = open.filter((q) => q.critical).length;
+  return (
+    <section className="card stack">
+      <div className="row gap-s">
+        <div className="grow">
+          <h2>שאלון לבעל העסק</h2>
+          <div className="muted small">
+            {open.length === 0
+              ? 'כל השאלות הסטנדרטיות נענו ✓'
+              : `${open.length} שאלות עוד לא נענו${critical ? ` · ${critical} קריטיות` : ''} — שאל את הלקוח לפני כתיבת התסריט`}
+          </div>
+        </div>
+        <button className="btn" onClick={ask} disabled={ai.busy} title="Claude עובר על האפיון ומציע מה עוד חייבים לשאול בפרויקט הזה">
+          {ai.busy ? 'Claude בודק…' : '🔍 מה עוד לשאול?'}
+        </button>
+        <button className="btn btn-ghost" onClick={copy} disabled={!open.length && !aiQs?.length}>
+          {copied ? 'הועתק ✓' : '📋 העתק לשליחה ללקוח'}
+        </button>
+        {open.length > 0 && (
+          <button className="btn-link small" onClick={() => setShow((x) => !x)}>
+            {show ? 'הסתר' : 'הצג'}
+          </button>
+        )}
+      </div>
+      <InlineError error={ai.error} onClose={ai.clearError} />
+      {show && (
+        <div className="grid-2">
+          {Object.entries(groups).map(([g, qs]) => (
+            <div key={g}>
+              <div className="small muted">{g}</div>
+              <ul className="stack" style={{ margin: 0, paddingInlineStart: 18 }}>
+                {qs.map((q) => (
+                  <li key={q.q} className={q.critical ? '' : 'muted'}>
+                    {q.critical && <b>! </b>}
+                    {q.q}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+      {aiQs && aiQs.length > 0 && (
+        <div className="notice">
+          <b>Claude ממליץ לשאול גם:</b>
+          <ol style={{ margin: '6px 0 0', paddingInlineStart: 18 }}>
+            {aiQs.map((x) => (
+              <li key={x.q}>
+                {x.q} <span className="muted small">— {x.why}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </section>
   );
 }
