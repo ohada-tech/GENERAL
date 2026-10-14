@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ZodError } from 'zod';
 import { registerRoutes } from './api/routes.js';
+import { registerServerOnlyRoutes } from './api/server-routes.js';
 import { REPO_ROOT } from './config.js';
 import { GateError, type Ctx } from './context.js';
 import { registerAuth } from './auth.js';
@@ -42,6 +43,7 @@ export async function buildApp(ctx: Ctx, opts: { logger?: boolean; serveWeb?: bo
   app.get('/healthz', async () => ({ ok: true }));
   registerAuth(app, ctx.config);
   await registerRoutes(app, ctx);
+  registerServerOnlyRoutes(app, ctx);
 
   const webDist = path.join(REPO_ROOT, 'web', 'dist');
   if (opts.serveWeb && fs.existsSync(webDist)) {

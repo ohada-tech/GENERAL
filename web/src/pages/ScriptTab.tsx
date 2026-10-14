@@ -12,7 +12,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Empty, ErrorBox, Field, InlineError, Loading, ModeTag, StatusBadge, Tag } from '../components/ui';
-import { api, useAction, useApi } from '../lib/api';
+import { api, isCloud, useAction, useApi } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
 import type { TabProps } from './ProjectPage';
 
@@ -203,9 +203,16 @@ function VersionView({
             {!isLatest && ' · גרסה ישנה (לקריאה)'}
           </div>
         </div>
-        <button className="btn" onClick={onEdit} title="עריכה תישמר כגרסה חדשה">
-          ✎ ערוך (גרסה חדשה)
-        </button>
+        <div className="row gap-s">
+          {!isCloud() && (
+            <a className="btn" href={`/api/scripts/${version.id}/docx`} download title="קובץ Word מעוצב לשליחה ללקוח — בלי הערות פנימיות">
+              ⬇ הורד כ-Word
+            </a>
+          )}
+          <button className="btn" onClick={onEdit} title="עריכה תישמר כגרסה חדשה">
+            ✎ ערוך (גרסה חדשה)
+          </button>
+        </div>
       </div>
       {c.logline && <p className="logline">{c.logline}</p>}
       <TimingSummary content={c} language={language} target={target} />
