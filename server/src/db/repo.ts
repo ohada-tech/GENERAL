@@ -235,6 +235,27 @@ export function renumberLegacyScripts(db: DB) {
   return rows.length;
 }
 
+/**
+ * פעם אחת אחרי המספור החדש: הערות כמו "תיקון ל-v6" מפנות למספר הרץ הישן — מחליפים במספר המוצג (v2.4).
+ */
+export function relabelLegacyNoteRefs(db: DB) {
+  if (db.prepare("SELECT 1 FROM meta WHERE key = 'notes_relabeled'").get()) return 0;
+  const rows = db.prepare('SELECT id, project_id, version, major, minor, change_note FROM script_versions').all() as Row[];
+  const labelOf = new Map(rows.map((r) => [`${r.project_id}:${r.version}`, versionLabel(Number(r.major) || Number(r.version), Number(r.major) ? Number(r.minor) : 0)]));
+  const upd = db.prepare('UPDATE script_versions SET change_note = ? WHERE id = ?');
+  let n = 0;
+  for (const r of rows) {
+    const note = String(r.change_note ?? '');
+    const next = note.replace(/ל-v(\d+)(?![\d.])/g, (m, seq) => `ל-v${labelOf.get(`${r.project_id}:${seq}`) ?? seq}`);
+    if (next !== note) {
+      upd.run(next, r.id);
+      n++;
+    }
+  }
+  db.prepare("INSERT INTO meta (key, value) VALUES ('notes_relabeled', ?)").run(new Date().toISOString());
+  return n;
+}
+
 export const getScript = (db: DB, id: string) => {
   const r = db.prepare('SELECT * FROM script_versions WHERE id = ?').get(id) as Row | undefined;
   return r ? mapScript(r) : null;

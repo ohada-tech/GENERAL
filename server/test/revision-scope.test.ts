@@ -143,5 +143,13 @@ describe('Version numbers v6 → v6.1 → v7', () => {
     expect(renumberLegacyScripts(ctx.db)).toBe(2);
     expect(listScripts(ctx.db, p.id).map((v) => v.label)).toEqual(['1.1', '1']);
     expect(renumberLegacyScripts(ctx.db)).toBe(0);
+
+    // הערה ישנה שמפנה למספר הרץ (v2) מקבלת את המספר המוצג — פעם אחת בלבד
+    const { relabelLegacyNoteRefs } = await import('../src/db/repo.js');
+    const newest = listScripts(ctx.db, p.id)[0];
+    ctx.db.prepare('UPDATE script_versions SET change_note = ? WHERE id = ?').run('תיקון ל-v2 (סצנה 1 בלבד)', newest.id);
+    expect(relabelLegacyNoteRefs(ctx.db)).toBe(1);
+    expect(listScripts(ctx.db, p.id)[0].changeNote).toBe('תיקון ל-v1.1 (סצנה 1 בלבד)');
+    expect(relabelLegacyNoteRefs(ctx.db)).toBe(0);
   });
 });

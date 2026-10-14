@@ -269,4 +269,7 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE script_versions ADD COLUMN major INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE script_versions ADD COLUMN minor INTEGER NOT NULL DEFAULT 0;
   `,
+  /* v7 — דגלים לתיקונים חד-פעמיים */ `
+  CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  `,
 ];
