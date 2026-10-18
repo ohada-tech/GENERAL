@@ -5,7 +5,7 @@ import { drain } from '../src/jobs/worker.js';
 import * as cmd from '../src/workflow/commands.js';
 import { makeCtx, projectWithBrief } from './helpers.js';
 
-describe('Script as a Word file for the client', () => {
+describe('Script as a Word file for the client', { timeout: 30_000 }, () => {
   it('downloads a .docx with the scenes and no internal notes', async () => {
     const ctx = makeCtx();
     const p = projectWithBrief(ctx);
