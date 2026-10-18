@@ -251,6 +251,11 @@ function VersionView({
             </button>
           )}
           {!isCloud() && (
+            <a className="btn" href={`/api/scripts/${version.id}/view`} target="_blank" rel="noopener" title="פותח את התסריט בדפדפן, ממותג — ומשם 'שמור כ-PDF' לשליחה ללקוח">
+              👁 פתח / PDF
+            </a>
+          )}
+          {!isCloud() && (
             <a className="btn" href={`/api/scripts/${version.id}/docx`} download title="קובץ Word מעוצב לשליחה ללקוח — בלי הערות פנימיות">
               ⬇ הורד כ-Word
             </a>

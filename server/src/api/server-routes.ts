@@ -8,6 +8,7 @@ import { GateError } from '../context.js';
 import * as dev from '../services/dev-chat.js';
 import * as feedback from '../services/client-feedback.js';
 import { scriptDocx } from '../services/script-docx.js';
+import { scriptHtml } from '../services/script-html.js';
 import * as branding from '../services/branding.js';
 import { translateScript, type TranslateLang } from '../services/translate.js';
 import { briefSchema, openDiscoveryQuestions } from '@apos/shared';
@@ -78,6 +79,25 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/api/feedback/:fid/apply', async (req) => {
     const b = (req.body ?? {}) as { items?: feedback.FeedbackItem[]; baseVersionId?: string };
     return feedback.applyClientFeedback(ctx, (req.params as { fid: string }).fid, b);
+  });
+
+  // התסריט כדף לצפייה ולשמירה כ-PDF — נפתח בכל מחשב וטלפון, בלי Word
+  app.get('/api/scripts/:vid/view', async (req, reply) => {
+    const v = getScript(ctx.db, (req.params as { vid: string }).vid);
+    if (!v) throw new NotFoundError('גרסת תסריט');
+    const p = getProject(ctx.db, v.projectId);
+    if (!p) throw new NotFoundError('פרויקט');
+    const html = scriptHtml({
+      version: v,
+      projectName: p.name,
+      clientName: p.clientName,
+      language: p.brief.language,
+      targetSec: p.brief.durationSec ?? null,
+      brand: p.settings.brand,
+      genesisLogo: p.settings.brand === 'genesis' ? branding.genesisLogo(ctx) : null,
+      ownerName: 'Ohad Alfi',
+    });
+    return reply.header('content-type', 'text/html; charset=utf-8').header('cache-control', 'no-store').send(html);
   });
 
   // צ'אט "שינויים במערכת": אתה כותב מהמערכת; Claude (המפתח) עונה עם מפתח המפעיל
