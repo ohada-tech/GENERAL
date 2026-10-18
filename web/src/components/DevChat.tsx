@@ -43,6 +43,8 @@ export function DevChat() {
   const send = useAction();
   const up = useAction();
   const end = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const fab = useRef<HTMLButtonElement>(null);
   const msgs = data?.messages ?? [];
   const unread = msgs.filter((m) => m.role === 'claude' && m.createdAt > seen).length;
 
@@ -57,6 +59,22 @@ export function DevChat() {
     setSeen(last);
     end.current?.scrollIntoView({ block: 'end' });
   }, [open, msgs.length]);
+
+  // לחיצה בכל מקום אחר בדף (או Esc) סוגרת את החלון; הטקסט שהתחלת לכתוב נשמר
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!panel.current?.contains(t) && !fab.current?.contains(t)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
   const upload = async (blobs: File[]) => {
     for (const f of blobs.filter((b) => b.type.startsWith('image/'))) {
@@ -76,12 +94,12 @@ export function DevChat() {
   const byId = new Map(msgs.map((m) => [m.id, m]));
   return (
     <>
-      <button className="devchat-fab" onClick={() => setOpen((x) => !x)} title="בקשות שינוי ל-Claude שמפתח את המערכת">
+      <button ref={fab} className="devchat-fab" onClick={() => setOpen((x) => !x)} title="בקשות שינוי ל-Claude שמפתח את המערכת">
         💬 שינויים במערכת
         {unread > 0 && <span className="bell-count">{unread}</span>}
       </button>
       {open && (
-        <div className="devchat-panel" role="dialog" aria-label="שינויים במערכת">
+        <div ref={panel} className="devchat-panel" role="dialog" aria-label="שינויים במערכת">
           <div className="bell-head">
             <b>שינויים במערכת — עם Claude</b>
             <span className="row gap-s">
