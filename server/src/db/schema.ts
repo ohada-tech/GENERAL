@@ -300,4 +300,13 @@ export const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_client_feedback_project ON client_feedback(project_id, created_at);
   `,
+  /* v10 — תרגום תסריט לתצוגה (נשמר לפי גרסה ושפה) */ `
+  CREATE TABLE script_translations (
+    version_id TEXT NOT NULL,
+    lang TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (version_id, lang)
+  );
+  `,
 ];

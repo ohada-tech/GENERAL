@@ -9,6 +9,7 @@ import * as dev from '../services/dev-chat.js';
 import * as feedback from '../services/client-feedback.js';
 import { scriptDocx } from '../services/script-docx.js';
 import * as branding from '../services/branding.js';
+import { translateScript, type TranslateLang } from '../services/translate.js';
 import { briefSchema, openDiscoveryQuestions } from '@apos/shared';
 import { briefToText } from '../providers/prompts.js';
 import { lessonsFor } from '../services/learning.js';
@@ -36,6 +37,11 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
       .header('content-disposition', `attachment; filename="script-v${v.label}.docx"; filename*=UTF-8''${encodeURIComponent(name)}`);
     return reply.send(buf);
   });
+
+  // תרגום תסריט לתצוגה בלבד (ה-Word ללקוח נשאר בשפת המקור)
+  app.post('/api/scripts/:vid/translate', async (req) =>
+    translateScript(ctx, (req.params as { vid: string }).vid, (((req.body ?? {}) as { to?: string }).to ?? 'he') as TranslateLang),
+  );
 
   // מיתוג: לוגו Genesis (מועלה פעם אחת, משמש בכל פרויקט שממותג Genesis)
   app.get('/api/settings/brand', async () => branding.brandStatus(ctx));

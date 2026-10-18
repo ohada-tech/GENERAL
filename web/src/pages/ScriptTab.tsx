@@ -218,8 +218,19 @@ function VersionView({
   target: number | null;
   onEdit: () => void;
 }) {
-  const c = version.content;
-  const timing = computeTiming(c, language, target);
+  const timing = computeTiming(version.content, language, target);
+  // תרגום לתצוגה בלבד: עברית ↔ אנגלית לפי שפת התסריט; ה-Word ללקוח תמיד במקור
+  const toLang: 'he' | 'en' = /^he|עבר/i.test(language.trim()) ? 'en' : 'he';
+  const [translated, setTranslated] = useState<ScriptContent | null>(null);
+  const tr = useAction();
+  useEffect(() => setTranslated(null), [version.id]);
+  const toggleTranslate = async () => {
+    if (translated) return setTranslated(null);
+    const r = await tr.run(() => api.post<{ content: ScriptContent }>(`/api/scripts/${version.id}/translate`, { to: toLang }));
+    if (r) setTranslated(r.content);
+  };
+  const c = translated ?? version.content;
+  const dir = translated ? (toLang === 'he' ? 'rtl' : 'ltr') : undefined;
   return (
     <section className="card">
       <div className="row between">
@@ -235,6 +246,11 @@ function VersionView({
         </div>
         <div className="row gap-s">
           {!isCloud() && (
+            <button className={`btn ${translated ? 'btn-primary' : ''}`} onClick={toggleTranslate} disabled={tr.busy} title="תרגום לתצוגה בלבד — מה שנשלח ללקוח נשאר בשפת המקור">
+              {tr.busy ? 'מתרגם…' : translated ? '↩ הצג מקור' : `🌐 ${toLang === 'he' ? 'תרגם לעברית' : 'Translate to English'}`}
+            </button>
+          )}
+          {!isCloud() && (
             <a className="btn" href={`/api/scripts/${version.id}/docx`} download title="קובץ Word מעוצב לשליחה ללקוח — בלי הערות פנימיות">
               ⬇ הורד כ-Word
             </a>
@@ -244,8 +260,10 @@ function VersionView({
           </button>
         </div>
       </div>
-      {c.logline && <p className="logline">{c.logline}</p>}
-      <TimingSummary content={c} language={language} target={target} />
+      <InlineError error={tr.error} onClose={tr.clearError} />
+      {translated && <div className="notice small">תרגום ל{toLang === 'he' ? 'עברית' : 'אנגלית'} לתצוגה בלבד · ה-Word ללקוח נשאר בשפת המקור</div>}
+      {c.logline && <p className="logline" dir={dir}>{c.logline}</p>}
+      <TimingSummary content={version.content} language={language} target={target} />
       <table className="scenes-table">
         <thead>
           <tr>
@@ -265,14 +283,14 @@ function VersionView({
               <td>
                 <Tag>{STORY_ROLE_LABELS[s.storyRole] ?? s.storyRole}</Tag>
               </td>
-              <td className="narration">{s.narration}</td>
-              <td>{s.onScreenText}</td>
-              <td>{s.visualAction}</td>
+              <td className="narration" dir={dir}>{s.narration}</td>
+              <td dir={dir}>{s.onScreenText}</td>
+              <td dir={dir}>{s.visualAction}</td>
               <td className={timing.scenes[i]?.tooDense ? 'warn-text' : ''}>
                 {s.estDurationSec}ש׳
                 <div className="small muted">הקראה ~{timing.scenes[i]?.narrationSec}ש׳</div>
               </td>
-              <td className="small">{s.notes}</td>
+              <td className="small" dir={dir}>{s.notes}</td>
             </tr>
           ))}
         </tbody>
