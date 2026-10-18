@@ -6,6 +6,7 @@ import { getProject, getScript } from '../db/repo.js';
 import fs from 'node:fs';
 import { GateError } from '../context.js';
 import * as dev from '../services/dev-chat.js';
+import * as feedback from '../services/client-feedback.js';
 import { scriptDocx } from '../services/script-docx.js';
 import { briefSchema, openDiscoveryQuestions } from '@apos/shared';
 import { briefToText } from '../providers/prompts.js';
@@ -30,6 +31,27 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
       .header('content-type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
       .header('content-disposition', `attachment; filename="script-v${v.label}.docx"; filename*=UTF-8''${encodeURIComponent(name)}`);
     return reply.send(buf);
+  });
+
+  // ייבוא הערות לקוח: Google Doc / Word / טקסט ← רשימת הערות לבדיקה ← תיקון התסריט
+  app.get('/api/projects/:id/feedback', async (req) => ({ imports: feedback.listFeedbackImports(ctx, (req.params as { id: string }).id) }));
+  app.post('/api/projects/:id/feedback/import', async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    let input: { url?: string; text?: string; file?: { name: string; data: Buffer } };
+    if (req.isMultipart()) {
+      const file = await req.file();
+      if (!file) throw new GateError('לא נשלח קובץ', 400);
+      if (!/.docx$/i.test(file.filename)) throw new GateError('אפשר להעלות קובץ Word (.docx). ב-Google Docs: קובץ ← הורדה ← Microsoft Word.', 400);
+      const data = await file.toBuffer();
+      if (data.length > 30 * 1024 * 1024) throw new GateError('הקובץ גדול מדי (עד 30MB)', 400);
+      input = { file: { name: file.filename, data } };
+    } else input = (req.body ?? {}) as { url?: string; text?: string };
+    reply.code(201);
+    return feedback.importClientFeedback(ctx, id, input);
+  });
+  app.post('/api/feedback/:fid/apply', async (req) => {
+    const b = (req.body ?? {}) as { items?: feedback.FeedbackItem[]; baseVersionId?: string };
+    return feedback.applyClientFeedback(ctx, (req.params as { fid: string }).fid, b);
   });
 
   // צ'אט "שינויים במערכת": אתה כותב מהמערכת; Claude (המפתח) עונה עם מפתח המפעיל

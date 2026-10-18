@@ -167,7 +167,8 @@ const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string; t
     }
     const { provider, model } = textProviderFor(ctx, job.projectId);
     // הערה שמצטטת שורות / מציינת סצנות = תיקון ממוקד: רק הן משתנות, וזה נאכף בקוד ולא רק בפרומפט
-    const targets = targetScenes(base.content, feedback);
+    // ייבוא הערות לקוח מגיע עם סצנות מחושבות מראש (ריק = הערה כללית, בלי נעילה)
+    const targets = Array.isArray(job.payload.targets) ? (job.payload.targets as number[]) : targetScenes(base.content, feedback);
     const scoped = targets.length
       ? `${feedback}\n\nSCOPE (mandatory): change ONLY scene${targets.length > 1 ? 's' : ''} ${targets.map((i) => i + 1).join(', ')} (1-based). Every other scene, the title and the logline must stay exactly as they are.`
       : feedback;
@@ -179,12 +180,19 @@ const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string; t
     const base = getScript(ctx.db, r.baseId);
     const scope = scopeLabel(r.targets ?? []);
     const who = r.improveBy === 'openai' ? 'ChatGPT' : r.improveBy === 'claude' ? 'Claude' : '';
-    return insertScriptVersion(ctx, job.projectId, r.draft, {
+    const fromClient = typeof job.payload.feedbackImportId === 'string' ? job.payload.feedbackImportId : null;
+    const out = insertScriptVersion(ctx, job.projectId, r.draft, {
       source: 'ai_revision',
       parentId: r.baseId,
-      changeNote: `${who ? `שיפור ${who}` : 'תיקון'} ל-v${base?.label ?? '?'}${scope ? ` (${scope})` : ''}`,
+      changeNote: fromClient
+        ? `תיקון לפי הערות הלקוח (${Number(job.payload.feedbackCount) || ''} הערות) ל-v${base?.label ?? '?'}${scope ? ` (${scope})` : ''}`
+        : `${who ? `שיפור ${who}` : 'תיקון'} ל-v${base?.label ?? '?'}${scope ? ` (${scope})` : ''}`,
       isDemo: r.isDemo,
     });
+    if (fromClient) {
+      ctx.db.prepare("UPDATE client_feedback SET result_version_id = ?, status = 'applied' WHERE id = ?").run(out.scriptVersionId, fromClient);
+    }
+    return out;
   },
 };
 

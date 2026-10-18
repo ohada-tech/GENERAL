@@ -14,6 +14,7 @@ import {
 } from '@apos/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ClientFeedbackChanges, ClientFeedbackImport, type FeedbackImport } from '../components/ClientFeedback';
 import { Empty, ErrorBox, Field, InlineError, Loading, ModeTag, StatusBadge, Tag } from '../components/ui';
 import { api, isCloud, useAction, useApi } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
@@ -41,6 +42,9 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
   const [compareId, setCompareId] = useState<string>('');
   const [editing, setEditing] = useState<ScriptContent | null>(null);
   const gen = useAction();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  // הערות לקוח שיובאו (רק בגרסת השרת)
+  const feedback = useApi<{ imports: FeedbackImport[] }>(isCloud() ? null : `/api/projects/${project.id}/feedback`, { pollMs: running ? 4000 : 0 });
 
   const versions = data?.versions ?? [];
   const latest = versions[0] ?? null;
@@ -50,11 +54,16 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
   const latestId = latest?.id;
   useEffect(() => {
     setSelectedId(null);
+    if (!isCloud()) void feedback.reload(); // גרסה מהערות לקוח ← טבלת "מה שונה"
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latestId]);
 
   const refresh = async () => {
-    await Promise.all([reload(), reloadProject()]);
+    await Promise.all([reload(), reloadProject(), isCloud() ? null : feedback.reload()]);
   };
+  const imports = feedback.data?.imports ?? [];
+  const pendingImport = imports.find((i) => i.status === 'draft') ?? null;
+  const fromClient = selected ? imports.find((i) => i.resultVersionId === selected.id) : undefined;
 
   const generate = async () => {
     const r = await gen.run(() => api.post(`/api/projects/${project.id}/scripts/generate`));
@@ -85,6 +94,11 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
         <div className="small muted row gap-s">
           ספק: <ModeTag mode={providerMode} /> {project.settings.textProvider === 'openai' ? project.settings.textModel || 'מודל ברירת מחדל' : ''}
         </div>
+        {!isCloud() && versions.length > 0 && (
+          <button className="btn btn-sm btn-ghost" onClick={() => setFeedbackOpen(true)} disabled={feedbackOpen} title="Google Doc, Word או טקסט עם הערות הלקוח ← תיקון התסריט">
+            📥 הערות לקוח{pendingImport ? ' (ממתין לתיקון)' : ''}
+          </button>
+        )}
         <InlineError error={gen.error} onClose={gen.clearError} />
         {running && (
           <div className="notice">
@@ -125,6 +139,16 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
       </aside>
 
       <div className="script-main">
+        {feedbackOpen && !editing && (
+          <ClientFeedbackImport
+            projectId={project.id}
+            versions={versions}
+            running={running}
+            draft={pendingImport}
+            onClose={() => setFeedbackOpen(false)}
+            onDone={refresh}
+          />
+        )}
         {editing ? (
           <ScriptEditor
             projectId={project.id}
@@ -148,6 +172,7 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
               target={project.brief.durationSec}
               onEdit={() => setEditing(structuredClone(selected.content))}
             />
+            {fromClient && <ClientFeedbackChanges imp={fromClient} base={versions.find((v) => v.id === fromClient.baseVersionId)} result={selected} />}
             {selected.id === latest?.id && <ImproveBar version={selected} running={running} onDone={refresh} />}
             {selected.id === latest?.id && (
               <ApprovalPanel version={selected} approvals={data!.approvals} running={running} onDone={refresh} clientName={project.clientName} />

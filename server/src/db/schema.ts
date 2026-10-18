@@ -285,4 +285,19 @@ export const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_dev_messages_created ON dev_messages(created_at);
   `,
+  /* v9 — ייבוא הערות לקוח (Google Doc / Word / טקסט) ← תיקון תסריט */ `
+  CREATE TABLE client_feedback (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    base_version_id TEXT NOT NULL,
+    result_version_id TEXT,
+    source TEXT NOT NULL,
+    source_name TEXT NOT NULL DEFAULT '',
+    detected_label TEXT,
+    items TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'draft',
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_client_feedback_project ON client_feedback(project_id, created_at);
+  `,
 ];

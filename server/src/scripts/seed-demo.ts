@@ -29,6 +29,7 @@ cmd.updateBrief(ctx, p.id, {
   goal: 'הגדלת הרשמות לאפליקציה',
   productOrService: 'אפליקציית כושר ביתית',
   targetAudience: 'נשים וגברים 25–40, עובדים, מעט זמן פנוי',
+  targetMarket: 'ישראל',
   keyMessage: '10 דקות ביום מספיקות',
   platforms: ['Instagram Reels', 'TikTok'],
   aspectRatio: '9:16',
