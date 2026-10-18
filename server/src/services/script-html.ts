@@ -103,7 +103,7 @@ export function scriptHtml(input: {
     ${brandBlock}
     <h1 dir="auto">${esc(c.title || input.projectName)}</h1>
     ${c.logline ? `<p class="logline" dir="auto">${esc(c.logline)}</p>` : ''}
-    <div class="meta"><b>פרויקט:</b> <span dir="auto">${esc(input.projectName)}</span>${input.clientName ? ` &nbsp;·&nbsp; <b>לקוח:</b> <span dir="auto">${esc(input.clientName)}</span>` : ''}</div>
+    <div class="meta"><b>פרויקט:</b> <bdi dir="rtl">${esc(input.projectName)}</bdi>${input.clientName ? ` &nbsp;·&nbsp; <b>לקוח:</b> <bdi dir="rtl">${esc(input.clientName)}</bdi>` : ''}</div>
     <div class="meta"><b>גרסה:</b> v${esc(v.label)} &nbsp;·&nbsp; <b>תאריך:</b> ${fmtDate(v.createdAt)}${total ? ` &nbsp;·&nbsp; <b>אורך משוער:</b> ${Math.round(total)} שניות` : ''}</div>
     <table>
       <colgroup><col style="width:8%"><col style="width:36%"><col style="width:20%"><col style="width:28%"><col style="width:8%"></colgroup>
