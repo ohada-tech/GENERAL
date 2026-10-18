@@ -618,3 +618,5 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .feedback-item textarea { width: 100%; }
 .strike { text-decoration: line-through; }
 .stack-xs { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
+.brand-logo-preview { background: #111114; border-radius: 10px; padding: 18px; display: flex; justify-content: center; }
+.brand-logo-preview img { max-width: 260px; max-height: 80px; object-fit: contain; }

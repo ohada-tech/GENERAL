@@ -8,6 +8,7 @@ import { GateError } from '../context.js';
 import * as dev from '../services/dev-chat.js';
 import * as feedback from '../services/client-feedback.js';
 import { scriptDocx } from '../services/script-docx.js';
+import * as branding from '../services/branding.js';
 import { briefSchema, openDiscoveryQuestions } from '@apos/shared';
 import { briefToText } from '../providers/prompts.js';
 import { lessonsFor } from '../services/learning.js';
@@ -25,12 +26,31 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
       clientName: p.clientName,
       language: p.brief.language,
       targetSec: p.brief.durationSec ?? null,
+      brand: p.settings.brand,
+      genesisLogo: p.settings.brand === 'genesis' ? branding.genesisLogo(ctx) : null,
+      ownerName: ctx.config.ownerName && ctx.config.ownerName !== 'owner' ? ctx.config.ownerName : 'Ohad Alfi',
     });
     const name = `${p.name} - תסריט v${v.label}.docx`.replace(/[\\/:*?"<>|]+/g, ' ');
     reply
       .header('content-type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
       .header('content-disposition', `attachment; filename="script-v${v.label}.docx"; filename*=UTF-8''${encodeURIComponent(name)}`);
     return reply.send(buf);
+  });
+
+  // מיתוג: לוגו Genesis (מועלה פעם אחת, משמש בכל פרויקט שממותג Genesis)
+  app.get('/api/settings/brand', async () => branding.brandStatus(ctx));
+  app.post('/api/settings/brand/genesis-logo', async (req) => {
+    const file = await req.file();
+    if (!file) throw new GateError('לא נשלח קובץ', 400);
+    const data = await file.toBuffer();
+    if (data.length > 10 * 1024 * 1024) throw new GateError('הלוגו גדול מדי (עד 10MB)', 400);
+    return branding.saveGenesisLogo(ctx, data);
+  });
+  app.delete('/api/settings/brand/genesis-logo', async () => branding.removeGenesisLogo(ctx));
+  app.get('/api/settings/brand/genesis-logo', async (_req, reply) => {
+    const logo = branding.genesisLogo(ctx);
+    if (!logo) throw new NotFoundError('לוגו');
+    return reply.header('content-type', logo.type === 'png' ? 'image/png' : 'image/jpeg').header('cache-control', 'no-cache').send(logo.data);
   });
 
   // ייבוא הערות לקוח: Google Doc / Word / טקסט ← רשימת הערות לבדיקה ← תיקון התסריט

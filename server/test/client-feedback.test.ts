@@ -53,7 +53,7 @@ describe('Client feedback import', { timeout: 30_000 }, () => {
         .replace(`>${first}<`, '>נוסח חדש של הלקוח<'),
     );
     const parsed = parseDocx(buf);
-    expect(parsed.tables[0][0][1]).toContain('קריינות');
+    expect(parsed.tables.some((t) => t[0]?.[1]?.includes('קריינות'))).toBe(true);
     const items = itemsFromDocx(parsed, v1.content);
     expect(items.map((i) => [i.kind, i.scenes])).toEqual([
       ['edit', [0]],

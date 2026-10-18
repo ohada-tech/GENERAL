@@ -1,7 +1,7 @@
 import { IMAGE_MODELS, KIE_USD_PER_CREDIT, VIDEO_MODELS, VOICES, type ProjectSettings } from '@apos/shared';
 import { useEffect, useRef, useState } from 'react';
 import { Field, InlineError, Tag } from '../components/ui';
-import { api, useAction, useApi } from '../lib/api';
+import { api, isCloud, useAction, useApi } from '../lib/api';
 import type { TabProps } from './ProjectPage';
 
 export function SettingsTab({ detail, reload, health }: TabProps) {
@@ -213,6 +213,17 @@ export function SettingsTab({ detail, reload, health }: TabProps) {
         <p className="small muted">הקריינות והעריכה נלקחות מהתסריט המאושר. אם בבריף סומן שאין קריינות — נוצרת רק מוזיקה.</p>
       </section>
 
+      <section className="card stack">
+        <h2>מיתוג הקבצים ללקוח</h2>
+        <Field label="הלקוח שייך ל" hint="Genesis: הלוגו של Genesis בגדול והשם שלך בקטן, בלי הלוגו של הסטודיו. הסטודיו שלי: המיתוג המקורי שלך.">
+          <select value={s.brand} onChange={(e) => setS({ ...s, brand: e.target.value as ProjectSettings['brand'] })}>
+            <option value="genesis">Genesis</option>
+            <option value="studio">הסטודיו שלי (Ohad Alfi)</option>
+          </select>
+        </Field>
+        {s.brand === 'genesis' && !isCloud() && <GenesisLogo />}
+      </section>
+
       <InlineError error={act.error} onClose={act.clearError} />
       <div className="row end gap-s">
         {saved ? <Tag tone="ok">נשמר ✓</Tag> : <span className="muted small">ההגדרות נשמרות אוטומטית</span>}
@@ -221,5 +232,50 @@ export function SettingsTab({ detail, reload, health }: TabProps) {
         </button>
       </div>
     </form>
+  );
+}
+
+/** הלוגו של Genesis — אחד לכל המערכת, משמש בכל פרויקט שממותג Genesis */
+function GenesisLogo() {
+  const st = useApi<{ genesisLogo: { width: number; height: number } | null }>('/api/settings/brand');
+  const act = useAction();
+  const input = useRef<HTMLInputElement>(null);
+  const [v, setV] = useState(0);
+  const has = !!st.data?.genesisLogo;
+  const upload = async (f: File) => {
+    const r = await act.run(() => api.upload('/api/settings/brand/genesis-logo', f));
+    if (r) {
+      setV((x) => x + 1);
+      await st.reload();
+    }
+  };
+  return (
+    <div className="stack">
+      {has ? (
+        <div className="brand-logo-preview">
+          <img src={`/api/settings/brand/genesis-logo?v=${v}`} alt="Genesis" />
+        </div>
+      ) : (
+        <div className="notice small">עוד לא הועלה לוגו של Genesis — בינתיים בקבצים יופיע השם GENESIS בטקסט.</div>
+      )}
+      <div className="row gap-s">
+        <button type="button" className="btn btn-sm" disabled={act.busy} onClick={() => input.current?.click()}>
+          {has ? 'החלף לוגו Genesis' : 'העלה לוגו Genesis (PNG)'}
+        </button>
+        <span className="small muted">לוגו אחד לכל הפרויקטים של Genesis · מוצג על פס כהה בראש הקובץ</span>
+        <input
+          ref={input}
+          type="file"
+          accept="image/png,image/jpeg"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (f) void upload(f);
+          }}
+        />
+      </div>
+      <InlineError error={act.error} onClose={act.clearError} />
+    </div>
   );
 }

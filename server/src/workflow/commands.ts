@@ -19,7 +19,7 @@ import {
   type StageKey,
 } from '@apos/shared';
 import { z } from 'zod';
-import { recordFeedback } from '../services/learning.js';
+import { clientScope, recordFeedback } from '../services/learning.js';
 import { GateError, NotFoundError, type Ctx } from '../context.js';
 import { json, tx, uid } from '../db/db.js';
 import {
@@ -89,6 +89,14 @@ export function updateProject(
     ctx.db
       .prepare('UPDATE projects SET name = ?, client_name = ?, settings = ? WHERE id = ?')
       .run(name, clientName, json(settings), id);
+    // שינוי שם לקוח: הכללים וההערות שנלמדו על הלקוח עוברים לשם החדש (כשאין עוד פרויקט עם השם הישן)
+    if (p.clientName.trim() && clientName && clientName !== p.clientName.trim()) {
+      const others = ctx.db.prepare('SELECT 1 FROM projects WHERE client_name = ? AND id != ? LIMIT 1').get(p.clientName, id);
+      if (!others) {
+        ctx.db.prepare('UPDATE lessons SET scope = ? WHERE scope = ?').run(clientScope(clientName), clientScope(p.clientName));
+        ctx.db.prepare('UPDATE feedback SET client = ? WHERE client = ?').run(clientName, p.clientName);
+      }
+    }
     const changed = Object.keys(input.settings ?? {});
     emit(ctx, {
       projectId: id,

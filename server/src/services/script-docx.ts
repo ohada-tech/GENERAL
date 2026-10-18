@@ -24,6 +24,7 @@ import {
 } from 'docx';
 import { computeTiming, STORY_ROLE_LABELS, type ScriptVersion } from '@apos/shared';
 import { REPO_ROOT } from '../config.js';
+import type { BrandImage } from './branding.js';
 
 const FONT = 'Arial';
 const INK = '1A1A1F';
@@ -68,6 +69,34 @@ function logo(): ImageRun | null {
   return new ImageRun({ type: 'png', data: fs.readFileSync(p), transformation: { width: 56, height: 56 } });
 }
 
+/** פס כהה ברוחב הדף עם הלוגו של Genesis (הלוגו לבן — על דף לבן הוא לא היה נראה). בלי לוגו שהועלה: השם בטקסט. */
+function genesisBand(img: BrandImage | null) {
+  const W = 230;
+  const content = img
+    ? new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new ImageRun({ type: img.type, data: img.data, transformation: { width: W, height: Math.round((W * img.height) / img.width) } })],
+      })
+    : new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'GENESIS', font: FONT, bold: true, size: 56, color: 'FFFFFF' })] });
+  const none = { style: BorderStyle.NONE, size: 0, color: 'auto' };
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: { top: none, bottom: none, left: none, right: none, insideHorizontal: none, insideVertical: none },
+    rows: [
+      new TableRow({
+        children: [
+          new TableCell({
+            children: [content],
+            shading: { type: ShadingType.CLEAR, fill: '111114', color: 'auto' },
+            margins: { top: 260, bottom: 260, left: 200, right: 200 },
+            verticalAlign: VerticalAlign.CENTER,
+          }),
+        ],
+      }),
+    ],
+  });
+}
+
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jerusalem' });
 
 export async function scriptDocx(input: {
@@ -77,16 +106,23 @@ export async function scriptDocx(input: {
   language: string;
   targetSec: number | null;
   studio?: string;
+  /** genesis: לוגו Genesis בגדול על פס כהה + השם שלך בקטן, בלי הלוגו של הסטודיו */
+  brand?: 'genesis' | 'studio';
+  genesisLogo?: BrandImage | null;
+  ownerName?: string;
 }): Promise<Buffer> {
   const { version: v } = input;
   const c = v.content;
   const timing = computeTiming(c, input.language, input.targetSec);
   const total = timing.totalSec || timing.narrationSec;
-  const img = logo();
+  const genesis = input.brand === 'genesis';
+  const maker = genesis ? input.ownerName || 'Ohad Alfi' : (input.studio ?? 'Ohad Alfi · AI Production Studio');
+  const img = genesis ? null : logo();
 
-  const header: Paragraph[] = [
+  const header: (Paragraph | Table)[] = [
+    ...(genesis ? [genesisBand(input.genesisLogo ?? null), para([run(maker, { size: 16, color: MUTED })], { after: 280 })] : []),
     ...(img ? [new Paragraph({ alignment: AlignmentType.RIGHT, children: [img], spacing: { after: 60 } })] : []),
-    para([run(input.studio ?? 'Ohad Alfi · AI Production Studio', { size: 18, color: MUTED })], { after: 280 }),
+    ...(genesis ? [] : [para([run(maker, { size: 18, color: MUTED })], { after: 280 })]),
     para([run(c.title || input.projectName, { bold: true, size: 40 })], { after: 100 }),
     ...(c.logline ? [para([run(c.logline, { size: 24, color: MUTED, italics: true })], { after: 200 })] : []),
     para(
@@ -152,7 +188,7 @@ export async function scriptDocx(input: {
   ];
 
   const doc = new Document({
-    creator: input.studio ?? 'Ohad Alfi · AI Production Studio',
+    creator: genesis ? 'Genesis' : maker,
     title: `${input.projectName} — תסריט v${v.label}`,
     styles: { default: { document: { run: { font: FONT, rightToLeft: true } } } },
     sections: [

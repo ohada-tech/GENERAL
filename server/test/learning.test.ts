@@ -125,3 +125,18 @@ describe('Learning engine', () => {
     await app.close();
   });
 });
+
+describe('Renaming a client', () => {
+  it('moves the learned rules and pending notes to the new name', () => {
+    const ctx = makeCtx();
+    const p = projectWithBrief(ctx);
+    const old = p.clientName;
+    learning.addLesson(ctx, { scope: learning.clientScope(old), area: 'script', text: 'כלל של הלקוח' });
+    learning.recordFeedback(ctx, p.id, 'script', 'הערה שעוד לא זוקקה');
+    cmd.updateProject(ctx, p.id, { clientName: 'שם חדש' });
+    const got = learning.lessonsFor(ctx, 'שם חדש', ['script']);
+    expect(got.some((t) => t.includes('כלל של הלקוח'))).toBe(true);
+    expect(got.some((t) => t.includes('הערה שעוד לא זוקקה'))).toBe(true);
+    expect(learning.lessonsFor(ctx, old, ['script']).some((t) => t.includes('כלל של הלקוח'))).toBe(false);
+  });
+});

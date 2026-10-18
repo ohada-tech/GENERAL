@@ -32,6 +32,8 @@ export const projectSettingsSchema = z.object({
   autoAdvance: z.boolean().default(true),
   /** תקרת עלות יצירה לפרויקט בדולרים — יצירה שתעבור אותה נחסמת */
   budgetUsd: z.number().nonnegative().default(25),
+  /** מיתוג הקבצים שיוצאים ללקוח: genesis = לוגו Genesis בגדול והשם שלך בקטן; studio = הסטודיו שלך */
+  brand: z.enum(['genesis', 'studio']).default('genesis'),
 });
 
 export type ProjectSettings = z.infer<typeof projectSettingsSchema>;
