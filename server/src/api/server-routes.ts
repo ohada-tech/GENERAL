@@ -28,7 +28,7 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
       targetSec: p.brief.durationSec ?? null,
       brand: p.settings.brand,
       genesisLogo: p.settings.brand === 'genesis' ? branding.genesisLogo(ctx) : null,
-      ownerName: ctx.config.ownerName && ctx.config.ownerName !== 'owner' ? ctx.config.ownerName : 'Ohad Alfi',
+      ownerName: 'Ohad Alfi', // השם בקטן מתחת ללוגו של Genesis (לא OWNER_NAME, שמשמש לאישורים)
     });
     const name = `${p.name} - תסריט v${v.label}.docx`.replace(/[\\/:*?"<>|]+/g, ' ');
     reply

@@ -36,6 +36,7 @@ describe('Branding of client files', { timeout: 30_000 }, () => {
   it('new projects are Genesis: GENESIS on top, no studio name or logo', async () => {
     const { xml, media } = await wordXml();
     expect(xml).toContain('GENESIS');
+    expect(xml).toContain('Ohad Alfi');
     expect(xml).not.toContain('AI Production Studio');
     expect(media).toHaveLength(0);
   });
