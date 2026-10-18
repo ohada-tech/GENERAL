@@ -620,3 +620,8 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .stack-xs { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
 .brand-logo-preview { background: #111114; border-radius: 10px; padding: 18px; display: flex; justify-content: center; }
 .brand-logo-preview img { max-width: 260px; max-height: 80px; object-fit: contain; }
+/* שורה שכולה לחיצה */
+.row-link { cursor: pointer; transition: background 0.15s; }
+.row-link:hover td { background: var(--surface-2); }
+.row-link.row-current:hover td { background: var(--violet-bg); filter: brightness(1.08); }
+.row-link:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }

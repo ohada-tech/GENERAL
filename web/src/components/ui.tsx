@@ -184,3 +184,22 @@ export function ConfirmButton({
     </button>
   );
 }
+
+/** שורה שכולה לחיצה (לא רק הטקסט): קישורים וכפתורים בתוכה ממשיכים לעבוד כרגיל; Enter במקלדת פותח */
+export function rowLink(go: (to: string) => void, to: string | null | undefined) {
+  if (!to) return {};
+  const inner = (t: EventTarget | null) => t instanceof Element && !!t.closest('a, button, input, select, textarea, label');
+  return {
+    className: 'row-link',
+    tabIndex: 0,
+    role: 'link' as const,
+    onClick: (e: { target: EventTarget | null; ctrlKey: boolean; metaKey: boolean }) => {
+      if (inner(e.target) || window.getSelection()?.toString()) return;
+      if (e.ctrlKey || e.metaKey) window.open(to, '_blank');
+      else go(to);
+    },
+    onKeyDown: (e: { key: string; target: EventTarget | null; currentTarget: EventTarget }) => {
+      if (e.key === 'Enter' && e.target === e.currentTarget) go(to);
+    },
+  };
+}

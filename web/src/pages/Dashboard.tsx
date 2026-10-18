@@ -2,7 +2,7 @@ import { formatDuration, STAGE_BY_KEY, STATUS_LABELS, type DashboardData, type P
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PipelineStepper } from '../components/PipelineStepper';
-import { Empty, ErrorBox, Field, InlineError, Loading, Modal, Progress, StatusBadge, Tag } from '../components/ui';
+import { Empty, ErrorBox, Field, InlineError, Loading, Modal, Progress, rowLink, StatusBadge, Tag } from '../components/ui';
 import { api, useAction, useApi } from '../lib/api';
 import { daysUntil, fmtDate, fmtRelative } from '../lib/format';
 
@@ -15,6 +15,7 @@ const FILTERS: Array<{ key: 'all' | Status | 'mine'; label: string }> = [
 ];
 
 export function Dashboard() {
+  const navigate = useNavigate();
   const { data, error, loading, reload } = useApi<DashboardData>('/api/dashboard', { pollMs: 5000 });
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]['key']>('all');
@@ -146,7 +147,7 @@ export function Dashboard() {
                 const due = daysUntil(p.dueDate);
                 const current = STAGE_BY_KEY[p.state.currentStage];
                 return (
-                  <tr key={p.id}>
+                  <tr key={p.id} {...rowLink(navigate, `/projects/${p.id}`)}>
                     <td>
                       <Link to={`/projects/${p.id}`} className="proj-name">
                         {p.name}

@@ -13,7 +13,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { Health } from '../App';
 import { PipelineStepper } from '../components/PipelineStepper';
 import { ProjectTimerButton } from '../components/TimerWidget';
-import { ErrorBox, Field, InlineError, Loading, ModeTag, Modal, Progress, StatusBadge } from '../components/ui';
+import { ErrorBox, Field, InlineError, Loading, ModeTag, Modal, Progress, rowLink, StatusBadge } from '../components/ui';
 import { api, useAction, useApi } from '../lib/api';
 import { fmtDate, fmtDateTime } from '../lib/format';
 import { ActivityTab, JobsTab } from './ActivityTabs';
@@ -173,6 +173,7 @@ function OverviewTab({ detail, reload }: TabProps) {
   const { project, state, approvals } = detail;
   const [blocking, setBlocking] = useState(false);
   const act = useAction();
+  const navigate = useNavigate();
 
   const resolve = async (bid: string) => {
     await act.run(() => api.post(`/api/blockers/${bid}/resolve`));
@@ -188,8 +189,9 @@ function OverviewTab({ detail, reload }: TabProps) {
             {state.stages.map((s) => {
               const def = STAGE_BY_KEY[s.key];
               const tab = STAGE_TAB[s.key];
+              const link = rowLink(navigate, tab ? `/projects/${project.id}/${tab}` : null);
               return (
-                <tr key={s.key} className={s.key === state.currentStage ? 'row-current' : ''}>
+                <tr key={s.key} {...link} className={`${link.className ?? ''} ${s.key === state.currentStage ? 'row-current' : ''}`}>
                   <td className="muted">{def.number}</td>
                   <td>
                     {tab ? <Link to={`/projects/${project.id}/${tab}`}>{def.label}</Link> : def.label}
