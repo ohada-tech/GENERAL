@@ -8,7 +8,7 @@ import {
   type ProjectState,
   type StageKey,
 } from '@apos/shared';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { Health } from '../App';
 import { PipelineStepper } from '../components/PipelineStepper';
@@ -67,6 +67,8 @@ export function ProjectPage({ health }: { health: Health | null }) {
   const { data, error, loading, reload } = useApi<ProjectDetail>(`/api/projects/${id}`, { pollMs: 3000 });
   const pipeline = useAction();
   const [confirmStop, setConfirmStop] = useState(false);
+  const head = useRef<HTMLDivElement>(null);
+  const sticky = useStickyBar(head, !!data);
 
   if (loading && !data) return <Loading />;
   if (error && !data) return <ErrorBox error={error} onRetry={reload} />;
@@ -86,7 +88,41 @@ export function ProjectPage({ health }: { health: Health | null }) {
       <div className="crumbs">
         <Link to="/">הפקות</Link> / <span>{project.name}</span>
       </div>
-      <div className="page-head">
+      {/* פס דביק: מופיע כשגוללים מעבר לכותרת — שם, סטטוס, טיימר, השהה/עצור וקיצורים לכל הלשוניות */}
+      <div className={`proj-sticky ${sticky.on ? 'on' : ''}`} style={{ top: sticky.top }} aria-hidden={!sticky.on} inert={!sticky.on}>
+        <div className="proj-sticky-row">
+          <span className="proj-sticky-name">{project.name}</span>
+          <StatusBadge status={state.overallStatus} />
+          <span className="proj-sticky-progress" title={`${state.progress}%`}>
+            <Progress value={state.progress} />
+          </span>
+          <span className="grow" />
+          <ProjectTimerButton projectId={project.id} />
+          {state.pipelineState === 'active' ? (
+            <>
+              <button className="btn btn-sm" disabled={pipeline.busy} onClick={() => setPipeline('pause')}>
+                ⏸ השהה
+              </button>
+              <button className="btn btn-sm btn-danger-ghost" disabled={pipeline.busy} onClick={() => setConfirmStop(true)}>
+                ⏹ עצור
+              </button>
+            </>
+          ) : (
+            <button className="btn btn-sm btn-primary" disabled={pipeline.busy} onClick={() => setPipeline('resume')}>
+              ▶ הפעל מחדש
+            </button>
+          )}
+        </div>
+        <nav className="tabs proj-sticky-tabs">
+          {TABS.map((t) => (
+            <Link key={t.key} to={`/projects/${project.id}/${t.key}`} className={`tab ${tab === t.key ? 'tab-on' : ''}`}>
+              {t.label}
+            </Link>
+          ))}
+        </nav>
+      </div>
+
+      <div className="page-head" ref={head}>
         <div>
           <h1>
             {project.name} <StatusBadge status={state.overallStatus} />
@@ -345,4 +381,37 @@ function BlockerModal({ projectId, onClose, onDone }: { projectId: string; onClo
       </form>
     </Modal>
   );
+}
+
+/** הפס הדביק מופיע ברגע שכותרת הפרויקט נעלמת מתחת לסרגל העליון (שגובהו משתנה בין מחשב לטלפון) */
+function useStickyBar(head: React.RefObject<HTMLDivElement | null>, ready: boolean) {
+  const [top, setTop] = useState(60);
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const bar = document.querySelector<HTMLElement>('.topbar');
+    if (!bar) return;
+    const measure = () => setTop(bar.offsetHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(bar);
+    return () => ro.disconnect();
+  }, []);
+  useEffect(() => {
+    const el = head.current;
+    if (!ready || !el) return;
+    const io = new IntersectionObserver(([e]) => setOn(!e.isIntersecting && e.boundingClientRect.top < top), {
+      rootMargin: `-${top}px 0px 0px 0px`,
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [head, ready, top]);
+  // רכיבים דביקים אחרים (רשימת הגרסאות) יורדים מתחת לפס כשהוא מוצג
+  useEffect(() => {
+    const h = on ? document.querySelector<HTMLElement>('.proj-sticky')?.offsetHeight ?? 0 : 0;
+    document.documentElement.style.setProperty('--sticky-bar-h', `${h}px`);
+    return () => {
+      document.documentElement.style.removeProperty('--sticky-bar-h');
+    };
+  }, [on]);
+  return { on, top };
 }
