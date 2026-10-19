@@ -13,6 +13,7 @@ export function briefToText(ctx: ProjectContext): string {
     ['Video type', b.videoType],
     ['Goal', b.goal],
     ['Product / service', b.productOrService],
+    ['Client website', b.website],
     ['Target audience', b.targetAudience],
     ['Target market / country', b.targetMarket],
     ['Key message', b.keyMessage],
@@ -32,6 +33,7 @@ export function briefToText(ctx: ProjectContext): string {
     ['Voice notes', b.voiceNotes],
     ['Budget / constraints', [b.budget, b.constraints].filter(Boolean).join(' — ')],
     ['Extra notes', b.notes],
+    ['Links', b.links.filter((l) => l.url.trim()).map((l) => (l.label ? `${l.label}: ${l.url}` : l.url)).join(' | ')],
   ];
   const brief = lines
     .filter(([, v]) => v && v.trim())

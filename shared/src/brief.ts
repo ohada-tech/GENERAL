@@ -20,6 +20,8 @@ export const briefSchema = z.object({
   videoType: z.string().default(''),
   goal: z.string().default(''),
   productOrService: z.string().default(''),
+  /** אתר הלקוח — מקור לשפה, למסרים ולמראה של המותג */
+  website: z.string().default(''),
   targetAudience: z.string().default(''),
   /** איפה הקהל: מדינה / שוק (ישראל, ארה"ב, אירופה…) — קובע שפה, תרבות, מטבע ורגולציה */
   targetMarket: z.string().default(''),
@@ -82,6 +84,7 @@ export const BRIEF_FIELD_LABELS: Partial<Record<keyof Brief, string>> = {
   videoType: 'סוג הסרטון',
   goal: 'מטרת הסרטון',
   productOrService: 'מוצר / שירות',
+  website: 'אתר הלקוח',
   targetAudience: 'קהל יעד',
   targetMarket: 'שוק / מדינת יעד',
   keyMessage: 'המסר המרכזי',

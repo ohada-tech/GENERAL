@@ -111,6 +111,16 @@ export function BriefTab({ detail, reload }: TabProps) {
           <Field label="מוצר / שירות" required missing={missing.has('productOrService')}>
             <textarea rows={2} value={draft.productOrService} onChange={(e) => set('productOrService', e.target.value)} />
           </Field>
+          <Field label="אתר הלקוח" hint="ChatGPT ו-Claude מקבלים אותו עם האפיון">
+            <div className="row gap-s">
+              <input className="grow" dir="ltr" type="url" inputMode="url" value={draft.website} onChange={(e) => set('website', e.target.value)} placeholder="https://…" />
+              {/^https?:\/\/\S+\.\S+/.test(draft.website.trim()) && (
+                <a className="btn btn-sm" href={draft.website.trim()} target="_blank" rel="noopener noreferrer" title="פתח את האתר בלשונית חדשה">
+                  ↗
+                </a>
+              )}
+            </div>
+          </Field>
           <Field label="קהל יעד" required missing={missing.has('targetAudience')}>
             <textarea rows={2} value={draft.targetAudience} onChange={(e) => set('targetAudience', e.target.value)} />
           </Field>
