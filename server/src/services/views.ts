@@ -54,9 +54,26 @@ export function dashboard(ctx: Ctx): DashboardData {
     updatedAt: p.updatedAt,
     state: projectState(ctx, p),
     trackedSec: time.byProject[p.id] ?? 0,
+    cover: projectCover(ctx, p.id),
   }));
   const unread = ctx.db.prepare('SELECT COUNT(*) AS n FROM notifications WHERE read_at IS NULL').get() as { n: number };
   return { projects, unreadNotifications: Number(unread.n), weekTrackedSec: time.weekSec };
+}
+
+/** תמונת שער: הפריים הראשון בסטורי בורד (מאושר קודם), ואם אין — תמונה שהועלתה לשוט */
+function projectCover(ctx: Ctx, projectId: string): ProjectSummary['cover'] {
+  const m = ctx.db
+    .prepare(
+      `SELECT m.id FROM media m LEFT JOIN shots s ON s.id = m.shot_id
+       WHERE m.project_id = ? AND m.kind = 'frame' AND m.status IN ('approved', 'ready') AND m.asset_id IS NOT NULL
+       ORDER BY (m.status = 'approved') DESC, s.number ASC, m.version DESC LIMIT 1`,
+    )
+    .get(projectId) as { id: string } | undefined;
+  if (m) return { mediaId: m.id };
+  const a = ctx.db
+    .prepare('SELECT preview_asset_id AS id FROM shots WHERE project_id = ? AND preview_asset_id IS NOT NULL ORDER BY number ASC LIMIT 1')
+    .get(projectId) as { id: string } | undefined;
+  return a ? { assetId: a.id } : null;
 }
 
 export function isProjectCompleted(ctx: Ctx, projectId: string) {

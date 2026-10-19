@@ -228,6 +228,8 @@ export interface ProjectSummary {
   state: ProjectState;
   /** זמן עבודה מתועד בשניות (כולל טיימר רץ) */
   trackedSec: number;
+  /** תמונת שער לכרטיס בדשבורד: פריים שנוצר (media) או תמונה שהועלתה לשוט (asset). null = אין */
+  cover?: { mediaId?: string; assetId?: string } | null;
 }
 
 export interface DashboardData {
