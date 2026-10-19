@@ -9,6 +9,7 @@ import {
   STORY_ROLES,
   type Approval,
   type Comment,
+  type Job,
   type ScriptContent,
   type ScriptVersion,
 } from '@apos/shared';
@@ -173,7 +174,7 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
               onEdit={() => setEditing(structuredClone(selected.content))}
             />
             {fromClient && <ClientFeedbackChanges imp={fromClient} base={versions.find((v) => v.id === fromClient.baseVersionId)} result={selected} />}
-            {selected.id === latest?.id && <ImproveBar version={selected} running={running} onDone={refresh} />}
+            {selected.id === latest?.id && <ImproveBar projectId={project.id} version={selected} running={running} onDone={refresh} />}
             {selected.id === latest?.id && (
               <ApprovalPanel version={selected} approvals={data!.approvals} running={running} onDone={refresh} clientName={project.clientName} />
             )}
@@ -714,21 +715,26 @@ function Comments({
 }
 
 /** "שפר עם ChatGPT / Claude": מודל אחד עובר על כל התסריט כבמאי ומחזיר גרסה משופרת. הערה אופציונלית מכוונת אותו. */
-function ImproveBar({ version, running, onDone }: { version: ScriptVersion; running: boolean; onDone: () => Promise<void> | void }) {
+function ImproveBar({ projectId, version, running, onDone }: { projectId: string; version: ScriptVersion; running: boolean; onDone: () => Promise<void> | void }) {
   const act = useAction();
   const [note, setNote] = useState('');
+  // ההנחיה האחרונה שנשלחה לשיפור (נשמרת בשרת עם המשימה) — כדי שלא תיעלם אחרי השליחה
+  const jobs = useApi<Job[]>(isCloud() ? null : `/api/projects/${projectId}/jobs`, { pollMs: running ? 4000 : 0 });
+  const last = (jobs.data ?? []).find((j) => j.type === 'script.revise' && j.payload.improveBy && String(j.payload.feedback ?? '').trim());
+  const [showAll, setShowAll] = useState(false);
   const go = async (by: 'openai' | 'claude') => {
     const r = await act.run(() => api.post(`/api/scripts/${version.id}/improve`, { by, note }));
     if (r) {
       setNote('');
-      await onDone();
+      await Promise.all([onDone(), jobs.reload()]);
     }
   };
   return (
     <section className="card stack">
-      <div className="row gap-s">
-        <input
+      <div className="row gap-s improve-row">
+        <textarea
           className="grow"
+          rows={note.length > 90 ? 4 : 2}
           placeholder="שיפור כללי של כל התסריט — אפשר לכוון (למשל: הוק חזק יותר, ניסוח טבעי יותר)"
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -740,6 +746,24 @@ function ImproveBar({ version, running, onDone }: { version: ScriptVersion; runn
           שפר עם Claude
         </button>
       </div>
+      {last && (
+        <div className="last-note small">
+          <div className="row between wrap gap-s">
+            <span className="muted">
+              ההנחיה האחרונה · {last.payload.improveBy === 'openai' ? 'ChatGPT' : 'Claude'} · {fmtDateTime(last.createdAt)}
+            </span>
+            <span className="row gap-s">
+              <button className="btn-link small" onClick={() => setShowAll((x) => !x)}>
+                {showAll ? 'הצג פחות' : 'הצג הכול'}
+              </button>
+              <button className="btn btn-sm" onClick={() => setNote(String(last.payload.feedback))} title="מעתיק את ההנחיה לתיבה — אפשר לערוך ולשלוח שוב">
+                ↺ השתמש שוב
+              </button>
+            </span>
+          </div>
+          <div className={showAll ? 'last-note-text' : 'last-note-text clamp-2'}>{String(last.payload.feedback)}</div>
+        </div>
+      )}
       <InlineError error={act.error} onClose={act.clearError} />
     </section>
   );

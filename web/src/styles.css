@@ -625,3 +625,9 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .row-link:hover td { background: var(--surface-2); }
 .row-link.row-current:hover td { background: var(--violet-bg); filter: brightness(1.08); }
 .row-link:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* ההנחיה האחרונה לשיפור תסריט */
+.improve-row { align-items: flex-start; }
+.improve-row textarea { resize: vertical; min-height: 44px; }
+.last-note { border-top: 1px solid var(--border); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.last-note-text { white-space: pre-wrap; color: var(--text-2); }
