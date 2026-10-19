@@ -205,6 +205,13 @@ function TimingSummary({ content, language, target }: { content: ScriptContent; 
   );
 }
 
+function mostlyHebrew(c: ScriptContent) {
+  const text = c.scenes.map((s) => `${s.narration} ${s.onScreenText}`).join(' ');
+  const he = (text.match(/[֐-׿]/g) ?? []).length;
+  const en = (text.match(/[A-Za-z]/g) ?? []).length;
+  return he >= en;
+}
+
 function VersionView({
   version,
   isLatest,
@@ -219,8 +226,8 @@ function VersionView({
   onEdit: () => void;
 }) {
   const timing = computeTiming(version.content, language, target);
-  // תרגום לתצוגה בלבד: עברית ↔ אנגלית לפי שפת התסריט; ה-Word ללקוח תמיד במקור
-  const toLang: 'he' | 'en' = /^he|עבר/i.test(language.trim()) ? 'en' : 'he';
+  // תרגום לתצוגה בלבד: עברית ↔ אנגלית לפי השפה שבה התסריט באמת כתוב (לא לפי הבריף — שם כתוב לפעמים "עברית" לתסריט באנגלית)
+  const toLang: 'he' | 'en' = mostlyHebrew(version.content) ? 'en' : 'he';
   const [translated, setTranslated] = useState<ScriptContent | null>(null);
   const tr = useAction();
   useEffect(() => setTranslated(null), [version.id]);
