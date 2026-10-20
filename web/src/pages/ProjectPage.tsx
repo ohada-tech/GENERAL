@@ -400,29 +400,36 @@ function useStickyBar(head: React.RefObject<HTMLDivElement | null>, ready: boole
     ro.observe(bar);
     return () => ro.disconnect();
   }, []);
+  // חישוב ישיר בכל גלילה (לא IntersectionObserver — הוא מתעכב אחרי מעבר למצב עריכה ועלול לפספס)
   useEffect(() => {
-    const el = head.current;
-    if (!ready || !el) return;
-    const io = new IntersectionObserver(([e]) => setOn(!e.isIntersecting && e.boundingClientRect.top < top), {
-      rootMargin: `-${top}px 0px 0px 0px`,
-    });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [head, ready, top]);
-  // רכיבים דביקים אחרים (רשימת הגרסאות) יורדים מתחת לפס כשהוא מוצג
-  useEffect(() => {
-    const set = () => {
-      const h = on ? document.querySelector<HTMLElement>('.proj-sticky')?.offsetHeight ?? 0 : 0;
-      document.documentElement.style.setProperty('--sticky-bar-h', `${h}px`);
+    if (!ready) return;
+    const check = () => {
+      const el = head.current;
+      if (el) setOn(el.getBoundingClientRect().bottom < top);
     };
+    check();
+    window.addEventListener('scroll', check, { passive: true });
+    window.addEventListener('resize', check);
+    return () => {
+      window.removeEventListener('scroll', check);
+      window.removeEventListener('resize', check);
+    };
+  }, [head, ready, top]);
+  // רכיבים דביקים אחרים (כותרת הגרסה, כפתורי השמירה, רשימת הגרסאות) יורדים מתחת לפס כשהוא מוצג.
+  // הגובה נמדד כל הזמן: הפס יכול לגדול אחרי שהופיע (פונטים, שם ארוך שנשבר, טיימר שהתחיל)
+  useEffect(() => {
+    const el = document.querySelector<HTMLElement>('.proj-sticky');
+    const set = () => document.documentElement.style.setProperty('--sticky-bar-h', `${on && el ? el.offsetHeight : 0}px`);
     set();
-    // גובה הפס משתנה כשמשנים את גודל החלון (מצב קומפקטי)
+    const ro = el ? new ResizeObserver(set) : null;
+    if (el) ro!.observe(el);
     window.addEventListener('resize', set);
     return () => {
+      ro?.disconnect();
       window.removeEventListener('resize', set);
       document.documentElement.style.removeProperty('--sticky-bar-h');
     };
-  }, [on]);
+  }, [on, ready]);
   return { on, top };
 }
 
