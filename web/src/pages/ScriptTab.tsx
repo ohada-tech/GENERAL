@@ -306,7 +306,7 @@ function VersionView({
   const dir = translated ? (toLang === 'he' ? 'rtl' : 'ltr') : undefined;
   return (
     <section className="card">
-      <div className="row between">
+      <div className="row between version-head">
         <div>
           <h2>
             v{version.label} · {c.title || 'ללא כותרת'}{' '}

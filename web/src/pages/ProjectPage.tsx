@@ -391,7 +391,10 @@ function useStickyBar(head: React.RefObject<HTMLDivElement | null>, ready: boole
   useEffect(() => {
     const bar = document.querySelector<HTMLElement>('.topbar');
     if (!bar) return;
-    const measure = () => setTop(bar.offsetHeight);
+    const measure = () => {
+      setTop(bar.offsetHeight);
+      document.documentElement.style.setProperty('--topbar-h', `${bar.offsetHeight}px`);
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(bar);

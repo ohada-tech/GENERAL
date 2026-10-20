@@ -761,3 +761,17 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .deleted-versions { border-top: 1px solid var(--border); padding-top: 8px; }
 .deleted-versions summary { cursor: pointer; }
 .deleted-versions ul { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+
+/* כותרת הגרסה וכפתוריה (תרגם, PDF, Word, סופי, מחק, ערוך) נשארת למעלה בזמן גלילה בתסריט */
+.version-head {
+  position: sticky; z-index: 6;
+  top: calc(var(--topbar-h, 60px) + var(--sticky-bar-h, 0px));
+  background: var(--surface);
+  margin: -8px -8px 8px; padding: 8px; border-radius: var(--r-md);
+  transition: top 0.28s var(--ease);
+  flex-wrap: wrap; gap: 10px;
+}
+.version-head::after { content: ''; position: absolute; inset-inline: 8px; bottom: 0; border-bottom: 1px solid var(--border); }
+@media (max-width: 640px) { .version-head { position: static; } }
+.version-head > .row { flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
+.version-head > div:first-child { min-width: 0; }
