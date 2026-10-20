@@ -303,7 +303,8 @@ function VersionView({
     if (r) setTranslated(r.content);
   };
   const c = translated ?? version.content;
-  const dir = translated ? (toLang === 'he' ? 'rtl' : 'ltr') : undefined;
+  // כיוון לפי השפה של מה שמוצג (גם אחרי תרגום)
+  const ltr = !mostlyHebrew(c);
   return (
     <section className="card">
       <div className="row between version-head">
@@ -367,35 +368,37 @@ function VersionView({
       <InlineError error={fin.error} onClose={fin.clearError} />
       <InlineError error={del.error} onClose={del.clearError} />
       {translated && <div className="notice small">מוצג תרגום ל{toLang === 'he' ? 'עברית' : 'אנגלית'} · הכפתורים Word ו-PDF מורידים עכשיו את התרגום · "↩ הצג מקור" מחזיר למקור</div>}
-      {c.logline && <p className="logline" dir={dir}>{c.logline}</p>}
+      {c.logline && <p className="logline" dir={ltr ? 'ltr' : 'rtl'}>{c.logline}</p>}
       <TimingSummary content={version.content} language={language} target={target} />
-      <table className="scenes-table">
+      {/* תסריט באנגלית: משמאל לימין; בעברית: מימין לשמאל. בשניהם: קריינות, טקסט על המסך, ויזואל, ואז השאר */}
+      <table className={`scenes-table ${ltr ? 'scenes-ltr' : ''}`} dir={ltr ? 'ltr' : 'rtl'}>
         <thead>
           <tr>
-            <th>#</th>
-            <th>תפקיד</th>
-            <th>קריינות</th>
-            <th>טקסט על המסך</th>
-            <th>פעולה חזותית</th>
-            <th>משך</th>
-            <th>הערות</th>
+            {(ltr ? ['Narration', 'On-screen text', 'Visual', 'Duration', 'Notes'] : ['קריינות', 'טקסט על המסך', 'מה רואים', 'משך', 'הערות']).map((h) => (
+              <th key={h}>{h}</th>
+            ))}
           </tr>
         </thead>
         <tbody>
           {c.scenes.map((s, i) => (
             <tr key={s.id}>
-              <td>{i + 1}</td>
-              <td>
-                <Tag>{STORY_ROLE_LABELS[s.storyRole] ?? s.storyRole}</Tag>
+              <td className="narration">
+                <div className="scene-tag">
+                  <b>{i + 1}</b> <Tag>{STORY_ROLE_LABELS[s.storyRole] ?? s.storyRole}</Tag>
+                </div>
+                {s.narration}
               </td>
-              <td className="narration" dir={dir}>{s.narration}</td>
-              <td dir={dir}>{s.onScreenText}</td>
-              <td dir={dir}>{s.visualAction}</td>
+              <td>{s.onScreenText}</td>
+              <td>{s.visualAction}</td>
               <td className={timing.scenes[i]?.tooDense ? 'warn-text' : ''}>
-                {s.estDurationSec}ש׳
-                <div className="small muted">הקראה ~{timing.scenes[i]?.narrationSec}ש׳</div>
+                {s.estDurationSec}
+                {ltr ? 's' : 'ש׳'}
+                <div className="small muted">
+                  {ltr ? 'read' : 'הקראה'} ~{timing.scenes[i]?.narrationSec}
+                  {ltr ? 's' : 'ש׳'}
+                </div>
               </td>
-              <td className="small" dir={dir}>{s.notes}</td>
+              <td className="small">{s.notes}</td>
             </tr>
           ))}
         </tbody>
@@ -424,6 +427,8 @@ function ScriptEditor({
   onSaved: () => Promise<void>;
 }) {
   const [c, setC] = useState<ScriptContent>(initial);
+  // כיוון השדות לפי שפת התסריט (אנגלית: משמאל לימין)
+  const ltr = !mostlyHebrew(c);
   const [note, setNote] = useState('');
   const act = useAction();
   const setScene = (i: number, patch: Partial<ScriptContent['scenes'][number]>) =>
@@ -527,17 +532,18 @@ function ScriptEditor({
               </button>
             </div>
           </div>
-          <div className="grid-2">
-            <Field label="קריינות">
+          {/* אותו סדר כמו בתצוגה: קריינות, טקסט על המסך, ויזואל, הערות — ובכיוון של שפת התסריט */}
+          <div className={`grid-2 ${ltr ? 'scene-fields-ltr' : ''}`} dir={ltr ? 'ltr' : 'rtl'}>
+            <Field label={ltr ? 'Narration' : 'קריינות'}>
               <textarea rows={3} value={s.narration} onChange={(e) => setScene(i, { narration: e.target.value })} />
             </Field>
-            <Field label="פעולה חזותית">
+            <Field label={ltr ? 'On-screen text' : 'טקסט על המסך'}>
+              <textarea rows={3} value={s.onScreenText} onChange={(e) => setScene(i, { onScreenText: e.target.value })} />
+            </Field>
+            <Field label={ltr ? 'Visual' : 'מה רואים'}>
               <textarea rows={3} value={s.visualAction} onChange={(e) => setScene(i, { visualAction: e.target.value })} />
             </Field>
-            <Field label="טקסט על המסך">
-              <input value={s.onScreenText} onChange={(e) => setScene(i, { onScreenText: e.target.value })} />
-            </Field>
-            <Field label="הערות">
+            <Field label={ltr ? 'Notes' : 'הערות'}>
               <input value={s.notes} onChange={(e) => setScene(i, { notes: e.target.value })} />
             </Field>
           </div>
@@ -750,9 +756,9 @@ function SceneCell({ s, fields }: { s: ScriptContent['scenes'][number]; fields: 
   const hl = (f: string) => (fields.includes(f) ? 'diff-hl' : '');
   return (
     <div className="small">
-      <div className={hl('narration')}>🎙 {s.narration}</div>
-      <div className={hl('visualAction')}>🎬 {s.visualAction}</div>
-      {s.onScreenText && <div className={hl('onScreenText')}>🅣 {s.onScreenText}</div>}
+      <div className={hl('narration')} dir="auto">🎙 {s.narration}</div>
+      {s.onScreenText && <div className={hl('onScreenText')} dir="auto">🅣 {s.onScreenText}</div>}
+      <div className={hl('visualAction')} dir="auto">🎬 {s.visualAction}</div>
       <div className={`muted ${hl('estDurationSec')}`}>{s.estDurationSec}ש׳</div>
     </div>
   );
