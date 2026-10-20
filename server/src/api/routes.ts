@@ -15,6 +15,7 @@ import {
   listEvents,
   listJobs,
   listRefsForStoryboard,
+  listDeletedScripts,
   listScripts,
   listShots,
   listStoryboards,
@@ -99,7 +100,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     const versions = listScripts(ctx.db, id);
     const approvals = listApprovals(ctx.db, id).filter((a) => a.subjectType === 'script_version');
     const comments = Object.fromEntries(versions.map((v) => [v.id, listComments(ctx.db, 'script_version', v.id)]));
-    return { versions, approvals, comments };
+    return { versions, approvals, comments, deleted: listDeletedScripts(ctx.db, id).map((v) => ({ id: v.id, label: v.label, createdAt: v.createdAt, changeNote: v.changeNote })) };
   });
   app.post('/api/projects/:id/scripts/generate', async (req) => cmd.requestScriptGeneration(ctx, (req.params as any).id));
   app.post('/api/projects/:id/scripts', async (req, reply) => {
@@ -118,6 +119,8 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/api/scripts/:vid/revise', async (req) =>
     cmd.requestScriptRevision(ctx, (req.params as any).vid, ((req.body ?? {}) as Body).feedback),
   );
+  app.delete('/api/scripts/:vid', async (req) => cmd.deleteScriptVersion(ctx, (req.params as any).vid));
+  app.post('/api/scripts/:vid/restore', async (req) => cmd.restoreScriptVersion(ctx, (req.params as any).vid));
   app.post('/api/scripts/:vid/choose-final', async (req) => cmd.chooseFinalScript(ctx, (req.params as any).vid));
   app.post('/api/scripts/:vid/approve-internal', async (req) =>
     cmd.approveScriptInternal(ctx, (req.params as any).vid, ((req.body ?? {}) as Body).note ?? ''),

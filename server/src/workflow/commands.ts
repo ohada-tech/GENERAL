@@ -350,6 +350,31 @@ export function chooseFinalScript(ctx: Ctx, versionId: string) {
   });
 }
 
+/** מחיקת גרסה = הסתרה מהרשימה (אפשר לשחזר). אסור: גרסה שהלקוח אישר, גרסה שיש עליה סטורי בורד, או הגרסה האחרונה שנשארה. */
+export function deleteScriptVersion(ctx: Ctx, versionId: string) {
+  const v = getScript(ctx.db, versionId);
+  if (!v) throw new NotFoundError('גרסת תסריט');
+  if (v.status === 'client_approved') throw new GateError('אי אפשר למחוק גרסה שהלקוח אישר');
+  const sb = ctx.db.prepare('SELECT 1 FROM storyboards WHERE script_version_id = ? LIMIT 1').get(v.id);
+  if (sb) throw new GateError('אי אפשר למחוק גרסה שנבנה עליה סטורי בורד');
+  if (listScripts(ctx.db, v.projectId).length <= 1) throw new GateError('זו הגרסה היחידה — אי אפשר למחוק אותה');
+  return tx(ctx.db, () => {
+    ctx.db.prepare('UPDATE script_versions SET deleted_at = ? WHERE id = ?').run(ts(ctx), v.id);
+    emit(ctx, { projectId: v.projectId, type: 'script.version_deleted', actor: owner(ctx), message: `נמחקה גרסת תסריט v${v.label}`, payload: { scriptVersionId: v.id, label: v.label } });
+    return { deleted: v.id };
+  });
+}
+
+export function restoreScriptVersion(ctx: Ctx, versionId: string) {
+  const v = getScript(ctx.db, versionId);
+  if (!v) throw new NotFoundError('גרסת תסריט');
+  return tx(ctx.db, () => {
+    ctx.db.prepare('UPDATE script_versions SET deleted_at = NULL WHERE id = ?').run(v.id);
+    emit(ctx, { projectId: v.projectId, type: 'script.version_restored', actor: owner(ctx), message: `שוחזרה גרסת תסריט v${v.label}`, payload: { scriptVersionId: v.id, label: v.label } });
+    return getScript(ctx.db, v.id)!;
+  });
+}
+
 export function recordClientApproval(ctx: Ctx, versionId: string, input: { approvedBy: string; note?: string }) {
   const v = mustLatestScript(ctx, versionId);
   if (v.status !== 'internal_approved') {

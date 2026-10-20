@@ -757,3 +757,7 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 
 .progress-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; max-width: 80ch; }
 .progress-line-form { flex: 1 1 320px; }
+
+.deleted-versions { border-top: 1px solid var(--border); padding-top: 8px; }
+.deleted-versions summary { cursor: pointer; }
+.deleted-versions ul { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }

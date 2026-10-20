@@ -204,14 +204,22 @@ export const getProject = (db: DB, id: string) => {
 export const listProjects = (db: DB) =>
   (db.prepare('SELECT * FROM projects ORDER BY updated_at DESC').all() as Row[]).map(mapProject);
 
+/** גרסאות שלא נמחקו (מה שמוצג ומשמש כ"אחרונה") */
 export const listScripts = (db: DB, projectId: string) =>
-  (db.prepare('SELECT * FROM script_versions WHERE project_id = ? ORDER BY version DESC').all(projectId) as Row[]).map(
+  (db.prepare('SELECT * FROM script_versions WHERE project_id = ? AND deleted_at IS NULL ORDER BY version DESC').all(projectId) as Row[]).map(
+    mapScript,
+  );
+
+/** גרסאות שנמחקו (מוסתרות; אפשר לשחזר) */
+export const listDeletedScripts = (db: DB, projectId: string) =>
+  (db.prepare('SELECT * FROM script_versions WHERE project_id = ? AND deleted_at IS NOT NULL ORDER BY version DESC').all(projectId) as Row[]).map(
     mapScript,
   );
 
 /** מספרים לגרסה חדשה: מספר רץ + major.minor לפי גודל השינוי מול הגרסה שעליה עבדת */
 export function nextScriptVersion(db: DB, projectId: string, baseId: string | null, content: ScriptContent) {
-  const all = listScripts(db, projectId);
+  // כולל גרסאות שנמחקו — כדי שמספר גרסה לא יחזור על עצמו
+  const all = listDeletedScripts(db, projectId).concat(listScripts(db, projectId)).sort((a, b) => b.version - a.version);
   const base = baseId ? (all.find((v) => v.id === baseId) ?? null) : null;
   const size = base ? scriptChangeSize(base.content, content) : 'major';
   return { version: (all[0]?.version ?? 0) + 1, ...nextScriptNumbers(all, base, size) };

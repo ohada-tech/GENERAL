@@ -16,7 +16,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ClientFeedbackChanges, ClientFeedbackImport, type FeedbackImport } from '../components/ClientFeedback';
-import { Empty, ErrorBox, Field, InlineError, Loading, ModeTag, StatusBadge, Tag } from '../components/ui';
+import { ConfirmButton, Empty, ErrorBox, Field, InlineError, Loading, ModeTag, StatusBadge, Tag } from '../components/ui';
 import { api, isCloud, useAction, useApi } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
 import type { TabProps } from './ProjectPage';
@@ -25,6 +25,7 @@ interface ScriptsData {
   versions: ScriptVersion[];
   approvals: Approval[];
   comments: Record<string, Comment[]>;
+  deleted?: Array<{ id: string; label: string; createdAt: string; changeNote: string }>;
 }
 
 const SOURCE_LABEL: Record<string, string> = { ai: 'AI', ai_revision: 'תיקון AI', manual: 'ידני', demo: 'DEMO' };
@@ -134,6 +135,7 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
             </li>
           ))}
         </ul>
+        {(data?.deleted?.length ?? 0) > 0 && <DeletedVersions items={data!.deleted!} onDone={refresh} />}
         {versions.length === 0 && (
           <button className="btn btn-sm" onClick={() => setEditing({ title: '', logline: '', scenes: [] })}>
             כתוב תסריט ידנית
@@ -209,6 +211,36 @@ function TimingSummary({ content, language, target }: { content: ScriptContent; 
   );
 }
 
+/** גרסאות שנמחקו — מוסתרות, ואפשר לשחזר */
+function DeletedVersions({ items, onDone }: { items: NonNullable<ScriptsData['deleted']>; onDone: () => Promise<void> | void }) {
+  const act = useAction();
+  return (
+    <details className="deleted-versions">
+      <summary className="small muted">🗑 גרסאות שנמחקו ({items.length})</summary>
+      <ul>
+        {items.map((v) => (
+          <li key={v.id} className="row between gap-s small">
+            <span>
+              v{v.label} <span className="muted">· {fmtDateTime(v.createdAt)}</span>
+            </span>
+            <button
+              className="btn-link small"
+              disabled={act.busy}
+              onClick={async () => {
+                const r = await act.run(() => api.post(`/api/scripts/${v.id}/restore`));
+                if (r) await onDone();
+              }}
+            >
+              שחזר
+            </button>
+          </li>
+        ))}
+      </ul>
+      <InlineError error={act.error} onClose={act.clearError} />
+    </details>
+  );
+}
+
 function mostlyHebrew(c: ScriptContent) {
   const text = c.scenes.map((s) => `${s.narration} ${s.onScreenText}`).join(' ');
   const he = (text.match(/[֐-׿]/g) ?? []).length;
@@ -232,6 +264,7 @@ function VersionView({
   onChanged: () => Promise<void> | void;
 }) {
   const fin = useAction();
+  const del = useAction();
   const isFinal = isLatest && (version.status === 'internal_approved' || version.status === 'client_approved');
   const chooseFinal = async () => {
     const r = await fin.run(() => api.post(`/api/scripts/${version.id}/choose-final`));
@@ -291,6 +324,19 @@ function VersionView({
                 ⭐ בחר כסופי
               </button>
             )}
+            {version.status !== 'client_approved' && (
+              <ConfirmButton
+                className="btn btn-danger-ghost"
+                confirmLabel="למחוק? לחץ שוב"
+                disabled={del.busy}
+                onConfirm={async () => {
+                  const r = await del.run(() => api.del(`/api/scripts/${version.id}`));
+                  if (r) await onChanged();
+                }}
+              >
+                🗑 מחק
+              </ConfirmButton>
+            )}
             <button className="btn" onClick={onEdit} title="בסיום תבחר: לשמור על הגרסה הזו או כגרסה חדשה">
             ✎ ערוך
           </button>
@@ -298,6 +344,7 @@ function VersionView({
       </div>
       <InlineError error={tr.error} onClose={tr.clearError} />
       <InlineError error={fin.error} onClose={fin.clearError} />
+      <InlineError error={del.error} onClose={del.clearError} />
       {translated && <div className="notice small">מוצג תרגום ל{toLang === 'he' ? 'עברית' : 'אנגלית'} · הכפתורים Word ו-PDF מורידים עכשיו את התרגום · "↩ הצג מקור" מחזיר למקור</div>}
       {c.logline && <p className="logline" dir={dir}>{c.logline}</p>}
       <TimingSummary content={version.content} language={language} target={target} />

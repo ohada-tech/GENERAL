@@ -309,4 +309,7 @@ export const MIGRATIONS: string[] = [
     PRIMARY KEY (version_id, lang)
   );
   `,
+  /* v11 — מחיקת גרסת תסריט = הסתרה (ניתן לשחזר; ההיסטוריה וההפניות נשמרות) */ `
+  ALTER TABLE script_versions ADD COLUMN deleted_at TEXT;
+  `,
 ];
