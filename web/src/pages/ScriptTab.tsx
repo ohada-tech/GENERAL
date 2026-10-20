@@ -102,11 +102,7 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
           </button>
         )}
         <InlineError error={gen.error} onClose={gen.clearError} />
-        {running && (
-          <div className="notice">
-            <span className="spinner" /> {scriptStage.detail}
-          </div>
-        )}
+        {running && <RunningNotice projectId={project.id} detail={scriptStage.detail} onDone={refresh} />}
         {scriptStage.status === 'blocked' && (
           <div className="error-box small">
             {scriptStage.detail} <Link to={`/projects/${project.id}/jobs`}>פרטים וניסיון חוזר</Link>
@@ -207,6 +203,31 @@ function TimingSummary({ content, language, target }: { content: ScriptContent; 
         זמן הקראה משוער: {t.narrationSec}ש׳
       </Tag>
       {t.scenes.some((s) => s.tooDense) && <Tag tone="warn">יש סצנות עם קריינות ארוכה מהמשך</Tag>}
+    </div>
+  );
+}
+
+/** "רץ כעת…" + ביטול המשימה (תוצאה של משימה שבוטלה באמצע לא נשמרת) */
+function RunningNotice({ projectId, detail, onDone }: { projectId: string; detail: string; onDone: () => Promise<void> | void }) {
+  const jobs = useApi<Job[]>(isCloud() ? null : `/api/projects/${projectId}/jobs`, { pollMs: 3000 });
+  const act = useAction();
+  const active = (jobs.data ?? []).find((j) => j.type.startsWith('script.') && (j.status === 'queued' || j.status === 'running'));
+  const cancel = async () => {
+    if (!active) return;
+    const r = await act.run(() => api.post(`/api/jobs/${active.id}/cancel`));
+    if (r) await Promise.all([jobs.reload(), onDone()]);
+  };
+  return (
+    <div className="notice row between gap-s">
+      <span>
+        <span className="spinner" /> {detail}
+      </span>
+      {active && (
+        <button className="btn btn-sm btn-danger-ghost" disabled={act.busy} onClick={cancel} title="עוצר את המשימה. מה שכבר נשלח ל-AI לא יישמר כגרסה.">
+          ✕ בטל
+        </button>
+      )}
+      <InlineError error={act.error} onClose={act.clearError} />
     </div>
   );
 }
