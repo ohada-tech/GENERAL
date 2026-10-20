@@ -13,7 +13,7 @@ import {
   type ScriptContent,
   type ScriptVersion,
 } from '@apos/shared';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ClientFeedbackChanges, ClientFeedbackImport, type FeedbackImport } from '../components/ClientFeedback';
 import { ConfirmButton, Empty, ErrorBox, Field, InlineError, Loading, ModeTag, StatusBadge, Tag } from '../components/ui';
@@ -175,7 +175,7 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
               onChanged={refresh}
             />
             {fromClient && <ClientFeedbackChanges imp={fromClient} base={versions.find((v) => v.id === fromClient.baseVersionId)} result={selected} />}
-            {selected.id === latest?.id && <ImproveBar projectId={project.id} version={selected} running={running} onDone={refresh} />}
+            <ImproveBar projectId={project.id} version={selected} isLatest={selected.id === latest?.id} running={running} onDone={refresh} />
             {selected.id === latest?.id && (
               <ApprovalPanel version={selected} approvals={data!.approvals} running={running} onDone={refresh} clientName={project.clientName} />
             )}
@@ -807,17 +807,37 @@ function Comments({
 }
 
 /** "שפר עם ChatGPT / Claude": מודל אחד עובר על כל התסריט כבמאי ומחזיר גרסה משופרת. הערה אופציונלית מכוונת אותו. */
-function ImproveBar({ projectId, version, running, onDone }: { projectId: string; version: ScriptVersion; running: boolean; onDone: () => Promise<void> | void }) {
+function ImproveBar({
+  projectId,
+  version,
+  isLatest,
+  running,
+  onDone,
+}: {
+  projectId: string;
+  version: ScriptVersion;
+  isLatest: boolean;
+  running: boolean;
+  onDone: () => Promise<void> | void;
+}) {
   const act = useAction();
   const [note, setNote] = useState('');
+  // קובץ שמצורף להנחיה (Word / טקסט) — הטקסט שלו נשלח יחד עם ההנחיה
+  const [doc, setDoc] = useState<{ name: string; text: string; truncated: boolean } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const upload = useAction();
+  useEffect(() => {
+    setDoc(null);
+  }, [version.id]);
   // ההנחיה האחרונה שנשלחה לשיפור (נשמרת בשרת עם המשימה) — כדי שלא תיעלם אחרי השליחה
   const jobs = useApi<Job[]>(isCloud() ? null : `/api/projects/${projectId}/jobs`, { pollMs: running ? 4000 : 0 });
   const last = (jobs.data ?? []).find((j) => j.type === 'script.revise' && j.payload.improveBy && String(j.payload.feedback ?? '').trim());
   const [showAll, setShowAll] = useState(false);
   const go = async (by: 'openai' | 'claude') => {
-    const r = await act.run(() => api.post(`/api/scripts/${version.id}/improve`, { by, note }));
+    const r = await act.run(() => api.post(`/api/scripts/${version.id}/improve`, { by, note, doc }));
     if (r) {
       setNote('');
+      setDoc(null);
       await Promise.all([onDone(), jobs.reload()]);
     }
   };
@@ -831,6 +851,26 @@ function ImproveBar({ projectId, version, running, onDone }: { projectId: string
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
+        {!isCloud() && (
+          <>
+            <button className="btn btn-ghost" disabled={upload.busy} onClick={() => fileRef.current?.click()} title="מצרף Word, טקסט או Markdown — הטקסט שלו נשלח עם ההנחיה">
+              📎 צרף קובץ
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".docx,.txt,.md,.markdown,.csv"
+              hidden
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (!f) return;
+                const r = await upload.run(() => api.upload<{ name: string; text: string; truncated: boolean }>('/api/doc-text', f));
+                if (r) setDoc(r);
+              }}
+            />
+          </>
+        )}
         <button className="btn" disabled={act.busy || running} onClick={() => go('openai')} title="ChatGPT עובר על התסריט ומשפר — נוצרת גרסה חדשה">
           ✨ שפר עם ChatGPT
         </button>
@@ -838,6 +878,19 @@ function ImproveBar({ projectId, version, running, onDone }: { projectId: string
           שפר עם Claude
         </button>
       </div>
+      {!isLatest && <div className="small muted">משפר את v{version.label} — תיווצר ממנה גרסה חדשה (הגרסאות האחרות לא משתנות)</div>}
+      {doc && (
+        <div className="row gap-s small attached-doc">
+          <Tag tone="info">📎 {doc.name}</Tag>
+          <span className="muted">
+            {doc.text.length.toLocaleString('he-IL')} תווים{doc.truncated ? ' (נחתך ל-15,000)' : ''} · יישלח עם ההנחיה
+          </span>
+          <button className="btn-link small" onClick={() => setDoc(null)}>
+            הסר
+          </button>
+        </div>
+      )}
+      <InlineError error={upload.error} onClose={upload.clearError} />
       {last && (
         <div className="last-note small">
           <div className="row between wrap gap-s">

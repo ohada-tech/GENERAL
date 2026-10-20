@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import { GateError } from '../context.js';
 import * as dev from '../services/dev-chat.js';
 import * as feedback from '../services/client-feedback.js';
+import { extractDocText } from '../services/doc-text.js';
 import { scriptDocx } from '../services/script-docx.js';
 import { scriptHtml } from '../services/script-html.js';
 import * as branding from '../services/branding.js';
@@ -97,6 +98,15 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
     const logo = branding.genesisLogo(ctx);
     if (!logo) throw new NotFoundError('לוגו');
     return reply.header('content-type', logo.type === 'png' ? 'image/png' : 'image/jpeg').header('cache-control', 'no-cache').send(logo.data);
+  });
+
+  // קובץ שמצרפים להנחיה (שיפור תסריט) — מחזיר את הטקסט שלו
+  app.post('/api/doc-text', async (req) => {
+    const file = await req.file();
+    if (!file) throw new GateError('לא נשלח קובץ', 400);
+    const data = await file.toBuffer();
+    if (data.length > 30 * 1024 * 1024) throw new GateError('הקובץ גדול מדי (עד 30MB)', 400);
+    return extractDocText(file.filename, data);
   });
 
   // ייבוא הערות לקוח: Google Doc / Word / טקסט ← רשימת הערות לבדיקה ← תיקון התסריט

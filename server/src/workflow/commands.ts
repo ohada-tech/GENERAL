@@ -217,7 +217,7 @@ export function requestScriptRevision(ctx: Ctx, versionId: string, feedback: str
 }
 
 /** "שפר עם ChatGPT/Claude": מודל אחד עובר על הגרסה ומחזיר גרסה משופרת (הערה אופציונלית מכוונת אותו) */
-export function requestScriptImprove(ctx: Ctx, versionId: string, by: string, note = '') {
+export function requestScriptImprove(ctx: Ctx, versionId: string, by: string, note = '', doc?: { name?: string; text?: string }) {
   const v = getScript(ctx.db, versionId);
   if (!v) throw new NotFoundError('גרסת תסריט');
   requireBriefComplete(ctx, v.projectId);
@@ -227,7 +227,12 @@ export function requestScriptImprove(ctx: Ctx, versionId: string, by: string, no
     return enqueueJob(ctx, {
       projectId: v.projectId,
       type: 'script.revise',
-      payload: { baseVersionId: versionId, feedback: note.trim(), improveBy: by },
+      payload: {
+        baseVersionId: versionId,
+        feedback: note.trim(),
+        improveBy: by,
+        ...(doc?.text?.trim() ? { docName: String(doc.name ?? 'מסמך').slice(0, 200), docText: doc.text.slice(0, 15_000) } : {}),
+      },
       idempotencyKey: `script.improve:${versionId}:${uid()}`,
       actor: owner(ctx),
     });

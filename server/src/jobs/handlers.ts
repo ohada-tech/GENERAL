@@ -161,7 +161,12 @@ const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string; t
       const reviewer = ctx.providers.text[improveBy] as unknown as JsonCapableProvider | undefined;
       if (!reviewer?.json) throw new ProviderError('המודל לא זמין לשיפור', false, 'unknown_provider');
       const targets = feedback ? targetScenes(base.content, feedback) : [];
-      const draft = await improveScript(reviewer, pc, base.content, feedback);
+      // מסמך מצורף נכנס להנחיה, אבל לא קובע אילו סצנות נעולות (רק ההנחיה עצמה)
+      const docText = typeof job.payload.docText === 'string' ? job.payload.docText : '';
+      const withDoc = docText
+        ? `${feedback || 'שפר את התסריט לפי המסמך המצורף.'}\n\nמסמך מצורף (${String(job.payload.docName ?? 'מסמך')}) — חומר רקע להנחיה:\n${docText}`
+        : feedback;
+      const draft = await improveScript(reviewer, pc, base.content, withDoc);
       if (targets.length) draft.data = lockToTargets(base.content, draft.data, targets);
       return { draft, isDemo: false, baseId, feedback, targets, improveBy };
     }
