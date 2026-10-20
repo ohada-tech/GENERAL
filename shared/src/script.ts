@@ -163,3 +163,22 @@ export function nextScriptNumbers(
   const minor = existing.filter((v) => v.major === base.major).reduce((m, v) => Math.max(m, v.minor), 0) + 1;
   return { major: base.major, minor };
 }
+
+/** תסריט שכתוב בעיקר באנגלית (לפי הקריינות והטקסט על המסך) — קובע כיוון ושפת התוויות בקבצים ללקוח */
+export function isEnglishScript(content: ScriptContent): boolean {
+  const text = content.scenes.map((s) => `${s.narration} ${s.onScreenText}`).join(' ');
+  const he = (text.match(/[֐-׿]/g) ?? []).length;
+  const en = (text.match(/[A-Za-z]/g) ?? []).length;
+  return en > he;
+}
+
+export const STORY_ROLE_LABELS_EN: Record<string, string> = {
+  hook: 'Hook',
+  problem: 'Problem',
+  solution: 'Solution',
+  benefit: 'Benefit',
+  proof: 'Proof',
+  cta: 'Call to action',
+  transition: 'Transition',
+  other: 'Other',
+};

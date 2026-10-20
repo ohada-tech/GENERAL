@@ -4,7 +4,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { computeTiming, STORY_ROLE_LABELS, type ScriptVersion } from '@apos/shared';
+import { computeTiming, isEnglishScript, STORY_ROLE_LABELS, STORY_ROLE_LABELS_EN, type ScriptVersion } from '@apos/shared';
 import { REPO_ROOT } from '../config.js';
 import type { BrandImage } from './branding.js';
 
@@ -17,7 +17,7 @@ function studioLogo() {
   return fs.existsSync(p) ? dataUri({ type: 'png', data: fs.readFileSync(p) }) : null;
 }
 
-const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jerusalem' });
+const fmtDate = (iso: string, en = false) => new Date(iso).toLocaleDateString(en ? 'en-GB' : 'he-IL', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jerusalem' });
 
 export function scriptHtml(input: {
   version: ScriptVersion;
@@ -34,7 +34,15 @@ export function scriptHtml(input: {
   const timing = computeTiming(c, input.language, input.targetSec);
   const total = timing.totalSec || timing.narrationSec;
   const genesis = input.brand === 'genesis';
-  const docTitle = `${input.projectName} - תסריט v${v.label}`;
+  // תסריט באנגלית: הדף כולו משמאל לימין עם תוויות באנגלית (מה שהלקוח רואה ושומר כ-PDF)
+  const en = isEnglishScript(c);
+  const L = en
+    ? { project: 'Project', client: 'Client', version: 'Version', date: 'Date', length: 'Est. length', seconds: 'seconds', head: ['#', 'Narration', 'On-screen text', 'Visual', 'Sec'], approval: 'Client notes &amp; approval', notes: 'Notes', name: 'Name', approved: 'Approved', changes: 'Changes needed', script: 'Script' }
+    : { project: 'פרויקט', client: 'לקוח', version: 'גרסה', date: 'תאריך', length: 'אורך משוער', seconds: 'שניות', head: ['#', 'קריינות', 'טקסט על המסך', 'מה רואים', 'שניות'], approval: 'הערות ואישור הלקוח', notes: 'הערות', name: 'שם', approved: 'מאושר', changes: 'נדרשים שינויים', script: 'תסריט' };
+  const roles = en ? STORY_ROLE_LABELS_EN : STORY_ROLE_LABELS;
+  const showProject = !en || !/[\u0590-\u05FF]/.test(input.projectName);
+  const dirAttr = en ? 'ltr' : 'rtl';
+  const docTitle = `${input.projectName} - ${L.script} v${v.label}`;
 
   const brandBlock = genesis
     ? `<div class="band">${input.genesisLogo ? `<img src="${dataUri(input.genesisLogo)}" alt="Genesis">` : '<span class="band-word">GENESIS</span>'}</div>
@@ -44,7 +52,7 @@ export function scriptHtml(input: {
   const rows = c.scenes
     .map(
       (s, i) => `<tr>
-        <td class="n"><b>${i + 1}</b><span>${esc(STORY_ROLE_LABELS[s.storyRole] ?? '')}</span></td>
+        <td class="n"><b>${i + 1}</b><span>${esc(roles[s.storyRole] ?? '')}</span></td>
         <td dir="auto" class="vo">${lines(s.narration)}</td>
         <td dir="auto" class="ost">${lines(s.onScreenText)}</td>
         <td dir="auto" class="vis">${lines(s.visualAction)}</td>
@@ -54,7 +62,7 @@ export function scriptHtml(input: {
     .join('');
 
   return `<!doctype html>
-<html lang="he" dir="rtl">
+<html lang="${en ? 'en' : 'he'}" dir="${dirAttr}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -103,18 +111,18 @@ export function scriptHtml(input: {
     ${brandBlock}
     <h1 dir="auto">${esc(c.title || input.projectName)}</h1>
     ${c.logline ? `<p class="logline" dir="auto">${esc(c.logline)}</p>` : ''}
-    <div class="meta"><b>פרויקט:</b> <bdi dir="rtl">${esc(input.projectName)}</bdi>${input.clientName ? ` &nbsp;·&nbsp; <b>לקוח:</b> <bdi dir="rtl">${esc(input.clientName)}</bdi>` : ''}</div>
-    <div class="meta"><b>גרסה:</b> v${esc(v.label)} &nbsp;·&nbsp; <b>תאריך:</b> ${fmtDate(v.createdAt)}${total ? ` &nbsp;·&nbsp; <b>אורך משוער:</b> ${Math.round(total)} שניות` : ''}</div>
+    <div class="meta">${showProject ? `<b>${L.project}:</b> <bdi dir="auto">${esc(input.projectName)}</bdi>` : ''}${input.clientName ? `${showProject ? ' &nbsp;·&nbsp; ' : ''}<b>${L.client}:</b> <bdi dir="auto">${esc(input.clientName)}</bdi>` : ''}</div>
+    <div class="meta"><b>${L.version}:</b> v${esc(v.label)} &nbsp;·&nbsp; <b>${L.date}:</b> ${fmtDate(v.createdAt, en)}${total ? ` &nbsp;·&nbsp; <b>${L.length}:</b> ${Math.round(total)} ${L.seconds}` : ''}</div>
     <table>
       <colgroup><col style="width:8%"><col style="width:36%"><col style="width:20%"><col style="width:28%"><col style="width:8%"></colgroup>
-      <thead><tr><th>#</th><th>קריינות</th><th>טקסט על המסך</th><th>מה רואים</th><th>שניות</th></tr></thead>
+      <thead><tr>${L.head.map((h) => `<th>${h}</th>`).join('')}</tr></thead>
       <tbody>${rows}</tbody>
     </table>
     <section class="approve">
-      <h2>הערות ואישור הלקוח</h2>
-      <div class="fill">הערות:</div>
+      <h2>${L.approval}</h2>
+      <div class="fill">${L.notes}:</div>
       <div class="fill"></div>
-      <div class="sign"><span>שם: ____________________</span><span>תאריך: ____________</span><b>☐ מאושר &nbsp; ☐ נדרשים שינויים</b></div>
+      <div class="sign"><span>${L.name}: ____________________</span><span>${L.date}: ____________</span><b>☐ ${L.approved} &nbsp; ☐ ${L.changes}</b></div>
     </section>
   </main>
 </body>

@@ -15,7 +15,7 @@ import { scriptHtml } from '../services/script-html.js';
 import * as branding from '../services/branding.js';
 import { lastProgressUpdate, postProgressUpdate } from '../services/progress.js';
 import { translateScript, type TranslateLang } from '../services/translate.js';
-import { briefSchema, openDiscoveryQuestions } from '@apos/shared';
+import { briefSchema, isEnglishScript, openDiscoveryQuestions } from '@apos/shared';
 import { briefToText } from '../providers/prompts.js';
 import { lessonsFor } from '../services/learning.js';
 import { ProviderError } from '../providers/types.js';
@@ -45,7 +45,7 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
       genesisLogo: p.settings.brand === 'genesis' ? branding.genesisLogo(ctx) : null,
       ownerName: 'Ohad Alfi', // השם בקטן מתחת ללוגו של Genesis (לא OWNER_NAME, שמשמש לאישורים)
     });
-    const name = `${p.name} - תסריט v${v.label}${lang ? LANG_SUFFIX[lang] : ''}.docx`.replace(/[\\/:*?"<>|]+/g, ' ');
+    const name = `${p.name} - ${isEnglishScript(v.content) ? 'Script' : 'תסריט'} v${v.label}${lang ? LANG_SUFFIX[lang] : ''}.docx`.replace(/[\\/:*?"<>|]+/g, ' ');
     reply
       .header('content-type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
       .header('content-disposition', `attachment; filename="script-v${v.label}.docx"; filename*=UTF-8''${encodeURIComponent(name)}`);

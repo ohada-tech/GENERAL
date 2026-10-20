@@ -220,7 +220,7 @@ export function parseDocx(buf: Buffer): Parsed {
 const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 const FIELD_LABEL = { narration: 'קריינות', onScreenText: 'טקסט על המסך', visualAction: 'מה רואים' } as const;
 /** שורות של התבנית שלנו (קווים למילוי, חתימה) — לא הערות */
-const TEMPLATE_LINE = /^(הערות:?\s*_*|_+|שם:\s*_+.*|.*☐\s*מאושר.*)$/;
+const TEMPLATE_LINE = /^(הערות:?\s*_*|Notes:?\s*_*|_+|שם:\s*_+.*|Name:\s*_+.*|.*☐\s*(מאושר|Approved).*)$/;
 
 /** סצנות שההערה מכוונת אליהן: ציטוט/שם סצנה (כמו בתיקון ממוקד), או מספר בתחילת ההערה ("7 — לחדד", "7.5 לחדד" = משך של סצנה) */
 export function scenesFor(base: ScriptContent, quote: string, text: string): number[] {
@@ -269,7 +269,7 @@ export function itemsFromDocx(p: Parsed, base: ScriptContent): FeedbackItem[] {
   }
 
   // עריכה ישירה בטבלת התסריט שהמערכת ייצאה: # | קריינות | טקסט על המסך | מה רואים | שניות
-  const scriptTable = p.tables.find((t) => t[0]?.[1]?.includes('קריינות'));
+  const scriptTable = p.tables.find((t) => /קריינות|Narration/.test(t[0]?.[1] ?? ''));
   const latin = isLatinScript(base);
   const seen = new Set<number>();
   for (const row of scriptTable?.slice(1) ?? []) {
@@ -308,10 +308,10 @@ export function itemsFromDocx(p: Parsed, base: ScriptContent): FeedbackItem[] {
   }
 
   // טקסט חופשי: מה שנכתב בחלק "הערות ואישור הלקוח"; מסמך שאינו בתבנית שלנו — כל הפסקאות
-  const notesAt = p.paragraphs.findIndex((t) => t.startsWith('הערות ואישור הלקוח'));
+  const notesAt = p.paragraphs.findIndex((t) => t.startsWith('הערות ואישור הלקוח') || t.startsWith('Client notes & approval'));
   const free = notesAt >= 0 ? p.paragraphs.slice(notesAt + 1) : scriptTable || out.length ? [] : p.paragraphs;
   for (const raw of free) {
-    const t = raw.replace(/^הערות:\s*/, '').trim();
+    const t = raw.replace(/^(הערות|Notes):\s*/, '').trim();
     if (t && !TEMPLATE_LINE.test(t)) out.push(item('note', '', '', t, base));
   }
   return out;
@@ -380,7 +380,7 @@ export function getFeedbackImport(ctx: Ctx, id: string) {
 
 /** הגרסה שהמסמך נכתב עליה ("גרסה: v4.2" בקובץ שייצאנו), אחרת האחרונה */
 function pickBase(versions: ScriptVersion[], paragraphs: string[]) {
-  const label = paragraphs.join('\n').match(/גרסה:\s*v?(\d+(?:\.\d+)?)/)?.[1] ?? null;
+  const label = paragraphs.join('\n').match(/(?:גרסה|Version):\s*v?(\d+(?:\.\d+)?)/)?.[1] ?? null;
   return { base: (label && versions.find((v) => v.label === label)) || versions[0], label };
 }
 

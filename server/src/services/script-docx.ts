@@ -22,7 +22,7 @@ import {
   VerticalAlign,
   WidthType,
 } from 'docx';
-import { computeTiming, STORY_ROLE_LABELS, type ScriptVersion } from '@apos/shared';
+import { computeTiming, isEnglishScript, STORY_ROLE_LABELS, STORY_ROLE_LABELS_EN, type ScriptVersion } from '@apos/shared';
 import { REPO_ROOT } from '../config.js';
 import type { BrandImage } from './branding.js';
 
@@ -33,13 +33,19 @@ const ACCENT = '7A5CFA';
 const HEAD_BG = 'F1EEFF';
 const LINE = 'D9D6E6';
 
+/**
+ * כיוון הקובץ: תסריט באנגלית נבנה כולו משמאל לימין עם תוויות באנגלית; בעברית — מימין לשמאל.
+ * נקבע בתחילת scriptDocx (בניית המסמך סינכרונית, כך שאין ערבוב בין בקשות).
+ */
+let LTR = false;
+
 const run = (text: string, o: { bold?: boolean; size?: number; color?: string; italics?: boolean } = {}) =>
-  new TextRun({ text, font: FONT, rightToLeft: true, bold: o.bold, italics: o.italics, size: o.size ?? 22, color: o.color ?? INK });
+  new TextRun({ text, font: FONT, rightToLeft: !LTR, bold: o.bold, italics: o.italics, size: o.size ?? 22, color: o.color ?? INK });
 
 const para = (children: TextRun[] | string, o: { align?: (typeof AlignmentType)[keyof typeof AlignmentType]; after?: number; before?: number } = {}) =>
   new Paragraph({
-    bidirectional: true,
-    alignment: o.align ?? AlignmentType.RIGHT,
+    bidirectional: !LTR,
+    alignment: o.align ?? (LTR ? AlignmentType.LEFT : AlignmentType.RIGHT),
     spacing: { after: o.after ?? 80, before: o.before ?? 0, line: 300 },
     children: typeof children === 'string' ? [run(children)] : children,
   });
@@ -97,7 +103,20 @@ function genesisBand(img: BrandImage | null) {
   });
 }
 
-const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jerusalem' });
+const HE = {
+  project: 'פרויקט', client: 'לקוח', version: 'גרסה', date: 'תאריך', length: 'אורך משוער', seconds: 'שניות',
+  narration: 'קריינות', screen: 'טקסט על המסך', visual: 'מה רואים', sec: 'שניות',
+  approvalTitle: 'הערות ואישור הלקוח', notes: 'הערות', name: 'שם', approved: 'מאושר', changes: 'נדרשים שינויים',
+  script: 'תסריט', page: 'עמוד',
+};
+const EN: typeof HE = {
+  project: 'Project', client: 'Client', version: 'Version', date: 'Date', length: 'Est. length', seconds: 'seconds',
+  narration: 'Narration', screen: 'On-screen text', visual: 'Visual', sec: 'Sec',
+  approvalTitle: 'Client notes & approval', notes: 'Notes', name: 'Name', approved: 'Approved', changes: 'Changes needed',
+  script: 'Script', page: 'Page',
+};
+
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString(LTR ? 'en-GB' : 'he-IL', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jerusalem' });
 
 export async function scriptDocx(input: {
   version: ScriptVersion;
@@ -113,6 +132,11 @@ export async function scriptDocx(input: {
 }): Promise<Buffer> {
   const { version: v } = input;
   const c = v.content;
+  LTR = isEnglishScript(c);
+  const L = LTR ? EN : HE;
+  const roles = LTR ? STORY_ROLE_LABELS_EN : STORY_ROLE_LABELS;
+  // באנגלית לא מציגים שם פרויקט שכתוב בעברית (הכותרת של התסריט כבר שם)
+  const showProject = !LTR || !/[\u0590-\u05FF]/.test(input.projectName);
   const timing = computeTiming(c, input.language, input.targetSec);
   const total = timing.totalSec || timing.narrationSec;
   const genesis = input.brand === 'genesis';
@@ -121,25 +145,24 @@ export async function scriptDocx(input: {
 
   const header: (Paragraph | Table)[] = [
     ...(genesis ? [genesisBand(input.genesisLogo ?? null), para([run(maker, { size: 16, color: MUTED })], { after: 280 })] : []),
-    ...(img ? [new Paragraph({ alignment: AlignmentType.RIGHT, children: [img], spacing: { after: 60 } })] : []),
+    ...(img ? [new Paragraph({ alignment: LTR ? AlignmentType.LEFT : AlignmentType.RIGHT, children: [img], spacing: { after: 60 } })] : []),
     ...(genesis ? [] : [para([run(maker, { size: 18, color: MUTED })], { after: 280 })]),
     para([run(c.title || input.projectName, { bold: true, size: 40 })], { after: 100 }),
     ...(c.logline ? [para([run(c.logline, { size: 24, color: MUTED, italics: true })], { after: 200 })] : []),
     para(
       [
-        run('פרויקט: ', { bold: true, size: 20 }),
-        run(input.projectName, { size: 20 }),
-        ...(input.clientName ? [run('   ·   לקוח: ', { bold: true, size: 20 }), run(input.clientName, { size: 20 })] : []),
+        ...(showProject ? [run(`${L.project}: `, { bold: true, size: 20 }), run(input.projectName, { size: 20 })] : []),
+        ...(input.clientName ? [run(`${showProject ? '   ·   ' : ''}${L.client}: `, { bold: true, size: 20 }), run(input.clientName, { size: 20 })] : []),
       ],
       { after: 40 },
     ),
     para(
       [
-        run('גרסה: ', { bold: true, size: 20 }),
+        run(`${L.version}: `, { bold: true, size: 20 }),
         run(`v${v.label}`, { size: 20 }),
-        run('   ·   תאריך: ', { bold: true, size: 20 }),
+        run(`   ·   ${L.date}: `, { bold: true, size: 20 }),
         run(fmtDate(v.createdAt), { size: 20 }),
-        ...(total ? [run('   ·   אורך משוער: ', { bold: true, size: 20 }), run(`${Math.round(total)} שניות`, { size: 20 })] : []),
+        ...(total ? [run(`   ·   ${L.length}: `, { bold: true, size: 20 }), run(`${Math.round(total)} ${L.seconds}`, { size: 20 })] : []),
       ],
       { after: 300 },
     ),
@@ -150,10 +173,10 @@ export async function scriptDocx(input: {
     tableHeader: true,
     children: [
       cell([para([run('#', { bold: true, size: 20, color: ACCENT })])], W.n, { head: true }),
-      cell([para([run('קריינות', { bold: true, size: 20, color: ACCENT })])], W.narration, { head: true }),
-      cell([para([run('טקסט על המסך', { bold: true, size: 20, color: ACCENT })])], W.screen, { head: true }),
-      cell([para([run('מה רואים', { bold: true, size: 20, color: ACCENT })])], W.visual, { head: true }),
-      cell([para([run('שניות', { bold: true, size: 20, color: ACCENT })])], W.dur, { head: true }),
+      cell([para([run(L.narration, { bold: true, size: 20, color: ACCENT })])], W.narration, { head: true }),
+      cell([para([run(L.screen, { bold: true, size: 20, color: ACCENT })])], W.screen, { head: true }),
+      cell([para([run(L.visual, { bold: true, size: 20, color: ACCENT })])], W.visual, { head: true }),
+      cell([para([run(L.sec, { bold: true, size: 20, color: ACCENT })])], W.dur, { head: true }),
     ],
   });
   const rows = c.scenes.map(
@@ -162,7 +185,7 @@ export async function scriptDocx(input: {
         cantSplit: true,
         children: [
           cell(
-            [para([run(String(i + 1), { bold: true, size: 22 })], { after: 20 }), para([run(STORY_ROLE_LABELS[s.storyRole] ?? '', { size: 16, color: MUTED })])],
+            [para([run(String(i + 1), { bold: true, size: 22 })], { after: 20 }), para([run(roles[s.storyRole] ?? '', { size: 16, color: MUTED })])],
             W.n,
           ),
           cell(lines(s.narration, { size: 22 }), W.narration),
@@ -176,21 +199,21 @@ export async function scriptDocx(input: {
     rows: [headRow, ...rows],
     width: { size: 100, type: WidthType.PERCENTAGE },
     layout: TableLayoutType.FIXED,
-    visuallyRightToLeft: true,
+    visuallyRightToLeft: !LTR,
     borders,
   });
 
   const approval = [
-    para([run('הערות ואישור הלקוח', { bold: true, size: 24 })], { before: 400, after: 160 }),
-    para([run('הערות: ______________________________________________________________', { size: 20, color: MUTED })], { after: 200 }),
+    para([run(L.approvalTitle, { bold: true, size: 24 })], { before: 400, after: 160 }),
+    para([run(`${L.notes}: ______________________________________________________________`, { size: 20, color: MUTED })], { after: 200 }),
     para([run('______________________________________________________________________', { size: 20, color: MUTED })], { after: 280 }),
-    para([run('שם: ____________________     תאריך: ____________     ', { size: 20, color: MUTED }), run('☐ מאושר   ☐ נדרשים שינויים', { size: 20 })]),
+    para([run(`${L.name}: ____________________     ${L.date}: ____________     `, { size: 20, color: MUTED }), run(`☐ ${L.approved}   ☐ ${L.changes}`, { size: 20 })]),
   ];
 
   const doc = new Document({
     creator: genesis ? 'Genesis' : maker,
-    title: `${input.projectName} — תסריט v${v.label}`,
-    styles: { default: { document: { run: { font: FONT, rightToLeft: true } } } },
+    title: `${input.projectName} — ${L.script} v${v.label}`,
+    styles: { default: { document: { run: { font: FONT, rightToLeft: !LTR } } } },
     sections: [
       {
         properties: { page: { margin: { top: 1000, bottom: 1000, left: 900, right: 900 } } },
@@ -198,9 +221,9 @@ export async function scriptDocx(input: {
           default: new Footer({
             children: [
               new Paragraph({
-                bidirectional: true,
+                bidirectional: !LTR,
                 alignment: AlignmentType.CENTER,
-                children: [run(`${input.projectName} · תסריט v${v.label} · עמוד `, { size: 16, color: MUTED }), new TextRun({ children: [PageNumber.CURRENT], size: 16, color: MUTED, font: FONT })],
+                children: [run(`${showProject ? `${input.projectName} · ` : ''}${L.script} v${v.label} · ${L.page} `, { size: 16, color: MUTED }), new TextRun({ children: [PageNumber.CURRENT], size: 16, color: MUTED, font: FONT })],
               }),
             ],
           }),
