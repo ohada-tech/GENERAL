@@ -236,6 +236,8 @@ export interface ProjectSummary {
   cover?: { mediaId?: string; assetId?: string } | null;
   /** עדכון ההתקדמות האחרון (מאוהד או מסשן Claude שעבד על הפרויקט) */
   lastUpdate?: { text: string; by: string; at: string } | null;
+  /** הקישור האחרון שנשלח ללקוח: מתי, ואם/מתי הלקוח פתח */
+  lastShare?: { label: string; sentAt: string; viewedAt: string | null; views: number } | null;
 }
 
 export interface DashboardData {

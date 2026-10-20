@@ -62,6 +62,21 @@ function Frame({ p, tag }: { p: ProjectSummary; tag?: string }) {
   );
 }
 
+/** "נשלח ללקוח לפני X ימים · נפתח ✓" — ואחרי 3 ימים בלי אישור: תזכורת */
+function ShareLine({ share, waiting }: { share: NonNullable<ProjectSummary['lastShare']>; waiting: boolean }) {
+  const days = Math.floor((Date.now() - new Date(share.sentAt).getTime()) / 86_400_000);
+  const nudge = waiting && days >= 3;
+  return (
+    <div className={`t-share ${nudge ? 't-share-nudge' : ''}`}>
+      <span>
+        📤 v{share.label} נשלח {days === 0 ? 'היום' : days === 1 ? 'אתמול' : `לפני ${days} ימים`}
+      </span>
+      <span>{share.views > 0 ? '· נפתח ✓' : '· עוד לא נפתח'}</span>
+      {nudge && <span className="t-share-hint">⏰ זמן להזכיר ללקוח</span>}
+    </div>
+  );
+}
+
 function Track({ p }: { p: ProjectSummary }) {
   return (
     <div className="t-track" aria-label={`שלב ${STAGE_BY_KEY[p.state.currentStage].number} מתוך 9`}>
@@ -232,6 +247,7 @@ export function Dashboard() {
                         <span className="clamp-2">{p.lastUpdate.text}</span>
                       </div>
                     )}
+                    {p.lastShare && !done && <ShareLine share={p.lastShare} waiting={p.state.overallStatus === 'waiting_client'} />}
                     <Track p={p} />
                     <div className="row between small">
                       <span className="t-stage">{cur.label}</span>

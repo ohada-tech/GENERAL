@@ -12,6 +12,7 @@ import * as calls from '../services/client-calls.js';
 import { extractDocText } from '../services/doc-text.js';
 import { scriptDocx } from '../services/script-docx.js';
 import { scriptHtml } from '../services/script-html.js';
+import * as share from '../services/share.js';
 import * as branding from '../services/branding.js';
 import { lastProgressUpdate, postProgressUpdate } from '../services/progress.js';
 import { translateScript, type TranslateLang } from '../services/translate.js';
@@ -177,6 +178,47 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
       ownerName: 'Ohad Alfi',
     });
     return reply.header('content-type', 'text/html; charset=utf-8').header('cache-control', 'no-store').send(html);
+  });
+
+  // "שלח ללקוח": קישור פרטי לתסריט. הדף הציבורי נמצא מחוץ ל-/api (לא דורש התחברות) ומציג רק את הדף ללקוח.
+  const baseUrl = (req: FastifyRequest) => {
+    const proto = String(req.headers['x-forwarded-proto'] ?? req.protocol).split(',')[0].trim();
+    return `${proto}://${req.headers['x-forwarded-host'] ?? req.headers.host}`;
+  };
+  app.post('/api/scripts/:vid/share', async (req, reply) => {
+    const link = share.shareScript(ctx, (req.params as { vid: string }).vid, ((req.body ?? {}) as { lang?: string }).lang);
+    reply.code(201);
+    return { ...link, url: `${baseUrl(req)}/s/${link.token}` };
+  });
+  app.get('/api/scripts/:vid/shares', async (req) => ({
+    links: share.listShares(ctx, (req.params as { vid: string }).vid).map((l) => ({ ...l, url: `${baseUrl(req)}/s/${l.token}` })),
+  }));
+  app.delete('/api/share/:token', async (req) => share.revokeShare(ctx, (req.params as { token: string }).token));
+  app.get('/s/:token', async (req, reply) => {
+    reply.header('x-robots-tag', 'noindex, nofollow').header('cache-control', 'no-store').header('referrer-policy', 'no-referrer');
+    let link: share.ShareLink | null = null;
+    try {
+      link = share.openShare(ctx, (req.params as { token: string }).token);
+    } catch {
+      return reply.code(410).type('text/html; charset=utf-8').send('<!doctype html><meta charset="utf-8"><p style="font-family:Arial;padding:40px">This link is no longer active. · הקישור הזה כבר לא פעיל.</p>');
+    }
+    const v = link ? getScript(ctx.db, link.scriptVersionId) : null;
+    const p = v ? getProject(ctx.db, v.projectId) : null;
+    if (!link || !v || !p) return reply.code(404).type('text/html; charset=utf-8').send('<!doctype html><meta charset="utf-8"><p style="font-family:Arial;padding:40px">Not found · לא נמצא</p>');
+    let version = v;
+    if (link.lang) version = { ...v, content: (await translateScript(ctx, v.id, link.lang)).content };
+    const html = scriptHtml({
+      version,
+      projectName: p.name,
+      clientName: p.clientName,
+      language: p.brief.language,
+      targetSec: p.brief.durationSec ?? null,
+      brand: p.settings.brand,
+      genesisLogo: p.settings.brand === 'genesis' ? branding.genesisLogo(ctx) : null,
+      ownerName: 'Ohad Alfi',
+      forClient: true,
+    });
+    return reply.type('text/html; charset=utf-8').send(html);
   });
 
   // צ'אט "שינויים במערכת": אתה כותב מהמערכת; Claude (המפתח) עונה עם מפתח המפעיל

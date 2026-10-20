@@ -15,6 +15,7 @@ import {
 } from '@apos/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ShareDialog } from '../components/ShareDialog';
 import { ClientFeedbackChanges, ClientFeedbackImport, type FeedbackImport } from '../components/ClientFeedback';
 import { ConfirmButton, Empty, ErrorBox, Field, InlineError, Loading, ModeTag, StatusBadge, Tag } from '../components/ui';
 import { api, isCloud, useAction, useApi } from '../lib/api';
@@ -285,6 +286,7 @@ function VersionView({
   onChanged: () => Promise<void> | void;
 }) {
   const fin = useAction();
+  const [sharing, setSharing] = useState(false);
   const del = useAction();
   const isFinal = isLatest && (version.status === 'internal_approved' || version.status === 'client_approved');
   const chooseFinal = async () => {
@@ -322,6 +324,11 @@ function VersionView({
           {!isCloud() && (
             <button className={`btn ${translated ? 'btn-primary' : ''}`} onClick={toggleTranslate} disabled={tr.busy} title="תרגום לתצוגה בלבד — מה שנשלח ללקוח נשאר בשפת המקור">
               {tr.busy ? 'מתרגם…' : translated ? '↩ הצג מקור' : `🌐 ${toLang === 'he' ? 'תרגם לעברית' : 'Translate to English'}`}
+            </button>
+          )}
+          {!isCloud() && (
+            <button className="btn btn-primary" onClick={() => setSharing(true)} title="קישור פרטי ללקוח + הודעת וואטסאפ מוכנה, ומעקב אם הוא פתח">
+              📤 שלח ללקוח
             </button>
           )}
           {!isCloud() && (
@@ -366,6 +373,7 @@ function VersionView({
       </div>
       <InlineError error={tr.error} onClose={tr.clearError} />
       <InlineError error={fin.error} onClose={fin.clearError} />
+      {sharing && <ShareDialog version={version} lang={translated ? toLang : null} onClose={() => setSharing(false)} />}
       <InlineError error={del.error} onClose={del.clearError} />
       {translated && <div className="notice small">מוצג תרגום ל{toLang === 'he' ? 'עברית' : 'אנגלית'} · הכפתורים Word ו-PDF מורידים עכשיו את התרגום · "↩ הצג מקור" מחזיר למקור</div>}
       {c.logline && <p className="logline" dir={ltr ? 'ltr' : 'rtl'}>{c.logline}</p>}

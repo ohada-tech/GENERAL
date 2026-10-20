@@ -28,6 +28,8 @@ export function scriptHtml(input: {
   brand?: 'genesis' | 'studio';
   genesisLogo?: BrandImage | null;
   ownerName?: string;
+  /** נפתח מקישור ששלחו ללקוח: סרגל השמירה בשפת התסריט */
+  forClient?: boolean;
 }): string {
   const { version: v } = input;
   const c = v.content;
@@ -65,6 +67,7 @@ export function scriptHtml(input: {
 <html lang="${en ? 'en' : 'he'}" dir="${dirAttr}">
 <head>
 <meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(docTitle)}</title>
 <style>
@@ -106,7 +109,7 @@ export function scriptHtml(input: {
 </style>
 </head>
 <body>
-  <div class="bar"><button type="button" onclick="window.print()">⬇ שמור כ-PDF</button><span>בחלון שנפתח: יעד ← "שמירה כ-PDF"</span></div>
+  <div class="bar"><button type="button" onclick="window.print()">${en ? '⬇ Save as PDF' : '⬇ שמור כ-PDF'}</button><span>${en ? 'In the print window choose “Save as PDF”' : 'בחלון שנפתח: יעד ← "שמירה כ-PDF"'}</span></div>
   <main class="page">
     ${brandBlock}
     <h1 dir="auto">${esc(c.title || input.projectName)}</h1>

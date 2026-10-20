@@ -810,3 +810,10 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 /* טיימר רץ בסרגל העליון: שם פרויקט ארוך לא מרחיב את הדף */
 .timer-link { max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
 .topbar-side { min-width: 0; }
+
+/* שלח ללקוח */
+.share-dialog textarea { width: 100%; }
+.share-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--border); padding-top: 10px; }
+.t-share { display: flex; flex-wrap: wrap; gap: 4px 6px; font-size: 12.5px; color: var(--text-2); }
+.t-share-nudge { color: var(--warn); }
+.t-share-hint { font-weight: 700; }

@@ -328,4 +328,19 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX idx_client_calls_project ON client_calls(project_id, created_at);
   ALTER TABLE client_feedback ADD COLUMN call_id TEXT;
   `,
+  /* v14 — "שלח ללקוח": קישור פרטי לתסריט (בלי התחברות), עם מעקב צפיות */ `
+  CREATE TABLE share_links (
+    token TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    script_version_id TEXT NOT NULL,
+    label TEXT NOT NULL DEFAULT '',
+    lang TEXT,
+    created_at TEXT NOT NULL,
+    revoked_at TEXT,
+    view_count INTEGER NOT NULL DEFAULT 0,
+    last_viewed_at TEXT
+  );
+  CREATE INDEX idx_share_links_version ON share_links(script_version_id, created_at);
+  CREATE INDEX idx_share_links_project ON share_links(project_id, created_at);
+  `,
 ];
