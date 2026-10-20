@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { buildApp } from '../src/app.js';
 import { listScripts } from '../src/db/repo.js';
 import { drain } from '../src/jobs/worker.js';
 import { translateScript } from '../src/services/translate.js';
@@ -44,5 +45,24 @@ describe('Script translation for reading', () => {
   it('refuses a partial translation instead of showing wrong scenes', async () => {
     const { ctx, v } = await setup(() => ({ title: '', logline: '', scenes: [] }));
     await expect(translateScript(ctx, v.id, 'he')).rejects.toThrow('חלקי');
+  });
+
+  it('downloads the translated version as Word and as the PDF page', async () => {
+    const { ctx, v } = await setup((src) => ({
+      title: 'כותרת מתורגמת',
+      logline: '',
+      scenes: src.scenes.map((_: unknown, i: number) => ({ narration: `שורה מתורגמת ${i + 1}`, onScreenText: '', visualAction: '', notes: '' })),
+    }));
+    const app = await buildApp(ctx);
+    const doc = await app.inject({ url: `/api/scripts/${v.id}/docx?lang=he` });
+    expect(decodeURIComponent(String(doc.headers['content-disposition']))).toContain('(עברית).docx');
+    const { default: JSZip } = await import('jszip');
+    const xml = await (await JSZip.loadAsync(doc.rawPayload)).file('word/document.xml')!.async('string');
+    expect(xml).toContain('שורה מתורגמת 1');
+    const page = await app.inject({ url: `/api/scripts/${v.id}/view?lang=he` });
+    expect(page.body).toContain('שורה מתורגמת 1');
+    const original = await app.inject({ url: `/api/scripts/${v.id}/view` });
+    expect(original.body).not.toContain('שורה מתורגמת 1');
+    await app.close();
   });
 });

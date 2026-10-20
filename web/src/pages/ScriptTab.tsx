@@ -270,13 +270,13 @@ function VersionView({
             </button>
           )}
           {!isCloud() && (
-            <a className="btn" href={`/api/scripts/${version.id}/view`} target="_blank" rel="noopener" title="פותח את התסריט בדפדפן, ממותג — ומשם 'שמור כ-PDF' לשליחה ללקוח">
-              👁 פתח / PDF
+            <a className="btn" href={`/api/scripts/${version.id}/view${translated ? `?lang=${toLang}` : ''}`} target="_blank" rel="noopener" title={translated ? 'פותח את התרגום בדפדפן — ומשם שמירה כ-PDF' : "פותח את התסריט בדפדפן, ממותג — ומשם 'שמור כ-PDF' לשליחה ללקוח"}>
+              👁 פתח / PDF{translated ? ` (${toLang === 'he' ? 'עברית' : 'English'})` : ''}
             </a>
           )}
           {!isCloud() && (
-            <a className="btn" href={`/api/scripts/${version.id}/docx`} download title="קובץ Word מעוצב לשליחה ללקוח — בלי הערות פנימיות">
-              ⬇ הורד כ-Word
+            <a className="btn" href={`/api/scripts/${version.id}/docx${translated ? `?lang=${toLang}` : ''}`} download title={translated ? 'קובץ Word של התרגום' : 'קובץ Word מעוצב לשליחה ללקוח — בלי הערות פנימיות'}>
+              ⬇ הורד כ-Word{translated ? ` (${toLang === 'he' ? 'עברית' : 'English'})` : ''}
             </a>
           )}
             {isFinal ? (
@@ -298,7 +298,7 @@ function VersionView({
       </div>
       <InlineError error={tr.error} onClose={tr.clearError} />
       <InlineError error={fin.error} onClose={fin.clearError} />
-      {translated && <div className="notice small">תרגום ל{toLang === 'he' ? 'עברית' : 'אנגלית'} לתצוגה בלבד · ה-Word ללקוח נשאר בשפת המקור</div>}
+      {translated && <div className="notice small">מוצג תרגום ל{toLang === 'he' ? 'עברית' : 'אנגלית'} · הכפתורים Word ו-PDF מורידים עכשיו את התרגום · "↩ הצג מקור" מחזיר למקור</div>}
       {c.logline && <p className="logline" dir={dir}>{c.logline}</p>}
       <TimingSummary content={version.content} language={language} target={target} />
       <table className="scenes-table">

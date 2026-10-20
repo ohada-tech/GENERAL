@@ -18,9 +18,18 @@ import { lessonsFor } from '../services/learning.js';
 import { ProviderError } from '../providers/types.js';
 
 export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
-  app.get('/api/scripts/:vid/docx', async (req, reply) => {
-    const v = getScript(ctx.db, (req.params as { vid: string }).vid);
+  /** גרסה בשפה שביקשו (?lang=he / en): תרגום שמור, או תרגום חדש פעם אחת. בלי lang — המקור */
+  const versionIn = async (vid: string, lang: unknown) => {
+    const v = getScript(ctx.db, vid);
     if (!v) throw new NotFoundError('גרסת תסריט');
+    if (lang !== 'he' && lang !== 'en') return { v, lang: null as TranslateLang | null };
+    const t = await translateScript(ctx, vid, lang);
+    return { v: { ...v, content: t.content }, lang: lang as TranslateLang };
+  };
+  const LANG_SUFFIX: Record<TranslateLang, string> = { he: ' (עברית)', en: ' (English)' };
+
+  app.get('/api/scripts/:vid/docx', async (req, reply) => {
+    const { v, lang } = await versionIn((req.params as { vid: string }).vid, (req.query as { lang?: string }).lang);
     const p = getProject(ctx.db, v.projectId);
     if (!p) throw new NotFoundError('פרויקט');
     const buf = await scriptDocx({
@@ -33,7 +42,7 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
       genesisLogo: p.settings.brand === 'genesis' ? branding.genesisLogo(ctx) : null,
       ownerName: 'Ohad Alfi', // השם בקטן מתחת ללוגו של Genesis (לא OWNER_NAME, שמשמש לאישורים)
     });
-    const name = `${p.name} - תסריט v${v.label}.docx`.replace(/[\\/:*?"<>|]+/g, ' ');
+    const name = `${p.name} - תסריט v${v.label}${lang ? LANG_SUFFIX[lang] : ''}.docx`.replace(/[\\/:*?"<>|]+/g, ' ');
     reply
       .header('content-type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
       .header('content-disposition', `attachment; filename="script-v${v.label}.docx"; filename*=UTF-8''${encodeURIComponent(name)}`);
@@ -113,8 +122,7 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
 
   // התסריט כדף לצפייה ולשמירה כ-PDF — נפתח בכל מחשב וטלפון, בלי Word
   app.get('/api/scripts/:vid/view', async (req, reply) => {
-    const v = getScript(ctx.db, (req.params as { vid: string }).vid);
-    if (!v) throw new NotFoundError('גרסת תסריט');
+    const { v } = await versionIn((req.params as { vid: string }).vid, (req.query as { lang?: string }).lang);
     const p = getProject(ctx.db, v.projectId);
     if (!p) throw new NotFoundError('פרויקט');
     const html = scriptHtml({
