@@ -750,3 +750,10 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 @media (prefers-reduced-motion: reduce) { .proj-sticky { transition: none; } }
 .proj-sticky-tabs { scrollbar-width: none; }
 .proj-sticky-tabs::-webkit-scrollbar { display: none; }
+
+/* עדכון התקדמות אחרון בכרטיס */
+.t-update { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text-2); background: var(--surface-2); border-radius: 10px; padding: 7px 10px; }
+.t-update-meta { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+
+.progress-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; max-width: 80ch; }
+.progress-line-form { flex: 1 1 320px; }

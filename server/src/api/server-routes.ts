@@ -10,6 +10,7 @@ import * as feedback from '../services/client-feedback.js';
 import { scriptDocx } from '../services/script-docx.js';
 import { scriptHtml } from '../services/script-html.js';
 import * as branding from '../services/branding.js';
+import { lastProgressUpdate, postProgressUpdate } from '../services/progress.js';
 import { translateScript, type TranslateLang } from '../services/translate.js';
 import { briefSchema, openDiscoveryQuestions } from '@apos/shared';
 import { briefToText } from '../providers/prompts.js';
@@ -43,6 +44,14 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/api/scripts/:vid/translate', async (req) =>
     translateScript(ctx, (req.params as { vid: string }).vid, (((req.body ?? {}) as { to?: string }).to ?? 'he') as TranslateLang),
   );
+
+  // עדכוני התקדמות (מאוהד או מסשן Claude שעבד על הפרויקט מחוץ למערכת)
+  app.post('/api/projects/:id/progress', async (req, reply) => {
+    const b = (req.body ?? {}) as { text?: string; by?: string };
+    reply.code(201);
+    return postProgressUpdate(ctx, (req.params as { id: string }).id, b);
+  });
+  app.get('/api/projects/:id/progress', async (req) => ({ last: lastProgressUpdate(ctx, (req.params as { id: string }).id) }));
 
   // מיתוג: לוגו Genesis (מועלה פעם אחת, משמש בכל פרויקט שממותג Genesis)
   app.get('/api/settings/brand', async () => branding.brandStatus(ctx));

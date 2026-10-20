@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Empty, ErrorBox, Field, InlineError, Loading, Modal, rowLink, StatusBadge, Tag } from '../components/ui';
 import { api, assetUrl, useAction, useApi } from '../lib/api';
-import { daysUntil, fmtDate } from '../lib/format';
+import { daysUntil, fmtDate, fmtRelative } from '../lib/format';
 
 /* מסך "היום": מה מחכה לך למעלה, ואז הפרויקטים ככרטיסים עם תמונה ופס שלבים */
 
@@ -224,6 +224,14 @@ export function Dashboard() {
                       <div className="t-card-title">{p.name}</div>
                       <div className="t-card-client">{p.clientName || '—'}</div>
                     </div>
+                    {p.lastUpdate && (
+                      <div className="t-update" title={p.lastUpdate.text}>
+                        <span className="t-update-meta">
+                          {p.lastUpdate.by} · {fmtRelative(p.lastUpdate.at)}
+                        </span>
+                        <span className="clamp-2">{p.lastUpdate.text}</span>
+                      </div>
+                    )}
                     <Track p={p} />
                     <div className="row between small">
                       <span className="t-stage">{cur.label}</span>

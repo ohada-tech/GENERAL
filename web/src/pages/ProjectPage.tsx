@@ -14,8 +14,8 @@ import type { Health } from '../App';
 import { PipelineStepper } from '../components/PipelineStepper';
 import { ProjectTimerButton } from '../components/TimerWidget';
 import { ErrorBox, Field, InlineError, Loading, ModeTag, Modal, Progress, rowLink, StatusBadge } from '../components/ui';
-import { api, useAction, useApi } from '../lib/api';
-import { fmtDate, fmtDateTime } from '../lib/format';
+import { api, isCloud, useAction, useApi } from '../lib/api';
+import { fmtDate, fmtDateTime, fmtRelative } from '../lib/format';
 import { ActivityTab, JobsTab } from './ActivityTabs';
 import { BriefTab } from './BriefTab';
 import { ScriptTab } from './ScriptTab';
@@ -133,6 +133,7 @@ export function ProjectPage({ health }: { health: Health | null }) {
             {project.clientName || 'ללא לקוח'} · יעד: {fmtDate(project.brief.dueDate)} · עדכון אחרון:{' '}
             {fmtDateTime(project.updatedAt)}
           </p>
+          {!isCloud() && <ProgressLine projectId={project.id} />}
         </div>
         <div className="row gap-s">
           <div style={{ width: 160 }}>
@@ -414,4 +415,48 @@ function useStickyBar(head: React.RefObject<HTMLDivElement | null>, ready: boole
     };
   }, [on]);
   return { on, top };
+}
+
+/** העדכון האחרון על הפרויקט + כתיבת עדכון חדש (גם סשנים של Claude שולחים לכאן) */
+function ProgressLine({ projectId }: { projectId: string }) {
+  const last = useApi<{ last: { text: string; by: string; at: string } | null }>(`/api/projects/${projectId}/progress`, { pollMs: 15000 });
+  const act = useAction();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const save = async () => {
+    const r = await act.run(() => api.post(`/api/projects/${projectId}/progress`, { text }));
+    if (r) {
+      setText('');
+      setOpen(false);
+      await last.reload();
+    }
+  };
+  const u = last.data?.last;
+  return (
+    <div className="progress-line">
+      {u ? (
+        <span className="small">
+          <span className="muted">📝 {u.by} · {fmtRelative(u.at)}:</span> {u.text}
+        </span>
+      ) : (
+        <span className="small muted">אין עדיין עדכוני התקדמות</span>
+      )}
+      {open ? (
+        <span className="row gap-s progress-line-form">
+          <input className="grow" autoFocus value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && text.trim() && void save()} placeholder="מה התקדם? (למשל: נשלח תסריט למיכאל)" />
+          <button className="btn btn-sm btn-primary" disabled={act.busy || !text.trim()} onClick={save}>
+            שמור
+          </button>
+          <button className="btn btn-sm btn-ghost" onClick={() => setOpen(false)}>
+            ביטול
+          </button>
+        </span>
+      ) : (
+        <button className="btn-link small" onClick={() => setOpen(true)}>
+          + עדכון
+        </button>
+      )}
+      <InlineError error={act.error} onClose={act.clearError} />
+    </div>
+  );
 }

@@ -230,6 +230,8 @@ export interface ProjectSummary {
   trackedSec: number;
   /** תמונת שער לכרטיס בדשבורד: פריים שנוצר (media) או תמונה שהועלתה לשוט (asset). null = אין */
   cover?: { mediaId?: string; assetId?: string } | null;
+  /** עדכון ההתקדמות האחרון (מאוהד או מסשן Claude שעבד על הפרויקט) */
+  lastUpdate?: { text: string; by: string; at: string } | null;
 }
 
 export interface DashboardData {

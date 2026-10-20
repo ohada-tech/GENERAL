@@ -13,6 +13,7 @@ import {
 } from '../db/repo.js';
 import { computeProjectState } from '../workflow/state.js';
 import { trackedTotals } from './time.js';
+import { lastProgressUpdate } from './progress.js';
 import { productionOverview } from '../workflow/production.js';
 
 export function projectState(ctx: Ctx, project: Project) {
@@ -55,6 +56,7 @@ export function dashboard(ctx: Ctx): DashboardData {
     state: projectState(ctx, p),
     trackedSec: time.byProject[p.id] ?? 0,
     cover: projectCover(ctx, p.id),
+    lastUpdate: lastProgressUpdate(ctx, p.id),
   }));
   const unread = ctx.db.prepare('SELECT COUNT(*) AS n FROM notifications WHERE read_at IS NULL').get() as { n: number };
   return { projects, unreadNotifications: Number(unread.n), weekTrackedSec: time.weekSec };
