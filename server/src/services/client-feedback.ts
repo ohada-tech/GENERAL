@@ -55,12 +55,14 @@ export interface FeedbackImport {
   projectId: string;
   baseVersionId: string;
   resultVersionId: string | null;
-  source: 'gdoc' | 'docx' | 'text';
+  source: 'gdoc' | 'docx' | 'text' | 'call';
   sourceName: string;
   detectedLabel: string | null;
   items: FeedbackItem[];
   status: 'draft' | 'applied';
   review: FeedbackReview | null;
+  /** ייבוא מתוך שיחה מוקלטת */
+  callId: string | null;
   createdAt: string;
 }
 
@@ -363,6 +365,7 @@ const map = (r: any): FeedbackImport => ({
   items: JSON.parse(r.items || '[]'),
   status: r.status,
   review: r.review ? JSON.parse(r.review) : null,
+  callId: r.call_id ?? null,
   createdAt: r.created_at,
 });
 

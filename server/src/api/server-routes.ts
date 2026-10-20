@@ -8,6 +8,7 @@ import { GateError } from '../context.js';
 import * as dev from '../services/dev-chat.js';
 import * as feedback from '../services/client-feedback.js';
 import { requestFeedbackReview } from '../services/feedback-review.js';
+import * as calls from '../services/client-calls.js';
 import { extractDocText } from '../services/doc-text.js';
 import { scriptDocx } from '../services/script-docx.js';
 import { scriptHtml } from '../services/script-html.js';
@@ -126,6 +127,26 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
     reply.code(201);
     return feedback.importClientFeedback(ctx, id, input);
   });
+  // שיחה עם הלקוח: הקלטה ← תמלול ← הערות לתסריט
+  app.get('/api/projects/:id/calls', async (req) => ({ calls: calls.listCalls(ctx, (req.params as { id: string }).id) }));
+  app.get('/api/calls/:cid', async (req) => {
+    const c = calls.getCall(ctx, (req.params as { cid: string }).cid);
+    if (!c) throw new NotFoundError('שיחה');
+    return c;
+  });
+  app.post('/api/projects/:id/calls', async (req, reply) => {
+    const file = await req.file();
+    if (!file) throw new GateError('לא נשלחה הקלטה', 400);
+    const data = await file.toBuffer();
+    if (data.length > 200 * 1024 * 1024) throw new GateError('ההקלטה גדולה מדי (עד 200MB)', 400);
+    reply.code(201);
+    return calls.transcribeCall(ctx, (req.params as { id: string }).id, { name: file.filename, data });
+  });
+  app.post('/api/calls/:cid/feedback', async (req, reply) => {
+    reply.code(201);
+    return calls.callToFeedback(ctx, (req.params as { cid: string }).cid);
+  });
+
   // שמירת הבחירות וההחלטות של אוהד בלי תיקון; דעה של ChatGPT לפני תיקון
   app.put('/api/feedback/:fid', async (req) => {
     const b = (req.body ?? {}) as { items?: feedback.FeedbackItem[]; baseVersionId?: string };

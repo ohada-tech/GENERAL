@@ -315,4 +315,17 @@ export const MIGRATIONS: string[] = [
   /* v12 — דעה של ChatGPT על הערות הלקוח, לפני שמשנים את התסריט (JSON) */ `
   ALTER TABLE client_feedback ADD COLUMN review TEXT;
   `,
+  /* v13 — שיחות עם הלקוח: הקלטה ← תמלול (Scribe) ← הערות לתסריט */ `
+  CREATE TABLE client_calls (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name TEXT NOT NULL DEFAULT '',
+    language TEXT NOT NULL DEFAULT '',
+    duration_sec REAL NOT NULL DEFAULT 0,
+    transcript TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_client_calls_project ON client_calls(project_id, created_at);
+  ALTER TABLE client_feedback ADD COLUMN call_id TEXT;
+  `,
 ];

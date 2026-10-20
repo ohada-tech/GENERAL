@@ -16,6 +16,12 @@ export interface ElevenVoice {
   description: string;
 }
 
+export interface ScribeResult {
+  languageCode: string;
+  text: string;
+  words: Array<{ text: string; start: number; type: string; speaker: string }>;
+}
+
 type FetchFn = typeof fetch;
 
 export class ElevenLabsClient {
@@ -35,7 +41,8 @@ export class ElevenLabsClient {
     try {
       res = await this.fetchFn(`${this.cfg.baseUrl}${path}`, {
         ...init,
-        headers: { 'xi-api-key': key, ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...(init.headers ?? {}) },
+        // FormData קובע לבד את ה-Content-Type (עם boundary)
+        headers: { 'xi-api-key': key, ...(typeof init.body === 'string' ? { 'Content-Type': 'application/json' } : {}), ...(init.headers ?? {}) },
         signal: AbortSignal.timeout(init.timeoutMs ?? 60_000),
       });
     } catch (e) {
@@ -87,6 +94,23 @@ export class ElevenLabsClient {
       timeoutMs: 300_000,
     });
     return Buffer.from(await res.arrayBuffer());
+  }
+
+  /** תמלול (Scribe) עם הפרדת דוברים. מחזיר את המילים עם זמן ודובר */
+  async transcribe(audio: Buffer, filename: string, languageCode?: string): Promise<ScribeResult> {
+    const fd = new FormData();
+    fd.append('model_id', 'scribe_v1');
+    fd.append('diarize', 'true');
+    fd.append('tag_audio_events', 'false');
+    if (languageCode) fd.append('language_code', languageCode);
+    fd.append('file', new Blob([new Uint8Array(audio)]), filename);
+    const res = await this.call('/v1/speech-to-text', { method: 'POST', body: fd, timeoutMs: 900_000 });
+    const j: any = await res.json();
+    return {
+      languageCode: String(j?.language_code ?? ''),
+      text: String(j?.text ?? ''),
+      words: ((j?.words ?? []) as any[]).map((w) => ({ text: String(w.text ?? ''), start: Number(w.start) || 0, type: String(w.type ?? 'word'), speaker: String(w.speaker_id ?? '') })),
+    };
   }
 
   async music(prompt: string, lengthMs: number) {

@@ -43,17 +43,18 @@ export interface FeedbackImport {
   id: string;
   baseVersionId: string;
   resultVersionId: string | null;
-  source: 'gdoc' | 'docx' | 'text';
+  source: 'gdoc' | 'docx' | 'text' | 'call';
   sourceName: string;
   detectedLabel: string | null;
   items: FeedbackItem[];
   status: 'draft' | 'applied';
   review: FeedbackReview | null;
+  callId: string | null;
   createdAt: string;
 }
 
 const KIND: Record<Kind, string> = { comment: 'הערה במסמך', suggestion: 'הצעת שינוי', edit: 'עריכה ישירה', note: 'הערה' };
-const SOURCE: Record<FeedbackImport['source'], string> = { gdoc: 'Google Doc', docx: 'Word', text: 'טקסט' };
+const SOURCE: Record<FeedbackImport['source'], string> = { gdoc: 'Google Doc', docx: 'Word', text: 'טקסט', call: 'שיחה' };
 const VERDICT: Record<Verdict, [string, string]> = {
   agree: ['מסכים', 'ok'],
   partly: ['חלקית', 'warn'],
@@ -94,6 +95,19 @@ export function ClientFeedbackImport({
   };
   const importFrom = (body: { url?: string; text?: string }) => act.run(() => api.post<FeedbackImport>(`/api/projects/${projectId}/feedback/import`, body)).then(loaded);
   const upload = (f: File) => act.run(() => api.upload<FeedbackImport>(`/api/projects/${projectId}/feedback/import`, f)).then(loaded);
+  // שיחה: תמלול ואז שליפת ההערות, שני שלבים כדי שהתמלול יישמר גם אם השליפה נכשלת
+  const audio = useRef<HTMLInputElement>(null);
+  const [callStep, setCallStep] = useState('');
+  const fromCall = (f: File) =>
+    act
+      .run(async () => {
+        setCallStep('מתמלל את השיחה (כדקה לכל 10 דקות הקלטה)…');
+        const call = await api.upload<{ id: string }>(`/api/projects/${projectId}/calls`, f);
+        setCallStep('ChatGPT שולף מה הלקוח ביקש והחליט…');
+        return api.post<FeedbackImport>(`/api/calls/${call.id}/feedback`);
+      })
+      .then(loaded)
+      .finally(() => setCallStep(''));
 
   const base = versions.find((v) => v.id === baseId);
   const chosen = items.filter((it) => it.include && it.text.trim());
@@ -170,6 +184,20 @@ export function ClientFeedbackImport({
                 if (f) void upload(f);
               }}
             />
+            <button className="btn btn-ghost" disabled={act.busy} onClick={() => audio.current?.click()} title="ElevenLabs מתמלל, ChatGPT שולף מה הלקוח ביקש והחליט">
+              📞 העלה הקלטת שיחה
+            </button>
+            <input
+              ref={audio}
+              type="file"
+              accept="audio/*,video/mp4,.m4a,.mp3,.wav,.mp4"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (f) void fromCall(f);
+              }}
+            />
           </div>
           <textarea rows={4} placeholder="או הדבק כאן את ההערות (מוואטסאפ, מייל…) — כל שורה או תבליט = הערה" value={text} onChange={(e) => setText(e.target.value)} />
           <div>
@@ -179,7 +207,7 @@ export function ClientFeedbackImport({
           </div>
           {act.busy && (
             <div className="notice">
-              <span className="spinner" /> קורא את ההערות…
+              <span className="spinner" /> {callStep || 'קורא את ההערות…'}
             </div>
           )}
         </>
@@ -200,6 +228,7 @@ export function ClientFeedbackImport({
               </select>
             </label>
           </div>
+          {imp.callId && <CallTranscript callId={imp.callId} />}
           {reviewRunning && (
             <div className="notice">
               <span className="spinner" /> ChatGPT עובר על ההערות… התסריט לא משתנה.
@@ -334,6 +363,22 @@ export function ClientFeedbackImport({
       )}
       <InlineError error={act.error} onClose={act.clearError} />
     </section>
+  );
+}
+
+/** התמלול המלא של השיחה, נטען רק כשפותחים */
+function CallTranscript({ callId }: { callId: string }) {
+  const [text, setText] = useState<string | null>(null);
+  const load = async () => {
+    if (text !== null) return;
+    const c = await api.get<{ transcript: string }>(`/api/calls/${callId}`).catch(() => null);
+    setText(c?.transcript ?? 'התמלול לא נמצא');
+  };
+  return (
+    <details className="small" onToggle={(e) => (e.currentTarget as HTMLDetailsElement).open && void load()}>
+      <summary>📄 התמלול המלא של השיחה</summary>
+      <div className="call-transcript">{text ?? 'טוען…'}</div>
+    </details>
   );
 }
 
