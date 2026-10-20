@@ -53,6 +53,27 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
   });
   app.get('/api/projects/:id/progress', async (req) => ({ last: lastProgressUpdate(ctx, (req.params as { id: string }).id) }));
 
+  // בחירת מודל ל-ChatGPT: רשימת המודלים בחשבון, ובדיקה קצרה שהמודל תומך בפלט מובנה (נדרש לכתיבת תסריטים)
+  app.get('/api/settings/openai/models', async () => {
+    const p = ctx.providers.text.openai as unknown as { listModels?: () => Promise<string[]> };
+    if (!p?.listModels) throw new ProviderError('OpenAI לא זמין', false, 'not_configured');
+    return { models: await p.listModels() };
+  });
+  app.post('/api/settings/openai/probe', async (req) => {
+    const model = String(((req.body ?? {}) as { model?: string }).model ?? '').trim();
+    if (!model) throw new GateError('יש לציין מודל', 400);
+    const p = ctx.providers.text.openai as unknown as { json?: <T>(n: string, s: object, sys: string, user: string, model?: string) => Promise<{ data: T; model: string }> };
+    if (!p?.json) throw new ProviderError('OpenAI לא זמין', false, 'not_configured');
+    const r = await p.json<{ line: string }>(
+      'probe',
+      { type: 'object', additionalProperties: false, required: ['line'], properties: { line: { type: 'string' } } },
+      'You write short, warm Hebrew marketing lines.',
+      'כתוב שורת פתיחה אחת לסרטון על בית קפה שכונתי.',
+      model,
+    );
+    return { ok: true, model: r.model, sample: r.data.line };
+  });
+
   // מיתוג: לוגו Genesis (מועלה פעם אחת, משמש בכל פרויקט שממותג Genesis)
   app.get('/api/settings/brand', async () => branding.brandStatus(ctx));
   app.post('/api/settings/brand/genesis-logo', async (req) => {

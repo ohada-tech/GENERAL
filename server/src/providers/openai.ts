@@ -66,6 +66,15 @@ export class OpenAITextProvider implements TextProvider {
     return { ok: false, code: 'error', message: `OpenAI החזיר ${res.status}: ${msg}` };
   }
 
+  /** רשימת המודלים שזמינים לחשבון (GET /models — לא עולה כסף) */
+  async listModels(): Promise<string[]> {
+    if (!this.cfg.apiKey) throw new ProviderError('OpenAI לא מחובר', false, 'missing_api_key');
+    const res = await this.fetchFn(`${this.cfg.baseUrl}/models`, { headers: { Authorization: `Bearer ${this.cfg.apiKey}` }, signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) throw new ProviderError(`OpenAI החזיר ${res.status}`, true, 'error');
+    const body = (await res.json()) as { data?: Array<{ id: string }> };
+    return (body.data ?? []).map((m) => m.id).sort();
+  }
+
   async generateScript(ctx: ProjectContext, opts?: { model?: string }): Promise<GenResult<ScriptDraft>> {
     const { data, model, usage } = await this.complete<ScriptDraft>(
       'script',
