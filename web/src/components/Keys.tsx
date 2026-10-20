@@ -60,7 +60,10 @@ export function KeysTag({ keys, onClick }: { keys: Keys | undefined; onClick: ()
   const text = shown.map((k) => `${META[k].name} ${ok(keys[k]) ? '✓' : '✗'}`).join(' · ');
   return (
     <button className="tag-btn" onClick={onClick} title="מפתחות API — נשמרים בשרת בלבד">
-      <Tag tone={all ? 'auto' : 'warn'}>{all ? `מחובר: ${text}` : `מפתחות: ${text}`}</Tag>
+      <Tag tone={all ? 'auto' : 'warn'}>
+        <span className="keys-full">{all ? `מחובר: ${text}` : `מפתחות: ${text}`}</span>
+        <span className="keys-short">🔑 {all ? '✓' : '⚠'}</span>
+      </Tag>
     </button>
   );
 }

@@ -11,7 +11,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { Health } from '../App';
-import { PipelineStepper } from '../components/PipelineStepper';
+import { ProjectHero, StageRail } from '../components/ProjectHero';
 import { ProjectTimerButton } from '../components/TimerWidget';
 import { ErrorBox, Field, InlineError, Loading, ModeTag, Modal, Progress, rowLink, StatusBadge } from '../components/ui';
 import { api, isCloud, useAction, useApi } from '../lib/api';
@@ -29,6 +29,7 @@ export interface ProjectDetail {
   state: ProjectState;
   approvals: Approval[];
   assets: Asset[];
+  cover?: { mediaId?: string; assetId?: string } | null;
 }
 
 export interface TabProps {
@@ -43,6 +44,14 @@ const TABS: Array<{ key: string; label: string }> = [
   { key: 'script', label: '02 תסריט' },
   { key: 'storyboard', label: '03–04 סטורי בורד ורפרנסים' },
   { key: 'production', label: '05–09 הפקה' },
+  { key: 'time', label: '⏱ זמן עבודה' },
+  { key: 'activity', label: 'היסטוריה' },
+  { key: 'jobs', label: 'משימות והרצות' },
+  { key: 'settings', label: 'הגדרות' },
+];
+
+const EXTRA_TABS: Array<{ key: string; label: string }> = [
+  { key: 'overview', label: 'סקירה' },
   { key: 'time', label: '⏱ זמן עבודה' },
   { key: 'activity', label: 'היסטוריה' },
   { key: 'jobs', label: 'משימות והרצות' },
@@ -85,9 +94,6 @@ export function ProjectPage({ health }: { health: Health | null }) {
 
   return (
     <div className="page">
-      <div className="crumbs">
-        <Link to="/">הפקות</Link> / <span>{project.name}</span>
-      </div>
       {/* פס דביק: מופיע כשגוללים מעבר לכותרת — שם, סטטוס, טיימר, השהה/עצור וקיצורים לכל הלשוניות */}
       <div className={`proj-sticky ${sticky.on ? 'on' : ''}`} style={{ top: sticky.top }} aria-hidden={!sticky.on} inert={!sticky.on}>
         <div className="proj-sticky-row">
@@ -122,61 +128,47 @@ export function ProjectPage({ health }: { health: Health | null }) {
         </nav>
       </div>
 
-      <div className="page-head" ref={head}>
-        <div>
-          <h1>
-            {project.name} <StatusBadge status={state.overallStatus} />
-            {state.pipelineState === 'paused' && <span className="badge st-waiting_internal">מושהה</span>}
-            {state.pipelineState === 'stopped' && <span className="badge st-blocked">עצור</span>}
-          </h1>
-          <p className="muted">
-            {project.clientName || 'ללא לקוח'} · יעד: {fmtDate(project.brief.dueDate)} · עדכון אחרון:{' '}
-            {fmtDateTime(project.updatedAt)}
-          </p>
-          {!isCloud() && <ProgressLine projectId={project.id} />}
-        </div>
-        <div className="row gap-s">
-          <div style={{ width: 160 }}>
-            <Progress value={state.progress} />
-          </div>
-          <ProjectTimerButton projectId={project.id} />
-          {state.pipelineState === 'active' ? (
+      <div ref={head}>
+        <ProjectHero
+          id={project.id}
+          name={project.name}
+          client={project.clientName}
+          cover={data.cover}
+          state={state}
+          meta={
+            <span className="ph-facts">
+              <span>{project.clientName || 'ללא לקוח'}</span>
+              {project.brief.dueDate && <span>יעד {fmtDate(project.brief.dueDate)}</span>}
+              <span>עודכן {fmtRelative(project.updatedAt)}</span>
+            </span>
+          }
+          under={!isCloud() ? <ProgressLine projectId={project.id} /> : undefined}
+          actions={
             <>
-              <button className="btn" disabled={pipeline.busy} onClick={() => setPipeline('pause')} title="משימות לא ירוצו עד להפעלה מחדש">
-                ⏸ השהה
-              </button>
-              <button className="btn btn-danger-ghost" disabled={pipeline.busy} onClick={() => setConfirmStop(true)}>
-                ⏹ עצור
-              </button>
+              <ProjectTimerButton projectId={project.id} />
+              {state.pipelineState === 'active' ? (
+                <>
+                  <button className="btn btn-sm" disabled={pipeline.busy} onClick={() => setPipeline('pause')} title="משימות לא ירוצו עד להפעלה מחדש">
+                    ⏸ השהה
+                  </button>
+                  <button className="btn btn-sm btn-danger-ghost" disabled={pipeline.busy} onClick={() => setConfirmStop(true)}>
+                    ⏹ עצור
+                  </button>
+                </>
+              ) : (
+                <button className="btn btn-sm btn-primary" disabled={pipeline.busy} onClick={() => setPipeline('resume')}>
+                  ▶ הפעל מחדש
+                </button>
+              )}
             </>
-          ) : (
-            <button className="btn btn-primary" disabled={pipeline.busy} onClick={() => setPipeline('resume')}>
-              ▶ הפעל מחדש
-            </button>
-          )}
-        </div>
+          }
+        />
       </div>
       <InlineError error={pipeline.error} onClose={pipeline.clearError} />
 
-      <PipelineStepper
-        state={state}
-        onSelect={(k) => navigate(`/projects/${project.id}/${STAGE_TAB[k] ?? 'overview'}`)}
-      />
-
-      {state.nextAction && (
-        <Link to={`/projects/${project.id}/${state.nextAction.tab}`} className={`next-banner action-${state.nextAction.kind}`}>
-          <span className="next-label">הפעולה הבאה:</span> {state.nextAction.label} ←
-        </Link>
-      )}
-
-      <nav className="tabs">
-        {TABS.map((t) => (
-          <Link key={t.key} to={`/projects/${project.id}/${t.key}`} className={`tab ${tab === t.key ? 'tab-on' : ''}`}>
-            {t.label}
-          </Link>
-        ))}
-      </nav>
-
+      <div className="proj-layout">
+        <StageRail id={project.id} state={state} tab={tab} stageTab={STAGE_TAB} extra={EXTRA_TABS} />
+        <div className="proj-content">
       <div className="tab-body">
         {tab === 'overview' && <OverviewTab {...props} />}
         {tab === 'brief' && <BriefTab {...props} />}
@@ -187,6 +179,8 @@ export function ProjectPage({ health }: { health: Health | null }) {
         {tab === 'activity' && <ActivityTab {...props} />}
         {tab === 'jobs' && <JobsTab {...props} />}
         {tab === 'settings' && <SettingsTab {...props} />}
+      </div>
+        </div>
       </div>
 
       {confirmStop && (

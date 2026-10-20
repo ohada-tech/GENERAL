@@ -22,7 +22,7 @@ import {
   mapNotification,
 } from '../db/repo.js';
 import { describeProviders } from '../providers/registry.js';
-import { dashboard, projectState } from '../services/views.js';
+import { dashboard, projectCover, projectState } from '../services/views.js';
 import * as secrets from '../services/secrets.js';
 import * as learning from '../services/learning.js';
 import * as knowledge from '../services/knowledge.js';
@@ -68,6 +68,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
       state: projectState(ctx, project),
       approvals: listApprovals(ctx.db, id),
       assets: listAssets(ctx.db, id),
+      cover: projectCover(ctx, id),
     };
   });
 

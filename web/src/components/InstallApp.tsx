@@ -14,7 +14,7 @@ export function InstallApp() {
   };
   return (
     <>
-      <button className="btn-link small" onClick={onClick} title="התקן את המערכת כאפליקציה במחשב — חלון נפרד, בלי הדפדפן">
+      <button className="btn-link small install-link" onClick={onClick} title="התקן את המערכת כאפליקציה במחשב — חלון נפרד, בלי הדפדפן">
         ⬇ התקן אפליקציה
       </button>
       {help && (

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { APP_VERSION } from '@apos/shared';
+import { WhatsNew } from './pages/WhatsNew';
 import { Link, Route, Routes } from 'react-router-dom';
 import { BrandLockup } from './components/Brand';
 import { KeysModal, KeysTag, type Keys, type KeyStatus } from './components/Keys';
@@ -50,6 +52,9 @@ function Shell({ canLogout }: { canLogout: boolean }) {
         <Link to="/" className="brand" aria-label="AI Production AP — לדשבורד">
           <BrandLockup />
         </Link>
+        <Link to="/whats-new" className="version-badge" title="מה חדש בגרסה">
+          AP {APP_VERSION}
+        </Link>
         <div className="topbar-side">
           {!isCloud() && <InstallApp />}
           <Link to="/learning" className="btn-link small" title="ספר הידע והכללים שהמערכת למדה">
@@ -84,6 +89,7 @@ function Shell({ canLogout }: { canLogout: boolean }) {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/learning" element={<LessonsPage />} />
+          <Route path="/whats-new" element={<WhatsNew />} />
           <Route path="/projects/:id" element={<ProjectPage health={health.data} />} />
           <Route path="/projects/:id/:tab" element={<ProjectPage health={health.data} />} />
           <Route path="*" element={<div className="empty">העמוד לא נמצא. <Link to="/">לדשבורד</Link></div>} />

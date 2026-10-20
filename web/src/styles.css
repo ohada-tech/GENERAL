@@ -817,3 +817,133 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .t-share { display: flex; flex-wrap: wrap; gap: 4px 6px; font-size: 12.5px; color: var(--text-2); }
 .t-share-nudge { color: var(--warn); }
 .t-share-hint { font-weight: 700; }
+
+/* ============================================================
+   AP 1.0 — עמוד פרויקט: כרטיס כותרת עם תמונה + מסילת שלבים
+   ============================================================ */
+.ph {
+  position: relative; overflow: hidden; border-radius: 22px; border: 1px solid var(--border);
+  background: var(--surface); box-shadow: var(--shadow);
+  display: grid; grid-template-columns: minmax(0, 1fr); isolation: isolate;
+}
+.ph-art {
+  position: absolute; inset: 0; z-index: -1; display: grid; place-items: center start; padding-inline-end: 6%;
+  background:
+    radial-gradient(90% 120% at 12% 10%, hsl(var(--h1) 40% 34% / 0.55), transparent 60%),
+    linear-gradient(120deg, hsl(var(--h1) 30% 13%), hsl(var(--h2) 32% 20%) 55%, hsl(var(--h1) 28% 9%));
+}
+.ph-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ph-art::after { content: ''; position: absolute; inset: 0; background: linear-gradient(270deg, rgba(10, 10, 11, 0.92) 0%, rgba(10, 10, 11, 0.72) 45%, rgba(10, 10, 11, 0.35) 100%); }
+.ph-word { position: relative; z-index: 1; font-family: 'Poppins', var(--font-body); font-weight: 700; font-size: clamp(34px, 6vw, 72px); color: rgba(255, 255, 255, 0.08); letter-spacing: 0.02em; }
+.ph-body { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: end; padding: 22px 26px; color: #f2f1f4; }
+.ph-main { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.ph-crumbs { font-size: 12.5px; color: rgba(242, 241, 244, 0.6); display: flex; gap: 6px; }
+.ph-crumbs a { color: rgba(242, 241, 244, 0.75); }
+.ph-title { margin: 0; font-size: clamp(24px, 3vw, 34px); font-weight: 800; line-height: 1.15; text-wrap: balance; color: #fff; }
+.ph-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ph-facts { display: inline-flex; gap: 10px; flex-wrap: wrap; font-size: 13px; color: rgba(242, 241, 244, 0.72); }
+.ph-facts span + span::before { content: '·'; margin-inline-end: 10px; opacity: 0.6; }
+.ph .progress-line { color: rgba(242, 241, 244, 0.85); margin-top: 2px; }
+.ph .progress-line .muted { color: rgba(242, 241, 244, 0.6); }
+.ph .progress-line .btn-link { color: #c8a6ff; }
+.ph-side { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; min-width: 260px; }
+.ph-ring { width: 62px; height: 62px; color: #f2f1f4; }
+.ph-next {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; max-width: 340px; text-decoration: none;
+  padding: 12px 16px; border-radius: 14px; background: var(--holo); color: var(--on-holo);
+  box-shadow: 0 14px 34px -16px rgba(200, 166, 255, 0.7); transition: transform 0.25s var(--ease), filter 0.2s;
+}
+.ph-next:hover { transform: translateY(-2px); filter: brightness(1.05); text-decoration: none; }
+.ph-next-kind { font-size: 11.5px; font-weight: 700; opacity: 0.75; }
+.ph-next-label { font-size: 15.5px; font-weight: 800; line-height: 1.3; }
+.ph-next-fix { background: linear-gradient(115deg, #ffb37a, #ff9a9a); }
+.ph-next-done { background: rgba(255, 255, 255, 0.1); color: #f2f1f4; box-shadow: none; }
+.ph-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.ph-actions .btn { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.18); color: #f2f1f4; }
+.ph-actions .btn:hover { background: rgba(255, 255, 255, 0.18); }
+.ph-actions .btn-danger-ghost { color: #ffb4b4; }
+
+.proj-layout { display: grid; grid-template-columns: 228px minmax(0, 1fr); gap: 22px; align-items: start; margin-top: 18px; }
+.proj-content { min-width: 0; }
+.rail {
+  position: sticky; top: calc(var(--topbar-h, 60px) + var(--sticky-bar-h, 0px) + 12px); transition: top 0.28s var(--ease);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 10px;
+  display: flex; flex-direction: column; gap: 2px; max-height: calc(100vh - var(--topbar-h, 60px) - var(--sticky-bar-h, 0px) - 24px); overflow: auto;
+}
+.rail-title { font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--faint); padding: 4px 8px 6px; }
+.rail-list, .rail-extra { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.rail-step { position: relative; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; align-items: center; padding: 7px 8px; border-radius: 12px; color: var(--text); text-decoration: none; }
+.rail-step:hover, .rail-link:hover { background: var(--surface-2); text-decoration: none; }
+.rail-here { background: var(--surface-2); }
+.rail-dot { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-family: 'Poppins', var(--font-body); font-size: 12px; font-weight: 600; border: 1px solid var(--border-strong); color: var(--muted); background: var(--surface); }
+.rail-step.rs-completed .rail-dot { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+.rail-step.rs-blocked .rail-dot, .rail-step.rs-needs_revision .rail-dot { background: var(--danger-bg); color: var(--danger); border-color: transparent; }
+.rail-step.rs-waiting_internal .rail-dot, .rail-step.rs-waiting_client .rail-dot { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+.rail-now .rail-dot { background: var(--holo); color: var(--on-holo); border: 0; box-shadow: 0 0 0 4px var(--violet-bg); }
+.rail-text { display: flex; flex-direction: column; min-width: 0; }
+.rail-name { font-weight: 700; font-size: 14px; line-height: 1.25; }
+.rail-status { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rail-step:not(:last-child)::after { content: ''; position: absolute; inset-inline-start: 22px; top: 37px; height: 10px; width: 1px; background: var(--border-strong); }
+.rail-sep { height: 1px; background: var(--border); margin: 8px 6px; }
+.rail-link { display: block; padding: 7px 10px; border-radius: 10px; font-size: 13.5px; color: var(--text-2); text-decoration: none; }
+
+/* מסך שאינו רחב מאוד: המסילה עוברת לשורה אופקית מעל התוכן (בתסריט יש כבר עמודת גרסאות משלו) */
+@media (max-width: 1359px) {
+  .proj-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .rail { position: static; max-height: none; flex-direction: row; align-items: center; overflow-x: auto; padding: 6px; gap: 4px; scrollbar-width: none; }
+  .rail::-webkit-scrollbar { display: none; }
+  .rail-title, .rail-sep { display: none; }
+  .rail-list, .rail-extra { flex-direction: row; gap: 4px; }
+  .rail-step { grid-template-columns: 26px auto; padding: 5px 8px; white-space: nowrap; }
+  .rail-dot { width: 26px; height: 26px; font-size: 11px; }
+  .rail-status { display: none; }
+  .rail-step::after { display: none; }
+  .rail-link { white-space: nowrap; }
+}
+@media (max-width: 760px) {
+  .ph-body { grid-template-columns: minmax(0, 1fr); padding: 18px; }
+  .ph-side { align-items: stretch; min-width: 0; flex-direction: row; flex-wrap: wrap; }
+  .ph-ring { width: 52px; height: 52px; }
+  .ph-next { flex: 1 1 200px; max-width: none; }
+  .ph-actions { justify-content: flex-start; width: 100%; }
+}
+.script-main, .script-main > * { min-width: 0; }
+@media (max-width: 1359px) {
+  .rail-list > li, .rail-extra > li { flex: 0 0 auto; }
+  .rail-text, .rail-name { overflow: visible; white-space: nowrap; }
+}
+@media (max-width: 1359px) {
+  .rail-list, .rail-extra { flex: 0 0 auto; }
+}
+.proj-layout > * { min-width: 0; }
+/* טלפון: הפס הדביק של הפרויקט בשתי שורות, ואף פעם לא רחב מהמסך */
+.proj-sticky { max-width: 100vw; overflow: hidden; }
+@media (max-width: 640px) {
+  .proj-sticky { display: block; }
+  .proj-sticky-row { flex-wrap: wrap; }
+  .proj-sticky-tabs { margin-top: 4px; }
+}
+/* שורת השיפור: יורדת שורה במסך צר במקום להרחיב את הדף */
+.improve-row { flex-wrap: wrap; }
+.improve-row textarea { flex: 1 1 260px; min-width: 0; }
+
+/* טלפון: סרגל עליון בשורה אחת — סטטוס המפתחות כאייקון, בלי "התקן אפליקציה" */
+.keys-short { display: none; }
+@media (max-width: 640px) {
+  .keys-full { display: none; }
+  .keys-short { display: inline; }
+  .install-link { display: none; }
+  .topbar { flex-wrap: nowrap; }
+  .topbar-side { flex-wrap: nowrap; }
+}
+
+/* AP 1.0 — תג גרסה ו"מה חדש" */
+.version-badge { font-family: 'Poppins', var(--font-body); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 999px; background: var(--violet-bg); color: var(--violet); text-decoration: none; white-space: nowrap; margin-inline-end: auto; }
+.version-badge:hover { text-decoration: none; filter: brightness(1.1); }
+.whats-new { max-width: 980px; }
+.wn-head { display: flex; align-items: center; gap: 10px; }
+.wn-version { font-family: 'Poppins', var(--font-body); font-weight: 700; font-size: 13px; padding: 3px 12px; border-radius: 999px; background: var(--holo); color: var(--on-holo); }
+.wn-headline { font-size: clamp(22px, 3vw, 30px); margin: 10px 0 18px; text-wrap: balance; }
+.wn-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 14px; }
+.wn-group h2 { font-size: 17px; margin: 0 0 8px; }
+.wn-group ul { margin: 0; padding-inline-start: 18px; display: flex; flex-direction: column; gap: 6px; line-height: 1.5; }

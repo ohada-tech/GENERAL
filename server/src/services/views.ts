@@ -65,7 +65,7 @@ export function dashboard(ctx: Ctx): DashboardData {
 }
 
 /** תמונת שער: הפריים הראשון בסטורי בורד (מאושר קודם), ואם אין — תמונה שהועלתה לשוט */
-function projectCover(ctx: Ctx, projectId: string): ProjectSummary['cover'] {
+export function projectCover(ctx: Ctx, projectId: string): ProjectSummary['cover'] {
   const m = ctx.db
     .prepare(
       `SELECT m.id FROM media m LEFT JOIN shots s ON s.id = m.shot_id

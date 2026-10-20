@@ -5,3 +5,4 @@ export * from './storyboard.js';
 export * from './types.js';
 export * from './time.js';
 export * from './production.js';
+export * from './version.js';
