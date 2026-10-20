@@ -413,7 +413,7 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .ms-done { color: var(--ok); }
 .ms-open { color: var(--muted); }
 .sticky-bar select { width: auto; max-width: 260px; }
-.sticky-bar { position: sticky; top: 68px; z-index: 10; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 10px 14px; box-shadow: var(--shadow); }
+.sticky-bar { position: sticky; top: calc(var(--topbar-h, 60px) + var(--sticky-bar-h, 0px) + 8px); transition: top 0.28s var(--ease); z-index: 10; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 10px 14px; box-shadow: var(--shadow); }
 
 /* ============================================================
    טפסים
@@ -772,6 +772,8 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
   flex-wrap: wrap; gap: 10px;
 }
 .version-head::after { content: ''; position: absolute; inset-inline: 8px; bottom: 0; border-bottom: 1px solid var(--border); }
-@media (max-width: 640px) { .version-head { position: static; } }
+@media (max-width: 640px) { .version-head:not(.editor-head) { position: static; } }
 .version-head > .row { flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
 .version-head > div:first-child { min-width: 0; }
+/* בחלון עריכת שוט: השורה עם "שמור" נשארת למעלה בזמן גלילה בתוך החלון */
+.modal-sticky-head { position: sticky; top: -1px; z-index: 5; background: var(--surface); padding-block: 8px; margin-top: -8px; border-bottom: 1px solid var(--border); }

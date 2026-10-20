@@ -454,7 +454,7 @@ function ScriptEditor({
   const nextLabel = versionLabel(next.major, next.minor);
   return (
     <section className="card" data-editing="true">
-      <div className="row between">
+      <div className="row between version-head editor-head">
         <h2>{base ? `עריכת v${base.label}` : 'תסריט חדש (ידני)'}</h2>
         <div className="row gap-s">
           <button className="btn btn-ghost" onClick={onCancel}>

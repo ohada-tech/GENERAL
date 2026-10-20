@@ -293,7 +293,7 @@ function ShotEditor({
 
   return (
     <Modal title={`שוט ${shot.number} מתוך ${total}`} onClose={onClose} wide>
-      <div className="row between wrap gap-s">
+      <div className="row between wrap gap-s modal-sticky-head">
         <div className="row gap-s">
           <StatusBadge status={approvalTone(shot.approval)} label={SHOT_APPROVAL_LABELS[shot.approval]} />
           {shot.revisionNote && <span className="small warn-text">↺ {shot.revisionNote}</span>}
