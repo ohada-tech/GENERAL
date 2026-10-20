@@ -616,6 +616,10 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .feedback-item { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 .feedback-item.off { opacity: 0.5; }
 .feedback-item textarea { width: 100%; }
+.feedback-item .my-note { border-style: dashed; }
+.feedback-opinion { background: var(--info-bg); border-radius: 8px; padding: 8px 10px; }
+.feedback-review { border: 1px solid color-mix(in srgb, var(--info) 30%, transparent); border-radius: 10px; padding: 10px 12px; }
+.feedback-review ul, .feedback-review ol { margin: 0; padding-inline-start: 18px; }
 .strike { text-decoration: line-through; }
 .stack-xs { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
 .brand-logo-preview { background: #111114; border-radius: 10px; padding: 18px; display: flex; justify-content: center; }

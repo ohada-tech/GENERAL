@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import { GateError } from '../context.js';
 import * as dev from '../services/dev-chat.js';
 import * as feedback from '../services/client-feedback.js';
+import { requestFeedbackReview } from '../services/feedback-review.js';
 import { extractDocText } from '../services/doc-text.js';
 import { scriptDocx } from '../services/script-docx.js';
 import { scriptHtml } from '../services/script-html.js';
@@ -124,6 +125,15 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
     } else input = (req.body ?? {}) as { url?: string; text?: string };
     reply.code(201);
     return feedback.importClientFeedback(ctx, id, input);
+  });
+  // שמירת הבחירות וההחלטות של אוהד בלי תיקון; דעה של ChatGPT לפני תיקון
+  app.put('/api/feedback/:fid', async (req) => {
+    const b = (req.body ?? {}) as { items?: feedback.FeedbackItem[]; baseVersionId?: string };
+    return feedback.saveFeedbackItems(ctx, (req.params as { fid: string }).fid, b);
+  });
+  app.post('/api/feedback/:fid/review', async (req) => {
+    const b = (req.body ?? {}) as { items?: feedback.FeedbackItem[]; baseVersionId?: string };
+    return requestFeedbackReview(ctx, (req.params as { fid: string }).fid, b);
   });
   app.post('/api/feedback/:fid/apply', async (req) => {
     const b = (req.body ?? {}) as { items?: feedback.FeedbackItem[]; baseVersionId?: string };

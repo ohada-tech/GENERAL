@@ -3,7 +3,7 @@
  * על הגרסה שנוצרה מוצגת טבלה: כל הערה ← מה השתנה בסצנה שלה.
  */
 import type { ScriptContent, ScriptVersion } from '@apos/shared';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, useAction } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
 import { InlineError, Tag } from './ui';
@@ -18,6 +18,25 @@ export interface FeedbackItem {
   text: string;
   scenes: number[];
   include: boolean;
+  field?: 'narration' | 'onScreenText' | 'visualAction';
+  value?: string;
+  /** ההחלטה של אוהד על ההערה, נכנסת לתיקון */
+  myNote?: string;
+}
+
+type Verdict = 'agree' | 'partly' | 'disagree' | 'question';
+
+export interface FeedbackReview {
+  status: 'running' | 'done' | 'failed';
+  at: string;
+  error?: string;
+  model?: string;
+  timing?: { targetSec: number | null; beforeSec: number; afterSec: number };
+  summary?: string;
+  items?: Array<{ itemId: string; verdict: Verdict; understanding: string; reasoning: string; suggestion: string }>;
+  conflicts?: string[];
+  questionsForClient?: string[];
+  recommendation?: string;
 }
 
 export interface FeedbackImport {
@@ -29,11 +48,18 @@ export interface FeedbackImport {
   detectedLabel: string | null;
   items: FeedbackItem[];
   status: 'draft' | 'applied';
+  review: FeedbackReview | null;
   createdAt: string;
 }
 
 const KIND: Record<Kind, string> = { comment: 'הערה במסמך', suggestion: 'הצעת שינוי', edit: 'עריכה ישירה', note: 'הערה' };
 const SOURCE: Record<FeedbackImport['source'], string> = { gdoc: 'Google Doc', docx: 'Word', text: 'טקסט' };
+const VERDICT: Record<Verdict, [string, string]> = {
+  agree: ['מסכים', 'ok'],
+  partly: ['חלקית', 'warn'],
+  disagree: ['לא מסכים', 'danger'],
+  question: ['שאלה ללקוח', 'info'],
+};
 
 /** ייבוא ובדיקה של הערות לקוח — נפתח מהכפתור בראש לשונית התסריט */
 export function ClientFeedbackImport({
@@ -80,6 +106,32 @@ export function ClientFeedbackImport({
       await onDone();
       onClose();
     }
+  };
+
+  const save = () => imp && act.run(() => api.put<FeedbackImport>(`/api/feedback/${imp.id}`, { items, baseVersionId: baseId })).then((r) => r && setImp(r));
+  const askChatGPT = async () => {
+    if (!imp) return;
+    const r = await act.run(() => api.post(`/api/feedback/${imp.id}/review`, { items, baseVersionId: baseId }));
+    if (r) setImp({ ...imp, review: { status: 'running', at: new Date().toISOString() } });
+  };
+
+  // הדעה של ChatGPT רצה ברקע: בודקים כל 3 שניות, ומעדכנים רק אותה (לא את מה שאוהד כותב)
+  const reviewRunning = imp?.review?.status === 'running';
+  useEffect(() => {
+    if (!reviewRunning || !imp) return;
+    const t = setInterval(async () => {
+      const r = await api.get<{ imports: FeedbackImport[] }>(`/api/projects/${projectId}/feedback`).catch(() => null);
+      const now = r?.imports.find((x) => x.id === imp.id);
+      if (now?.review && now.review.status !== 'running') setImp((cur) => (cur ? { ...cur, review: now.review } : cur));
+    }, 3000);
+    return () => clearInterval(t);
+  }, [reviewRunning, imp?.id, projectId]);
+
+  const review = imp?.review?.status === 'done' ? imp.review : null;
+  const opinion = (id: string) => review?.items?.find((x) => x.itemId === id);
+  const copyQuestions = async () => {
+    const qs = review?.questionsForClient ?? [];
+    await navigator.clipboard.writeText(qs.map((q, i) => `${i + 1}. ${q}`).join('\n'));
   };
 
   return (
@@ -148,6 +200,60 @@ export function ClientFeedbackImport({
               </select>
             </label>
           </div>
+          {reviewRunning && (
+            <div className="notice">
+              <span className="spinner" /> ChatGPT עובר על ההערות… התסריט לא משתנה.
+            </div>
+          )}
+          {imp.review?.status === 'failed' && <div className="notice warn">הדעה של ChatGPT נכשלה: {imp.review.error}</div>}
+          {review && (
+            <div className="feedback-review stack">
+              <div className="row between wrap gap-s">
+                <strong>🧠 הדעה של ChatGPT</strong>
+                <span className="small muted">
+                  {review.model} · {fmtDateTime(review.at)}
+                </span>
+              </div>
+              {review.timing && (
+                <div className={`small ${review.timing.targetSec && review.timing.afterSec > review.timing.targetSec ? 'warn-text' : 'muted'}`}>
+                  ⏱ קריינות עכשיו ≈ {review.timing.beforeSec} ש׳ · עם העריכות של הלקוח ≈ {review.timing.afterSec} ש׳
+                  {review.timing.targetSec ? ` · יעד ${review.timing.targetSec} ש׳` : ''}
+                </div>
+              )}
+              {review.summary && <div>{review.summary}</div>}
+              {review.recommendation && (
+                <div>
+                  <strong>ההמלצה: </strong>
+                  {review.recommendation}
+                </div>
+              )}
+              {!!review.conflicts?.length && (
+                <div className="stack-xs">
+                  <strong className="small">⚠ סתירות וכפילויות</strong>
+                  <ul className="small">
+                    {review.conflicts.map((c, i) => (
+                      <li key={i}>{c}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {!!review.questionsForClient?.length && (
+                <div className="stack-xs">
+                  <div className="row between wrap gap-s">
+                    <strong className="small">❓ שאלות ללקוח</strong>
+                    <button className="btn btn-ghost btn-sm" onClick={copyQuestions} title="מעתיק את השאלות, מוכן להדבקה בוואטסאפ">
+                      📋 העתק
+                    </button>
+                  </div>
+                  <ol className="small">
+                    {review.questionsForClient.map((q, i) => (
+                      <li key={i}>{q}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </div>
+          )}
           <ol className="feedback-list stack">
             {items.map((it) => (
               <li key={it.id} className={`feedback-item ${it.include ? '' : 'off'}`}>
@@ -172,9 +278,48 @@ export function ClientFeedbackImport({
                 </div>
                 {it.quote && it.kind !== 'edit' && <div className="small muted clamp-2">על: "{it.quote}"</div>}
                 <textarea rows={Math.min(6, Math.max(2, Math.ceil(it.text.length / 90)))} value={it.text} onChange={(e) => patch(it.id, { text: e.target.value })} />
+                {(() => {
+                  const o = opinion(it.id);
+                  if (!o) return null;
+                  const [label, tone] = VERDICT[o.verdict] ?? ['', 'neutral'];
+                  return (
+                    <div className="feedback-opinion stack-xs small">
+                      <div>
+                        <Tag tone={tone}>ChatGPT: {label}</Tag> {o.understanding}
+                      </div>
+                      <div className="muted">{o.reasoning}</div>
+                      {o.suggestion && (
+                        <div className="row between gap-s">
+                          <span>
+                            <strong>הצעה: </strong>
+                            {o.suggestion}
+                          </span>
+                          <button className="btn btn-ghost btn-sm" onClick={() => patch(it.id, { myNote: o.suggestion })} title="מעתיק את ההצעה להחלטה שלך, אפשר לערוך">
+                            ↓ לקחת
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+                <textarea
+                  rows={it.myNote ? 2 : 1}
+                  className="my-note"
+                  placeholder="ההחלטה שלי על ההערה (נכנסת לתיקון, וגוברת על נוסח הלקוח)"
+                  value={it.myNote ?? ''}
+                  onChange={(e) => patch(it.id, { myNote: e.target.value })}
+                />
               </li>
             ))}
           </ol>
+          <div className="row gap-s wrap">
+            <button className="btn btn-ghost" disabled={act.busy || reviewRunning || !chosen.length} onClick={askChatGPT} title="ChatGPT נותן דעה על כל הערה. התסריט לא משתנה">
+              🧠 {review ? 'דעה חדשה מ-ChatGPT' : 'מה ChatGPT חושב?'}
+            </button>
+            <button className="btn btn-ghost" disabled={act.busy} onClick={save} title="שומר את הבחירות וההחלטות שלך, בלי לשנות את התסריט">
+              💾 שמור
+            </button>
+          </div>
           <div className="row gap-s wrap">
             <button className="btn" disabled={act.busy || running || !chosen.length || !base} onClick={apply} title="ChatGPT מתקן, Claude בודק — נוצרת גרסה חדשה">
               ✨ תקן את v{base?.label} לפי {chosen.length} הערות

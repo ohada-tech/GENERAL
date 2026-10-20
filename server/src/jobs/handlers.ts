@@ -15,6 +15,8 @@ import { applyDistilled, DISTILL_SCHEMA, distillPrompts, lessonsFor, type Lesson
 import { playbookFor } from '../services/knowledge.js';
 import { lockToTargets, scopeLabel, targetScenes } from '../workflow/revision-scope.js';
 import { improveScript, type JsonCapableProvider } from '../providers/collab.js';
+import type { FeedbackReview } from '../services/client-feedback.js';
+import { runFeedbackReview, saveReview } from '../services/feedback-review.js';
 
 const AREAS_FOR: Record<'script' | 'storyboard', LessonArea[]> = {
   script: ['script', 'audio', 'general'],
@@ -286,10 +288,35 @@ const storyboardGenerate: JobHandler<StoryboardRun> = {
   },
 };
 
+/** דעה של ChatGPT על הערות הלקוח: נשמרת על הייבוא, התסריט לא משתנה */
+const feedbackReview: JobHandler<{ importId: string; review: FeedbackReview }> = {
+  async run(ctx, job) {
+    const importId = String(job.payload.feedbackImportId ?? '');
+    const pc = projectContext(ctx, job.projectId, 'script');
+    return { importId, review: await runFeedbackReview(ctx, importId, pc) };
+  },
+  persist(ctx, job, r) {
+    saveReview(ctx, r.importId, r.review);
+    emit(ctx, {
+      projectId: job.projectId,
+      type: 'feedback.reviewed',
+      actor: 'openai',
+      message: `ChatGPT נתן דעה על ${r.review.items?.length ?? 0} הערות לקוח`,
+      payload: { feedbackImportId: r.importId },
+    });
+    return { feedbackImportId: r.importId, items: r.review.items?.length ?? 0 };
+  },
+  onFinalFail(ctx, job, err) {
+    const importId = String(job.payload.feedbackImportId ?? '');
+    saveReview(ctx, importId, { status: 'failed', at: ctx.now().toISOString(), error: err instanceof Error ? err.message : String(err) });
+  },
+};
+
 export const HANDLERS: Record<JobType, JobHandler<any>> = {
   'script.generate': scriptGenerate,
   'script.revise': scriptRevise,
   'storyboard.generate': storyboardGenerate,
   'lessons.distill': lessonsDistill,
+  'feedback.review': feedbackReview,
   ...MEDIA_HANDLERS,
 };

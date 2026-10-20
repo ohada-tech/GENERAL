@@ -26,6 +26,28 @@ export interface FeedbackItem {
   /** סצנות (מ-0). ריק = הערה כללית */
   scenes: number[];
   include: boolean;
+  /** עריכה ישירה: השדה והנוסח החדש של הלקוח (לחישוב האורך אחרי ההערות) */
+  field?: 'narration' | 'onScreenText' | 'visualAction';
+  value?: string;
+  /** מה אוהד מחליט על ההערה, נכנס לתיקון כהנחיה */
+  myNote?: string;
+}
+
+export type ReviewVerdict = 'agree' | 'partly' | 'disagree' | 'question';
+
+/** הדעה של ChatGPT על ההערות, לפני שמשנים משהו בתסריט */
+export interface FeedbackReview {
+  status: 'running' | 'done' | 'failed';
+  at: string;
+  error?: string;
+  model?: string;
+  /** אורך הקריינות המשוער (שניות): עכשיו, ואחרי העריכות הישירות של הלקוח. מחושב בקוד ולא במודל */
+  timing?: { targetSec: number | null; beforeSec: number; afterSec: number };
+  summary?: string;
+  items?: Array<{ itemId: string; verdict: ReviewVerdict; understanding: string; reasoning: string; suggestion: string }>;
+  conflicts?: string[];
+  questionsForClient?: string[];
+  recommendation?: string;
 }
 
 export interface FeedbackImport {
@@ -38,6 +60,7 @@ export interface FeedbackImport {
   detectedLabel: string | null;
   items: FeedbackItem[];
   status: 'draft' | 'applied';
+  review: FeedbackReview | null;
   createdAt: string;
 }
 
@@ -222,6 +245,19 @@ const item = (kind: FeedbackKind, author: string, quote: string, text: string, b
   include: true,
 });
 
+const letters = (s: string, re: RegExp) => s.match(re)?.length ?? 0;
+const HEB = /[֐-׿]/g;
+const LAT = /[A-Za-z]/g;
+
+/** תסריט שהקריינות שלו באנגלית (או שפה לטינית אחרת) */
+export function isLatinScript(base: ScriptContent) {
+  const all = base.scenes.map((s) => s.narration).join(' ');
+  return letters(all, LAT) > letters(all, HEB) * 4;
+}
+
+/** פסקה שרובה עברית */
+export const isHebrewAside = (t: string) => letters(t, HEB) > letters(t, LAT);
+
 /** הערות מתוך מסמך Word שנקרא */
 export function itemsFromDocx(p: Parsed, base: ScriptContent): FeedbackItem[] {
   const out: FeedbackItem[] = [];
@@ -232,24 +268,41 @@ export function itemsFromDocx(p: Parsed, base: ScriptContent): FeedbackItem[] {
 
   // עריכה ישירה בטבלת התסריט שהמערכת ייצאה: # | קריינות | טקסט על המסך | מה רואים | שניות
   const scriptTable = p.tables.find((t) => t[0]?.[1]?.includes('קריינות'));
+  const latin = isLatinScript(base);
+  const seen = new Set<number>();
   for (const row of scriptTable?.slice(1) ?? []) {
     const n = Number(row[0]?.match(/^\d+/)?.[0]);
     const scene = base.scenes[n - 1];
     if (!scene) continue;
+    // שורה שהלקוח הוסיף מתחת לסצנה ("7 Dana"): מה שאחרי המספר הוא מי שכתב
+    const author = seen.has(n) ? (row[0] ?? '').replace(/^\d+/, '').replace(/\s+/g, ' ').trim() : '';
+    seen.add(n);
+    const asides: string[] = [];
     (['narration', 'onScreenText', 'visualAction'] as const).forEach((f, k) => {
-      const now = (row[k + 1] ?? '').replace(/^—$/, '');
+      const paras = (row[k + 1] ?? '').split('\n');
+      // בתסריט באנגלית, פסקה בעברית בתוך התא היא הערה של הלקוח ולא נוסח חדש
+      const notes = latin ? paras.filter(isHebrewAside) : [];
+      if (notes.length) asides.push(notes.join(' · '));
+      const now = paras.filter((t) => !notes.includes(t)).join('\n').trim().replace(/^—$/, '');
+      if (!now && notes.length) return; // כל התא הוא הערה ← בשדה עצמו לא נגעו
       if (norm(now) !== norm(scene[f])) {
         out.push({
           id: uid(),
           kind: 'edit',
-          author: '',
+          author,
           quote: scene[f],
-          text: now ? `הלקוח שינה את "${FIELD_LABEL[f]}" ל: "${now}"` : `הלקוח מחק את "${FIELD_LABEL[f]}"`,
+          text: now ? `${author || 'הלקוח'} שינה את "${FIELD_LABEL[f]}" ל: "${now}"` : `${author || 'הלקוח'} מחק את "${FIELD_LABEL[f]}"`,
           scenes: [n - 1],
           include: true,
+          field: f,
+          value: now,
         });
       }
     });
+    // עמודת השניות: מספר = תזמון, כל דבר אחר = הערה
+    const sec = (row[4] ?? '').trim();
+    if (sec && !/^\d+(?:\.\d+)?$/.test(sec)) asides.push(sec.replace(/\n+/g, ' · '));
+    for (const a of asides) out.push({ id: uid(), kind: 'comment', author, quote: '', text: a, scenes: [n - 1], include: true });
   }
 
   // טקסט חופשי: מה שנכתב בחלק "הערות ואישור הלקוח"; מסמך שאינו בתבנית שלנו — כל הפסקאות
@@ -309,6 +362,7 @@ const map = (r: any): FeedbackImport => ({
   detectedLabel: r.detected_label ?? null,
   items: JSON.parse(r.items || '[]'),
   status: r.status,
+  review: r.review ? JSON.parse(r.review) : null,
   createdAt: r.created_at,
 });
 
@@ -374,11 +428,12 @@ export function feedbackPrompt(clientName: string, items: FeedbackItem[]) {
   const lines = items.map((it, i) => {
     const where = it.scenes.length ? `סצנה ${it.scenes.map((s) => s + 1).join(', ')}` : 'כללי';
     const quote = it.quote && it.kind !== 'edit' ? ` (על הקטע: "${it.quote.slice(0, 300)}")` : '';
-    return `${i + 1}. [${where} · ${KIND_LABEL[it.kind]}${it.author ? ` · ${it.author}` : ''}]${quote} ${it.text}`;
+    const mine = it.myNote?.trim() ? `\n   ההחלטה של הסטודיו על ההערה הזאת (גוברת על נוסח הלקוח): ${it.myNote.trim()}` : '';
+    return `${i + 1}. [${where} · ${KIND_LABEL[it.kind]}${it.author ? ` · ${it.author}` : ''}]${quote} ${it.text}${mine}`;
   });
   return [
     `הערות הלקוח${clientName ? ` (${clientName})` : ''} על התסריט. טפל בכל הערה בנקודה שלה, ואל תשנה דברים שאף הערה לא ביקשה.`,
-    'עריכה ישירה של הלקוח: אמץ את הנוסח שלו כמעט מילה במילה (רק התאמה לאורך ולתזמון).',
+    'עריכה ישירה של הלקוח: אמץ את הנוסח שלו כמעט מילה במילה (רק התאמה לאורך ולתזמון), אלא אם הסטודיו החליט אחרת על אותה הערה.',
     'הערה שמבקשת להוסיף מסר: שלב אותו בסצנה הכי מתאימה בלי להאריך את הסרטון מעבר לנדרש.',
     '',
     ...lines,
@@ -391,11 +446,7 @@ export function applyClientFeedback(ctx: Ctx, importId: string, input: { items?:
   const baseId = input.baseVersionId || imp.baseVersionId;
   const base = getScript(ctx.db, baseId);
   if (!base || base.projectId !== imp.projectId) throw new NotFoundError('גרסת תסריט');
-  const items = (input.items ?? imp.items).map((it) => ({
-    ...it,
-    text: String(it.text ?? '').trim(),
-    scenes: (it.scenes ?? []).filter((s) => Number.isInteger(s) && s >= 0 && s < base.content.scenes.length),
-  }));
+  const items = cleanItems(input.items ?? imp.items, base.content.scenes.length);
   const chosen = items.filter((it) => it.include && it.text);
   if (!chosen.length) throw new GateError('לא נבחרה אף הערה לתיקון', 400);
   const project = getProject(ctx.db, imp.projectId)!;
@@ -404,7 +455,11 @@ export function applyClientFeedback(ctx: Ctx, importId: string, input: { items?:
 
   return tx(ctx.db, () => {
     ctx.db.prepare('UPDATE client_feedback SET items = ?, base_version_id = ? WHERE id = ?').run(json(items), baseId, importId);
-    for (const it of chosen) recordFeedback(ctx, imp.projectId, 'script', it.text);
+    for (const it of chosen) {
+      recordFeedback(ctx, imp.projectId, 'script', it.text);
+      // ההחלטה של אוהד על ההערה נלמדת כמו כל הערה שלו
+      if (it.myNote) recordFeedback(ctx, imp.projectId, 'script', it.myNote);
+    }
     return enqueueJob(ctx, {
       projectId: imp.projectId,
       type: 'script.revise',
@@ -414,3 +469,39 @@ export function applyClientFeedback(ctx: Ctx, importId: string, input: { items?:
     });
   });
 }
+
+/** ניקוי הערות שחוזרות מהממשק: טקסט, סצנות בטווח, ההחלטה של אוהד */
+export function cleanItems(items: FeedbackItem[], sceneCount: number): FeedbackItem[] {
+  return items.map((it) => ({
+    ...it,
+    text: String(it.text ?? '').trim(),
+    scenes: (it.scenes ?? []).filter((s) => Number.isInteger(s) && s >= 0 && s < sceneCount),
+    myNote: String(it.myNote ?? '').trim().slice(0, 4000),
+  }));
+}
+
+/** שמירת הבחירות של אוהד (מה נכלל, לאיזו סצנה, ההחלטה שלו) בלי להפעיל תיקון */
+export function saveFeedbackItems(ctx: Ctx, importId: string, input: { items?: FeedbackItem[]; baseVersionId?: string }) {
+  const imp = getFeedbackImport(ctx, importId);
+  if (!imp) throw new NotFoundError('ייבוא הערות');
+  if (imp.status === 'applied') throw new GateError('ההערות כבר הוחלו על התסריט', 409);
+  const baseId = input.baseVersionId || imp.baseVersionId;
+  const base = getScript(ctx.db, baseId);
+  if (!base || base.projectId !== imp.projectId) throw new NotFoundError('גרסת תסריט');
+  const items = cleanItems(input.items ?? imp.items, base.content.scenes.length);
+  ctx.db.prepare('UPDATE client_feedback SET items = ?, base_version_id = ? WHERE id = ?').run(json(items), baseId, importId);
+  return getFeedbackImport(ctx, importId)!;
+}
+
+/** התסריט עם העריכות הישירות של הלקוח (רק כדי למדוד אורך) */
+export function withClientEdits(base: ScriptContent, items: FeedbackItem[]): ScriptContent {
+  const scenes = base.scenes.map((s) => ({ ...s }));
+  for (const it of items) {
+    if (!it.include || it.kind !== 'edit' || !it.field || it.scenes.length !== 1) continue;
+    const s = scenes[it.scenes[0]];
+    if (s) s[it.field] = it.value ?? '';
+  }
+  return { ...base, scenes };
+}
+
+export { KIND_LABEL };

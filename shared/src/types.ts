@@ -60,7 +60,8 @@ export type JobType =
   | 'voiceover.generate'
   | 'music.generate'
   | 'edit.render'
-  | 'lessons.distill';
+  | 'lessons.distill'
+  | 'feedback.review';
 
 export const JOB_LABELS: Record<JobType, string> = {
   'script.generate': 'יצירת טיוטת תסריט',
@@ -72,6 +73,7 @@ export const JOB_LABELS: Record<JobType, string> = {
   'music.generate': 'יצירת מוזיקה',
   'edit.render': 'עריכת הסרטון',
   'lessons.distill': 'למידה מההערות שלך',
+  'feedback.review': 'דעה של ChatGPT על הערות הלקוח',
 };
 
 export const JOB_STAGE: Record<JobType, StageKey> = {
@@ -84,6 +86,8 @@ export const JOB_STAGE: Record<JobType, StageKey> = {
   'music.generate': 'audio',
   'edit.render': 'editing',
   'lessons.distill': 'brief',
+  // לא 'script': כשל בניתוח לא חוסם את שלב התסריט
+  'feedback.review': 'brief',
 };
 
 export interface Job {

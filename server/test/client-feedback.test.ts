@@ -11,8 +11,11 @@ import {
   itemsFromDocx,
   itemsFromText,
   parseDocx,
+  saveFeedbackItems,
   scenesFor,
 } from '../src/services/client-feedback.js';
+import { requestFeedbackReview } from '../src/services/feedback-review.js';
+import { ProviderError } from '../src/providers/types.js';
 import * as cmd from '../src/workflow/commands.js';
 import { makeCtx, projectWithBrief } from './helpers.js';
 
@@ -129,6 +132,108 @@ describe('Client feedback import', { timeout: 30_000 }, () => {
     applyClientFeedback(ctx, imp2.id, {});
     await drain(ctx);
     expect(listScripts(ctx.db, p.id)[0].content.scenes.every((s) => s.narration === 'נכתב מחדש')).toBe(true);
+  });
+
+  it('a client-added row: Hebrew asides in an English script become comments, not new script text', async () => {
+    const { v1 } = await setup();
+    const c = structuredClone(v1.content);
+    c.scenes.forEach((s, i) => Object.assign(s, { narration: `Original line number ${i + 1}`, onScreenText: '', visualAction: `Original visual ${i + 1}`, estDurationSec: 4 }));
+    const row = (i: number) => [`${i + 1}\nתועלת`, c.scenes[i].narration, '—', c.scenes[i].visualAction, '4'];
+    const parsed = {
+      paragraphs: [],
+      comments: [],
+      suggestions: [],
+      tables: [
+        [
+          ['#', 'קריינות', 'טקסט על המסך', 'מה רואים', 'שניות'],
+          row(0),
+          ['1 Dana', 'A new line from the client.', 'Learn More', 'Show the real app feed.\nאפשר להסיר את המטבח\nלהוריד את הקלאבים', ''],
+          row(1),
+          ['2 Dana', c.scenes[1].narration, 'Download for Free', 'שאלה על ה CTA\nהוא אמור להיות Download, נכון?', ''],
+        ],
+      ],
+    };
+    const items = itemsFromDocx(parsed, c);
+    expect(items.map((i) => [i.kind, i.author, i.scenes[0], i.field ?? ''])).toEqual([
+      ['edit', 'Dana', 0, 'narration'],
+      ['edit', 'Dana', 0, 'onScreenText'],
+      ['edit', 'Dana', 0, 'visualAction'],
+      ['comment', 'Dana', 0, ''],
+      ['edit', 'Dana', 1, 'onScreenText'],
+      ['comment', 'Dana', 1, ''],
+    ]);
+    expect(items[2].value).toBe('Show the real app feed.');
+    expect(items[3].text).toBe('אפשר להסיר את המטבח · להוריד את הקלאבים');
+    // השאלה לא הפכה ל"מה רואים" החדש של סצנה 2
+    expect(items[5].text).toBe('שאלה על ה CTA · הוא אמור להיות Download, נכון?');
+    expect(items.some((i) => i.field === 'visualAction' && i.scenes[0] === 1)).toBe(false);
+  });
+
+  it('ChatGPT reviews the notes without touching the script; Ohad\'s decision goes into the revision', async () => {
+    const { ctx, p, v1 } = await setup();
+    const fake = ctx.fake as any;
+    let asked = { system: '', user: '' };
+    fake.json = async (_n: string, _s: object, system: string, user: string) => {
+      asked = { system, user };
+      return {
+        data: {
+          summary: 'סיכום',
+          items: [
+            { index: 1, verdict: 'agree', understanding: 'לקצר', reasoning: 'ארוך מדי', suggestion: '' },
+            { index: 2, verdict: 'question', understanding: 'שאלה על השם', reasoning: 'צריך תשובה', suggestion: 'כן, באותיות קטנות' },
+          ],
+          conflicts: ['סצנה 2 חוזרת על סצנה 6'],
+          questionsForClient: ['להשאיר את השם באותיות קטנות?'],
+          recommendation: 'לקצר ולשאול',
+        },
+        model: 'gpt-test',
+      };
+    };
+    const imp = await importClientFeedback(ctx, p.id, { text: 'סצנה 2: לקצר\n\nהשם תמיד באותיות קטנות?' });
+    const before = listScripts(ctx.db, p.id).length;
+    requestFeedbackReview(ctx, imp.id, {});
+    expect(getFeedbackImport(ctx, imp.id)!.review).toMatchObject({ status: 'running' });
+    await drain(ctx);
+
+    const done = getFeedbackImport(ctx, imp.id)!;
+    expect(listScripts(ctx.db, p.id)).toHaveLength(before);
+    expect(done.review).toMatchObject({ status: 'done', model: 'gpt-test', summary: 'סיכום', questionsForClient: ['להשאיר את השם באותיות קטנות?'] });
+    expect(done.review!.items!.map((x) => [x.itemId, x.verdict])).toEqual([
+      [imp.items[0].id, 'agree'],
+      [imp.items[1].id, 'question'],
+    ]);
+    expect(done.review!.timing!.beforeSec).toBeGreaterThan(0);
+    expect(asked.user).toContain('CLIENT NOTES TO REVIEW NOW');
+    expect(asked.user).toContain('1. [scene 2');
+    expect(asked.system).toContain('Do NOT rewrite the script');
+
+    // ההחלטה של אוהד נשמרת ונכנסת לתיקון
+    const items = done.items.map((it, i) => (i === 1 ? { ...it, myNote: 'כן, המותג תמיד באותיות קטנות' } : it));
+    expect(saveFeedbackItems(ctx, imp.id, { items }).items[1].myNote).toBe('כן, המותג תמיד באותיות קטנות');
+    let sent = '';
+    fake.reviseScript = async (_c: unknown, b: typeof v1.content, f: string) => {
+      sent = f;
+      return { data: { ...b, scenes: b.scenes.map(({ id: _id, ...s }) => s) }, provider: 'fake', model: 'fake-model' };
+    };
+    applyClientFeedback(ctx, imp.id, {});
+    await drain(ctx);
+    expect(sent).toContain('ההחלטה של הסטודיו על ההערה הזאת (גוברת על נוסח הלקוח): כן, המותג תמיד באותיות קטנות');
+  });
+
+  it('a failed review is saved on the import and does not block the script stage', async () => {
+    const { ctx, p } = await setup();
+    (ctx.fake as any).json = async () => {
+      throw new ProviderError('אין קרדיט', false, 'insufficient_quota');
+    };
+    const imp = await importClientFeedback(ctx, p.id, { text: 'לקצר' });
+    requestFeedbackReview(ctx, imp.id, {});
+    await drain(ctx);
+    expect(getFeedbackImport(ctx, imp.id)!.review).toMatchObject({ status: 'failed', error: expect.stringContaining('אין קרדיט') });
+    const app = await buildApp(ctx);
+    const r = await app.inject({ url: `/api/projects/${p.id}` });
+    await app.close();
+    expect(r.statusCode).toBe(200);
+    expect(JSON.stringify(r.json())).not.toContain('יצירת התסריט נכשלה');
   });
 
   it('explains what to do when a Google Doc is not shared', async () => {

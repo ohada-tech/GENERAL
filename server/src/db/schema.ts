@@ -312,4 +312,7 @@ export const MIGRATIONS: string[] = [
   /* v11 — מחיקת גרסת תסריט = הסתרה (ניתן לשחזר; ההיסטוריה וההפניות נשמרות) */ `
   ALTER TABLE script_versions ADD COLUMN deleted_at TEXT;
   `,
+  /* v12 — דעה של ChatGPT על הערות הלקוח, לפני שמשנים את התסריט (JSON) */ `
+  ALTER TABLE client_feedback ADD COLUMN review TEXT;
+  `,
 ];
