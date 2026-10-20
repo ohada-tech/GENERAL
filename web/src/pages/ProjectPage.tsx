@@ -411,9 +411,15 @@ function useStickyBar(head: React.RefObject<HTMLDivElement | null>, ready: boole
   }, [head, ready, top]);
   // רכיבים דביקים אחרים (רשימת הגרסאות) יורדים מתחת לפס כשהוא מוצג
   useEffect(() => {
-    const h = on ? document.querySelector<HTMLElement>('.proj-sticky')?.offsetHeight ?? 0 : 0;
-    document.documentElement.style.setProperty('--sticky-bar-h', `${h}px`);
+    const set = () => {
+      const h = on ? document.querySelector<HTMLElement>('.proj-sticky')?.offsetHeight ?? 0 : 0;
+      document.documentElement.style.setProperty('--sticky-bar-h', `${h}px`);
+    };
+    set();
+    // גובה הפס משתנה כשמשנים את גודל החלון (מצב קומפקטי)
+    window.addEventListener('resize', set);
     return () => {
+      window.removeEventListener('resize', set);
       document.documentElement.style.removeProperty('--sticky-bar-h');
     };
   }, [on]);
