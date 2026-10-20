@@ -330,6 +330,26 @@ export function approveScriptInternal(ctx: Ctx, versionId: string, note = '') {
   });
 }
 
+/**
+ * "בחר כסופי": כל גרסה יכולה להיבחר כגרסה הסופית. גרסה ישנה מועתקת לגרסה חדשה (ההיסטוריה נשמרת),
+ * והגרסה הסופית מאושרת פנימית — משם ממשיכים כרגיל לאישור לקוח ולסטורי בורד.
+ */
+export function chooseFinalScript(ctx: Ctx, versionId: string) {
+  const v = getScript(ctx.db, versionId);
+  if (!v) throw new NotFoundError('גרסת תסריט');
+  const latest = listScripts(ctx.db, v.projectId)[0];
+  if (latest.id === v.id && (v.status === 'internal_approved' || v.status === 'client_approved')) {
+    throw new GateError('הגרסה הזו כבר הסופית');
+  }
+  return tx(ctx.db, () => {
+    const target =
+      latest.id === v.id
+        ? v
+        : saveScriptVersion(ctx, v.projectId, { content: v.content, parentId: v.id, changeNote: `נבחרה כסופית — זהה ל-v${v.label}` });
+    return approveScriptInternal(ctx, target.id, `נבחרה כגרסה הסופית${target.id !== v.id ? ` (מ-v${v.label})` : ''}`);
+  });
+}
+
 export function recordClientApproval(ctx: Ctx, versionId: string, input: { approvedBy: string; note?: string }) {
   const v = mustLatestScript(ctx, versionId);
   if (v.status !== 'internal_approved') {

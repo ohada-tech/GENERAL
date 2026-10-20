@@ -117,7 +117,9 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
             <li key={v.id}>
               <button className={`version-item ${selected?.id === v.id ? 'on' : ''}`} onClick={() => { setSelectedId(v.id); setEditing(null); }}>
                 <span className="row between">
-                  <strong>v{v.label}</strong>
+                  <strong>
+                    {v.id === latest?.id && (v.status === 'internal_approved' || v.status === 'client_approved') ? '⭐ ' : ''}v{v.label}
+                  </strong>
                   <StatusBadge status={statusTone(v.status)} label={SCRIPT_STATUS_LABELS[v.status]} />
                 </span>
                 <span className="small muted">
@@ -172,6 +174,7 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
               language={project.brief.language}
               target={project.brief.durationSec}
               onEdit={() => setEditing(structuredClone(selected.content))}
+              onChanged={refresh}
             />
             {fromClient && <ClientFeedbackChanges imp={fromClient} base={versions.find((v) => v.id === fromClient.baseVersionId)} result={selected} />}
             {selected.id === latest?.id && <ImproveBar projectId={project.id} version={selected} running={running} onDone={refresh} />}
@@ -219,13 +222,21 @@ function VersionView({
   language,
   target,
   onEdit,
+  onChanged,
 }: {
   version: ScriptVersion;
   isLatest: boolean;
   language: string;
   target: number | null;
   onEdit: () => void;
+  onChanged: () => Promise<void> | void;
 }) {
+  const fin = useAction();
+  const isFinal = isLatest && (version.status === 'internal_approved' || version.status === 'client_approved');
+  const chooseFinal = async () => {
+    const r = await fin.run(() => api.post(`/api/scripts/${version.id}/choose-final`));
+    if (r) await onChanged();
+  };
   const timing = computeTiming(version.content, language, target);
   // תרגום לתצוגה בלבד: עברית ↔ אנגלית לפי השפה שבה התסריט באמת כתוב (לא לפי הבריף — שם כתוב לפעמים "עברית" לתסריט באנגלית)
   const toLang: 'he' | 'en' = mostlyHebrew(version.content) ? 'en' : 'he';
@@ -268,12 +279,25 @@ function VersionView({
               ⬇ הורד כ-Word
             </a>
           )}
+            {isFinal ? (
+              <Tag tone="ok">⭐ הגרסה הסופית</Tag>
+            ) : (
+              <button
+                className="btn"
+                disabled={fin.busy}
+                onClick={chooseFinal}
+                title={isLatest ? 'מאשר את הגרסה הזו פנימית כגרסה הסופית' : 'יוצר עותק של הגרסה הזו כגרסה האחרונה ומאשר אותו כסופי (ההיסטוריה נשמרת)'}
+              >
+                ⭐ בחר כסופי
+              </button>
+            )}
             <button className="btn" onClick={onEdit} title="בסיום תבחר: לשמור על הגרסה הזו או כגרסה חדשה">
             ✎ ערוך
           </button>
         </div>
       </div>
       <InlineError error={tr.error} onClose={tr.clearError} />
+      <InlineError error={fin.error} onClose={fin.clearError} />
       {translated && <div className="notice small">תרגום ל{toLang === 'he' ? 'עברית' : 'אנגלית'} לתצוגה בלבד · ה-Word ללקוח נשאר בשפת המקור</div>}
       {c.logline && <p className="logline" dir={dir}>{c.logline}</p>}
       <TimingSummary content={version.content} language={language} target={target} />

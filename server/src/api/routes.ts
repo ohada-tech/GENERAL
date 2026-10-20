@@ -118,6 +118,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/api/scripts/:vid/revise', async (req) =>
     cmd.requestScriptRevision(ctx, (req.params as any).vid, ((req.body ?? {}) as Body).feedback),
   );
+  app.post('/api/scripts/:vid/choose-final', async (req) => cmd.chooseFinalScript(ctx, (req.params as any).vid));
   app.post('/api/scripts/:vid/approve-internal', async (req) =>
     cmd.approveScriptInternal(ctx, (req.params as any).vid, ((req.body ?? {}) as Body).note ?? ''),
   );
