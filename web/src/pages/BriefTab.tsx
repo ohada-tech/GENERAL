@@ -1,5 +1,6 @@
 import { ASPECT_RATIOS, openDiscoveryQuestions, validateBrief, type Asset, type Brief, type DiscoveryQuestion } from '@apos/shared';
 import { useEffect, useMemo, useState } from 'react';
+import { AiFilledContext, aiLabels, AutoBrief } from '../components/AutoBrief';
 import { Field, InlineError, Tag } from '../components/ui';
 import { api, assetUrl, useAction } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
@@ -49,7 +50,9 @@ export function BriefTab({ detail, reload }: TabProps) {
   const attachments = detail.assets.filter((a) => draft.attachmentIds.includes(a.id));
 
   return (
+    <AiFilledContext.Provider value={aiLabels(draft.aiFilled ?? [])}>
     <div className="brief">
+      {!project.briefCompletedAt && <AutoBrief projectId={project.id} brief={draft} beforeRun={() => (dirty ? doSave() : Promise.resolve())} onDone={reload} />}
       <div className="sticky-bar">
         <div className="row gap-s">
           {project.briefCompletedAt ? (
@@ -303,6 +306,7 @@ export function BriefTab({ detail, reload }: TabProps) {
         />
       </section>
     </div>
+    </AiFilledContext.Provider>
   );
 }
 

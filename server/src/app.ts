@@ -12,7 +12,7 @@ import { registerAuth } from './auth.js';
 
 export async function buildApp(ctx: Ctx, opts: { logger?: boolean; serveWeb?: boolean } = {}) {
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 5 * 1024 * 1024 });
-  await app.register(multipart, { limits: { fileSize: 500 * 1024 * 1024, files: 1 } });
+  await app.register(multipart, { limits: { fileSize: 500 * 1024 * 1024, files: 10 } });
   // גוף JSON ריק בפעולות POST (למשל "אשר") מתפרש כאובייקט ריק
   app.removeContentTypeParser('application/json');
   app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {

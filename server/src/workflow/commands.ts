@@ -137,16 +137,21 @@ export function setPipelineState(ctx: Ctx, id: string, action: 'pause' | 'resume
 
 /* ---------------- Brief ---------------- */
 
-export function updateBrief(ctx: Ctx, id: string, patch: Partial<Brief>) {
+export function updateBrief(ctx: Ctx, id: string, patch: Partial<Brief>, opts: { by?: string; note?: string } = {}) {
   const p = mustProject(ctx, id);
   const brief = briefSchema.parse({ ...p.brief, ...patch });
+  // שדה שאוהד שינה בעצמו כבר לא "מולא על ידי AI"
+  if (!('aiFilled' in patch)) {
+    const changed = Object.keys(patch).filter((k) => JSON.stringify((p.brief as Record<string, unknown>)[k]) !== JSON.stringify((brief as Record<string, unknown>)[k]));
+    brief.aiFilled = brief.aiFilled.filter((k) => !changed.includes(k));
+  }
   return tx(ctx.db, () => {
     ctx.db.prepare('UPDATE projects SET brief = ? WHERE id = ?').run(json(brief), id);
     emit(ctx, {
       projectId: id,
       type: 'brief.updated',
-      actor: owner(ctx),
-      message: p.briefCompletedAt ? 'האפיון עודכן לאחר שסומן כמוכן' : 'האפיון עודכן',
+      actor: opts.by ?? owner(ctx),
+      message: opts.note ?? (p.briefCompletedAt ? 'האפיון עודכן לאחר שסומן כמוכן' : 'האפיון עודכן'),
       payload: { fields: Object.keys(patch) },
     });
     return getProject(ctx.db, id)!;

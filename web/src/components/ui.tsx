@@ -1,4 +1,5 @@
 import { STATUS_LABELS, type Status } from '@apos/shared';
+import { useAiFilled } from './AutoBrief';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 export function StatusBadge({ status, label }: { status: Status | string; label?: string }) {
@@ -115,12 +116,14 @@ export function Field({
   children: ReactNode;
 }) {
   const Tag = group ? 'div' : 'label';
+  const ai = useAiFilled(label);
   return (
     <Tag className={`field ${missing ? 'field-missing' : ''}`} {...(group ? { role: 'group', 'aria-label': label } : {})}>
       <span className="field-label">
         {label}
         {required && <span className="req">*</span>}
         {missing && <span className="missing-dot">חסר</span>}
+        {ai && <span className="ai-dot" title="מולא אוטומטית מהמקורות — עריכה שלך מסירה את הסימון">✨ AI</span>}
       </span>
       {children}
       {hint && <span className="field-hint">{hint}</span>}

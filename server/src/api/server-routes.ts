@@ -10,6 +10,7 @@ import * as feedback from '../services/client-feedback.js';
 import { requestFeedbackReview } from '../services/feedback-review.js';
 import * as calls from '../services/client-calls.js';
 import { extractDocText } from '../services/doc-text.js';
+import { autofillBrief } from '../services/auto-brief.js';
 import { scriptDocx } from '../services/script-docx.js';
 import { scriptHtml } from '../services/script-html.js';
 import * as share from '../services/share.js';
@@ -101,6 +102,29 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
     const logo = branding.genesisLogo(ctx);
     if (!logo) throw new NotFoundError('לוגו');
     return reply.header('content-type', logo.type === 'png' ? 'image/png' : 'image/jpeg').header('cache-control', 'no-cache').send(logo.data);
+  });
+
+  // מילוי אפיון אוטומטי: סיכום / קבצים / אתר הלקוח ← כל השדות (JSON, או multipart עם קבצים)
+  app.post('/api/projects/:id/brief/autofill', async (req) => {
+    const id = (req.params as { id: string }).id;
+    let input: { text?: string; url?: string; overwrite?: boolean; files?: Array<{ name: string; text: string }> } = {};
+    if (req.isMultipart()) {
+      const files: Array<{ name: string; text: string }> = [];
+      for await (const part of req.parts()) {
+        if (part.type === 'file') {
+          const data = await part.toBuffer();
+          if (data.length > 30 * 1024 * 1024) throw new GateError('קובץ גדול מדי (עד 30MB)', 400);
+          files.push({ name: part.filename, text: extractDocText(part.filename, data).text });
+        } else {
+          const v = String(part.value ?? '');
+          if (part.fieldname === 'text') input.text = v;
+          if (part.fieldname === 'url') input.url = v;
+          if (part.fieldname === 'overwrite') input.overwrite = v === 'true';
+        }
+      }
+      input.files = files;
+    } else input = (req.body ?? {}) as typeof input;
+    return autofillBrief(ctx, id, input);
   });
 
   // קובץ שמצרפים להנחיה (שיפור תסריט) — מחזיר את הטקסט שלו
