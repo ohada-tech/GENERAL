@@ -301,3 +301,32 @@ describe('"כתוב מחדש" מול גרסה שאושרה', () => {
     expect(last.user).toContain('THE PREVIOUS ATTEMPT WAS REJECTED');
   });
 });
+
+describe('סטורי בורד: Claude בלבד', () => {
+  it('ChatGPT לא נקרא בכלל; כש-Claude לא מחובר — חסימה עם הסבר, לא מעבר שקט ל-ChatGPT', async () => {
+    const { listJobs, listStoryboards } = await import('../src/db/repo.js');
+    const { projectWithBrief } = await import('./helpers.js');
+    const run = async (claudeOn: boolean) => {
+      const ctx = makeCtx();
+      const p = projectWithBrief(ctx);
+      cmd.completeBrief(ctx, p.id);
+      await drain(ctx);
+      const [v] = listScripts(ctx.db, p.id);
+      // מכאן: ChatGPT שזורק אם נוגעים בו, ו-Claude מזויף (או מנותק)
+      const gpt = { ...ctx.fake, id: 'openai', isConfigured: () => true, generateStoryboard: async () => { throw new Error('ChatGPT נקרא לסטורי בורד'); } };
+      (ctx.providers.text as any).openai = gpt;
+      (ctx.providers.text as any).collab = gpt;
+      if (!claudeOn) (ctx.providers.text as any).claude = { ...ctx.fake, isConfigured: () => false };
+      cmd.approveScriptInternal(ctx, v.id, 'ok');
+      cmd.recordClientApproval(ctx, v.id, { approvedBy: 'לקוח' });
+      await drain(ctx);
+      return { sb: listStoryboards(ctx.db, p.id), job: listJobs(ctx.db, p.id).find((j) => j.type === 'storyboard.generate')! };
+    };
+    const on = await run(true);
+    expect(on.sb).toHaveLength(1);
+    expect(on.sb[0].provider).toBe('fake');
+    const off = await run(false);
+    expect(off.sb).toHaveLength(0);
+    expect(off.job.lastError).toContain('Claude בלבד');
+  });
+});

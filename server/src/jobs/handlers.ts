@@ -289,8 +289,11 @@ const storyboardGenerate: JobHandler<StoryboardRun> = {
     }
 
     const pc = projectContext(ctx, job.projectId, 'storyboard');
-    const { provider, model } = textProviderFor(ctx, job.projectId);
-    const res = await provider.generateStoryboard(pc, script.content, defaults, { model });
+    // אוהד: את הסטורי בורד עושה Claude בלבד (ChatGPT עוזר בשוטים רק דרך Chrome, מחוץ למערכת). מצב הדגמה נשאר הדגמה.
+    const { provider: projectProvider } = textProviderFor(ctx, job.projectId);
+    const provider = projectProvider.isDemo ? projectProvider : ctx.providers.text.claude;
+    if (!provider?.isConfigured()) throw new ProviderError('את הסטורי בורד עושה Claude בלבד — Claude לא מחובר. חבר אותו בחלון "מפתחות"', false, 'not_configured');
+    const res = await provider.generateStoryboard(pc, script.content, defaults);
     return {
       scriptVersionId,
       shots: res.data,

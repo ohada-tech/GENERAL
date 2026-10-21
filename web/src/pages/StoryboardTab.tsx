@@ -81,8 +81,8 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
           )}
           <div className="small muted">
             {project.settings.chatgptScope === 'script_and_visual'
-              ? `מצב: ${isCloud() ? 'Claude' : 'ChatGPT'} מפתח גם קונספט חזותי ופרומפטים לכל שוט.`
-              : `מצב: ${isCloud() ? 'Claude' : 'ChatGPT'} לתסריט בלבד — ייווצר שלד שוטים מהסצנות למילוי ידני.`}{' '}
+              ? 'מצב: Claude מפתח את הסטורי בורד ואת הפרומפטים לכל שוט.'
+              : 'מצב: תסריט בלבד — ייווצר שלד שוטים מהסצנות למילוי ידני.'}{' '}
             <Link to={`/projects/${project.id}/settings`}>שנה בהגדרות</Link>
           </div>
         </Empty>

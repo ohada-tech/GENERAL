@@ -109,7 +109,7 @@ export function SettingsTab({ detail, reload, health }: TabProps) {
           <div className="stack">
             <label className="check">
               <input type="radio" checked={s.chatgptScope === 'script_and_visual'} onChange={() => setS({ ...s, chatgptScope: 'script_and_visual' })} />
-              תסריט + קונספט חזותי ופרומפטים לכל שוט
+              תסריט (ChatGPT) + סטורי בורד עם פרומפטים לכל שוט (Claude)
             </label>
             <label className="check">
               <input type="radio" checked={s.chatgptScope === 'script_only'} onChange={() => setS({ ...s, chatgptScope: 'script_only' })} />
