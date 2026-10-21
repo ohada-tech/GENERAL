@@ -999,3 +999,14 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .qa-list { margin: 2px 0 0; padding-inline-start: 18px; }
 .ok-text { color: #19c7a3; }
 .warn-text { color: var(--warn); }
+
+/* עורך: "קריינות בלבד" — שורה קומפקטית לכל סצנה */
+.seg { display: inline-flex; border: 1px solid var(--border, rgba(255,255,255,.14)); border-radius: var(--r-pill); padding: 2px; gap: 2px; margin: 8px 0; }
+.seg button { background: none; border: 0; color: inherit; font: inherit; padding: 5px 14px; border-radius: var(--r-pill); cursor: pointer; }
+.seg button.on { background: var(--holo); color: var(--on-holo); font-weight: 600; }
+.narr-list { display: flex; flex-direction: column; gap: 6px; }
+.narr-row { display: grid; grid-template-columns: 150px 1fr; gap: 4px 12px; align-items: start; padding: 6px 0; border-bottom: 1px solid var(--border, rgba(255,255,255,.08)); }
+.narr-row textarea { width: 100%; resize: vertical; font-size: 16px; line-height: 1.5; }
+.narr-meta { display: flex; flex-direction: column; gap: 2px; padding-top: 6px; }
+.narr-visual { grid-column: 2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 640px) { .narr-row { grid-template-columns: 1fr; } .narr-meta { flex-direction: row; gap: 10px; padding-top: 0; } .narr-visual { grid-column: 1; } }

@@ -7,6 +7,8 @@ import {
   diffScripts,
   SCRIPT_STATUS_LABELS,
   STORY_ROLE_LABELS,
+  countWords,
+  wordsPerSecond,
   STORY_ROLES,
   type Approval,
   type Comment,
@@ -437,6 +439,23 @@ function ScriptEditor({
   onSaved: () => Promise<void>;
 }) {
   const [c, setC] = useState<ScriptContent>(initial);
+  // "קריינות בלבד": שורה קומפקטית לכל סצנה, בלי לגלול בין שדות (נזכר בין כניסות)
+  const [narrOnly, setNarrOnlyState] = useState(() => {
+    try {
+      return localStorage.getItem('apos.editor.narrOnly') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const setNarrOnly = (v: boolean) => {
+    setNarrOnlyState(v);
+    try {
+      localStorage.setItem('apos.editor.narrOnly', v ? '1' : '0');
+    } catch {
+      /* אין אחסון — לא נורא */
+    }
+  };
+  const wps = wordsPerSecond(language);
   // כיוון השדות לפי שפת התסריט (אנגלית: משמאל לימין)
   const ltr = !mostlyHebrew(c);
   const [note, setNote] = useState('');
@@ -509,7 +528,45 @@ function ScriptEditor({
         <input value={c.logline} onChange={(e) => setC({ ...c, logline: e.target.value })} />
       </Field>
       <TimingSummary content={c} language={language} target={target} />
-      {c.scenes.map((s, i) => (
+      <div className="seg editor-mode" role="tablist" aria-label="מצב עריכה">
+        <button role="tab" aria-selected={!narrOnly} className={!narrOnly ? 'on' : ''} onClick={() => setNarrOnly(false)}>
+          כל השדות
+        </button>
+        <button role="tab" aria-selected={narrOnly} className={narrOnly ? 'on' : ''} onClick={() => setNarrOnly(true)}>
+          🎙️ קריינות בלבד
+        </button>
+      </div>
+      {narrOnly && (
+        <div className="narr-list" dir={ltr ? 'ltr' : 'rtl'}>
+          {c.scenes.map((s, i) => {
+            const w = countWords(s.narration);
+            const need = Math.round((w / wps) * 10) / 10;
+            return (
+              <div key={s.id || i} className="narr-row">
+                <div className="narr-meta small">
+                  <strong>{i + 1}</strong>
+                  <span className="muted">{STORY_ROLE_LABELS[s.storyRole] ?? s.storyRole}</span>
+                  <span className={need > s.estDurationSec ? 'warn-text' : 'muted'} title={`${w} מילים ≈ ${need} שנ׳ קריינות · משך הסצנה ${s.estDurationSec} שנ׳`}>
+                    {w} מילים · {need}/{s.estDurationSec} ש׳
+                  </span>
+                </div>
+                <textarea
+                  rows={Math.max(1, Math.ceil(s.narration.length / 70))}
+                  value={s.narration}
+                  onChange={(e) => setScene(i, { narration: e.target.value })}
+                  placeholder={ltr ? 'No narration' : 'בלי קריינות'}
+                />
+                {s.visualAction && (
+                  <div className="narr-visual small muted" title={s.visualAction}>
+                    👁 {s.visualAction}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {!narrOnly && c.scenes.map((s, i) => (
         <div key={s.id || i} className="scene-edit">
           <div className="row between">
             <strong>סצנה {i + 1}</strong>
@@ -559,7 +616,7 @@ function ScriptEditor({
           </div>
         </div>
       ))}
-      <button
+      {!narrOnly && <button
         className="btn"
         onClick={() =>
           setC({
@@ -572,7 +629,7 @@ function ScriptEditor({
         }
       >
         + הוסף סצנה
-      </button>
+      </button>}
     </section>
   );
 }
