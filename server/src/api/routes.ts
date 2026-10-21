@@ -117,6 +117,9 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     const b = (req.body ?? {}) as { by?: string; note?: string; doc?: { name?: string; text?: string } };
     return cmd.requestScriptImprove(ctx, (req.params as any).vid, b.by ?? 'openai', b.note ?? '', b.doc);
   });
+  app.post('/api/scripts/:vid/rewrite', async (req) =>
+    cmd.requestScriptRewrite(ctx, (req.params as any).vid, String(((req.body ?? {}) as { note?: string }).note ?? '')),
+  );
   app.post('/api/scripts/:vid/revise', async (req) =>
     cmd.requestScriptRevision(ctx, (req.params as any).vid, ((req.body ?? {}) as Body).feedback),
   );

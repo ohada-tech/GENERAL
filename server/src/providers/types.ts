@@ -1,3 +1,4 @@
+import type { QaReport } from '@apos/shared';
 import type { Brief, ScriptContent, ShotFields } from '@apos/shared';
 
 /**
@@ -38,6 +39,8 @@ export interface ScriptDraft {
   title: string;
   logline: string;
   scenes: ScriptDraftScene[];
+  /** דוח ה-QA הקריאייטיבי (ChatGPT), כשהתסריט עבר את התהליך המלא */
+  qa?: QaReport;
 }
 
 export interface ProjectContext {
@@ -48,6 +51,8 @@ export interface ProjectContext {
   lessons?: string[];
   /** ספר ההפקה: הסקילים שלימדת את Claude, מזוקקים (כלליים + של הלקוח) */
   playbook?: string;
+  /** "כתוב מחדש": למה הניסיון הקודם נדחה (QA או אוהד) — בלי הנוסח הקודם */
+  rewriteNotes?: string;
 }
 
 export interface TextGenOptions {

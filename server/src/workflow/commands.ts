@@ -221,6 +221,23 @@ export function requestScriptRevision(ctx: Ctx, versionId: string, feedback: str
   });
 }
 
+/** "כתוב מחדש": תסריט חדש מהעובדות ומהכיוון (עם QA), בלי לשמר את הנוסח והמבנה של הגרסה החלשה */
+export function requestScriptRewrite(ctx: Ctx, versionId: string, note: string) {
+  const v = getScript(ctx.db, versionId);
+  if (!v) throw new NotFoundError('גרסת תסריט');
+  requireBriefComplete(ctx, v.projectId);
+  return tx(ctx.db, () => {
+    if (note.trim()) recordFeedback(ctx, v.projectId, 'script', note);
+    return enqueueJob(ctx, {
+      projectId: v.projectId,
+      type: 'script.revise',
+      payload: { baseVersionId: versionId, feedback: note.trim(), mode: 'rewrite' },
+      idempotencyKey: `script.rewrite:${versionId}:${uid()}`,
+      actor: owner(ctx),
+    });
+  });
+}
+
 /** "שפר עם ChatGPT/Claude": מודל אחד עובר על הגרסה ומחזיר גרסה משופרת (הערה אופציונלית מכוונת אותו) */
 export function requestScriptImprove(ctx: Ctx, versionId: string, by: string, note = '', doc?: { name?: string; text?: string }) {
   const v = getScript(ctx.db, versionId);

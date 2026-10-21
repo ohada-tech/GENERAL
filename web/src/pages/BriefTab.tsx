@@ -56,7 +56,8 @@ export function BriefTab({ detail, reload }: TabProps) {
       {!project.briefCompletedAt && <AutoBrief projectId={project.id} brief={draft} beforeRun={() => (dirty ? doSave() : Promise.resolve())} onDone={reload} />}
       <ConceptPicker
         projectId={project.id}
-        value={draft.concept ?? ''}
+        brief={draft}
+        reload={reload}
         beforeRun={() => (dirty ? doSave() : Promise.resolve())}
         onChange={async (concept) => {
           // הבחירה נשמרת מיד באפיון

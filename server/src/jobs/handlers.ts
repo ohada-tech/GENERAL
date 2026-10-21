@@ -17,6 +17,9 @@ import { lockToTargets, scopeLabel, targetScenes } from '../workflow/revision-sc
 import { improveScript, type JsonCapableProvider } from '../providers/collab.js';
 import type { FeedbackReview } from '../services/client-feedback.js';
 import { runFeedbackReview, saveReview } from '../services/feedback-review.js';
+import { runCreativePipeline } from '../services/creative.js';
+import { needsOwner } from '../services/attention.js';
+import { QA_STAGES, type QaReport } from '@apos/shared';
 
 const AREAS_FOR: Record<'script' | 'storyboard', LessonArea[]> = {
   script: ['script', 'audio', 'general'],
@@ -91,6 +94,7 @@ function insertScriptVersion(
     title: draft.data.title,
     logline: draft.data.logline,
     scenes: draft.data.scenes.map((s) => ({ id: uid(), ...s })),
+    ...(draft.data.qa ? { qa: draft.data.qa } : {}),
   };
   const { version, major, minor } = nextScriptVersion(ctx.db, projectId, opts.parentId, content);
   const label = versionLabel(major, minor);
@@ -132,32 +136,72 @@ function insertScriptVersion(
   return { scriptVersionId: id, version, label, model: draft.model, provider: draft.provider };
 }
 
-type ScriptRun = { draft: GenResult<ScriptDraft>; isDemo: boolean };
+type ScriptRun = { draft: GenResult<ScriptDraft>; isDemo: boolean; steps?: string[] };
+
+/**
+ * התהליך הקריאייטיבי המלא (הבנת מוצר → כיוונים → כתיבה → QA) רץ כשיש ChatGPT ולא במצב הדגמה.
+ * Claude נכנס רק בסוף, לוויזואל — ורק במצב שיתוף.
+ */
+function creativeRoute(ctx: Ctx, projectId: string): { visualBy: TextProvider | null } | null {
+  const { provider } = textProviderFor(ctx, projectId);
+  const gpt = ctx.providers.text.openai as (TextProvider & { text?: unknown; json?: unknown }) | undefined;
+  if (provider.isDemo || !gpt?.isConfigured() || typeof gpt.text !== 'function' || typeof gpt.json !== 'function') return null;
+  return { visualBy: provider.id === 'collab' ? (ctx.providers.text.claude ?? null) : null };
+}
+
+/** הערת הגרסה + עצירה ובקשת החלטה כשה-QA לא עבר אחרי סבבי התיקון */
+function qaNote(qa?: QaReport) {
+  if (!qa) return '';
+  return qa.passed ? ` · QA ${qa.total}/100 ✓` : ` · QA ${qa.total}/100 — לא עבר אחרי ${qa.rounds} סבבים (${QA_STAGES[qa.failStage as keyof typeof QA_STAGES] ?? qa.failStage})`;
+}
+function flagIfStuck(ctx: Ctx, projectId: string, label: string, qa?: QaReport) {
+  if (!qa?.needsOwner) return;
+  const left = [...qa.critical, ...qa.unsupportedClaims.map((c) => `טענה לא מבוססת: ${c}`), ...qa.fixes].slice(0, 3).join(' · ');
+  needsOwner(ctx, {
+    projectId,
+    by: 'ChatGPT QA',
+    text: `תסריט v${label} לא עבר QA (${qa.total}/100) אחרי ${qa.rounds} סבבים — צריך החלטה שלך. מה נשאר: ${left || 'ראה דוח ה-QA בגרסה'}`,
+    link: `/projects/${projectId}`,
+  });
+}
 
 const scriptGenerate: JobHandler<ScriptRun> = {
   async run(ctx, job) {
     const pc = projectContext(ctx, job.projectId, 'script');
+    const route = creativeRoute(ctx, job.projectId);
+    if (route) {
+      const r = await runCreativePipeline(ctx, job.projectId, route);
+      return { draft: r.draft, isDemo: false, steps: r.steps };
+    }
     const { provider, model } = textProviderFor(ctx, job.projectId);
     const draft = await provider.generateScript(pc, { model });
     return { draft, isDemo: provider.isDemo };
   },
   persist(ctx, job, r) {
-    return insertScriptVersion(ctx, job.projectId, r.draft, {
+    const out = insertScriptVersion(ctx, job.projectId, r.draft, {
       source: 'ai',
       parentId: null,
-      changeNote: 'טיוטה ראשונה מהאפיון',
+      changeNote: `טיוטה ראשונה מהאפיון${qaNote(r.draft.data.qa)}`,
       isDemo: r.isDemo,
     });
+    flagIfStuck(ctx, job.projectId, out.label, r.draft.data.qa);
+    return out;
   },
 };
 
-const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string; targets?: number[]; improveBy?: 'openai' | 'claude' }> = {
+const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string; targets?: number[]; improveBy?: 'openai' | 'claude'; rewrite?: boolean }> = {
   async run(ctx, job) {
     const baseId = String(job.payload.baseVersionId ?? '');
     const feedback = String(job.payload.feedback ?? '');
     const base = getScript(ctx.db, baseId);
     if (!base) throw new GateError('גרסת הבסיס לא נמצאה');
     const pc = projectContext(ctx, job.projectId, 'script');
+    if (job.payload.mode === 'rewrite') {
+      const route = creativeRoute(ctx, job.projectId);
+      if (!route) throw new ProviderError('כתיבה מחדש דורשת ChatGPT מחובר (לא במצב הדגמה)', false, 'not_configured');
+      const r = await runCreativePipeline(ctx, job.projectId, { ...route, rewriteNotes: feedback });
+      return { draft: r.draft, isDemo: false, baseId, feedback, targets: [], rewrite: true, steps: r.steps };
+    }
     const improveBy = job.payload.improveBy as 'openai' | 'claude' | undefined;
     if (improveBy) {
       const reviewer = ctx.providers.text[improveBy] as unknown as JsonCapableProvider | undefined;
@@ -193,9 +237,12 @@ const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string; t
       parentId: r.baseId,
       changeNote: fromClient
         ? `תיקון לפי הערות הלקוח (${Number(job.payload.feedbackCount) || ''} הערות) ל-v${base?.label ?? '?'}${scope ? ` (${scope})` : ''}`
-        : `${who ? `שיפור ${who}` : 'תיקון'} ל-v${base?.label ?? '?'}${scope ? ` (${scope})` : ''}`,
+        : r.rewrite
+          ? `כתיבה מחדש במקום v${base?.label ?? '?'}${qaNote(r.draft.data.qa)}`
+          : `${who ? `שיפור ${who}` : 'תיקון'} ל-v${base?.label ?? '?'}${scope ? ` (${scope})` : ''}`,
       isDemo: r.isDemo,
     });
+    flagIfStuck(ctx, job.projectId, out.label, r.draft.data.qa);
     if (fromClient) {
       ctx.db.prepare("UPDATE client_feedback SET result_version_id = ?, status = 'applied' WHERE id = ?").run(out.scriptVersionId, fromClient);
     }

@@ -69,8 +69,8 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
   // תסריט לבדיקה בלבד (לא נשמר) — להשוואה בין שיטות כתיבה
   app.post('/api/projects/:id/script/preview', async (req) => {
     const id = (req.params as { id: string }).id;
-    const { provider, model } = textProviderFor(ctx, id);
-    return previewScript(ctx, id, provider, model);
+    const { provider } = textProviderFor(ctx, id);
+    return previewScript(ctx, id, provider.id === 'collab' ? (ctx.providers.text.claude ?? null) : null);
   });
 
   // התראות Push למחשב / לטלפון

@@ -1,3 +1,4 @@
+import { QaPanel } from '../components/QaPanel';
 import {
   nextScriptNumbers,
   scriptChangeSize,
@@ -176,6 +177,7 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
               onChanged={refresh}
             />
             {fromClient && <ClientFeedbackChanges imp={fromClient} base={versions.find((v) => v.id === fromClient.baseVersionId)} result={selected} />}
+            {selected.content.qa && <QaPanel qa={selected.content.qa} />}
             <ImproveBar projectId={project.id} version={selected} isLatest={selected.id === latest?.id} running={running} onDone={refresh} />
             {selected.id === latest?.id && (
               <ApprovalPanel version={selected} approvals={data!.approvals} running={running} onDone={refresh} clientName={project.clientName} />
@@ -847,6 +849,14 @@ function ImproveBar({
   const jobs = useApi<Job[]>(isCloud() ? null : `/api/projects/${projectId}/jobs`, { pollMs: running ? 4000 : 0 });
   const last = (jobs.data ?? []).find((j) => j.type === 'script.revise' && j.payload.improveBy && String(j.payload.feedback ?? '').trim());
   const [showAll, setShowAll] = useState(false);
+  // "כתוב מחדש": תסריט חדש מהעובדות והכיוון, עם QA — לא ליטוש של הנוסח הקיים
+  const rewrite = async () => {
+    const r = await act.run(() => api.post(`/api/scripts/${version.id}/rewrite`, { note }));
+    if (r) {
+      setNote('');
+      await Promise.all([onDone(), jobs.reload()]);
+    }
+  };
   const go = async (by: 'openai' | 'claude') => {
     const r = await act.run(() => api.post(`/api/scripts/${version.id}/improve`, { by, note, doc }));
     if (r) {
@@ -885,7 +895,10 @@ function ImproveBar({
             />
           </>
         )}
-        <button className="btn" disabled={act.busy || running} onClick={() => go('openai')} title="ChatGPT עובר על התסריט ומשפר — נוצרת גרסה חדשה">
+        <button className="btn btn-primary" disabled={act.busy || running} onClick={rewrite} title="ChatGPT כותב תסריט חדש מהעובדות ומהכיוון — לא מלטש את הנוסח הזה — ועובר QA. ההנחיה (אם יש) מסבירה מה לא עבד">
+          ✍️ כתוב מחדש
+        </button>
+        <button className="btn" disabled={act.busy || running} onClick={() => go('openai')} title="תיקון בתוך אותו שלד: ChatGPT מלטש את הגרסה הזו — נוצרת גרסה חדשה">
           ✨ שפר עם ChatGPT
         </button>
         <button className="btn btn-ghost" disabled={act.busy || running} onClick={() => go('claude')} title="Claude משפר רק את &quot;מה רואים&quot; ונותן הצעות. הקריינות והטקסט על המסך לא משתנים">

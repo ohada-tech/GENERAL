@@ -2,7 +2,22 @@
  * תבניות פרומפט וסכמות JSON לספקי טקסט.
  * הפלט חייב להיות מובנה (Structured Outputs) כדי שהתסריט והשוטים יישמרו כנתונים ולא כטקסט חופשי.
  */
-import { type Brief, type ScriptContent, STORY_ROLES, wordsPerSecond } from '@apos/shared';
+import {
+  BANNED_HE,
+  CONCEPT_CRITERIA,
+  QA_DETECTORS,
+  QA_RUBRIC,
+  QA_STAGES,
+  type Brief,
+  type Concept,
+  type ConceptCriterion,
+  type ProductIntel,
+  type QaCriterion,
+  type QaDetector,
+  type ScriptContent,
+  STORY_ROLES,
+  wordsPerSecond,
+} from '@apos/shared';
 import type { ProjectContext } from './types.js';
 
 export function briefToText(ctx: ProjectContext): string {
@@ -42,6 +57,7 @@ export function briefToText(ctx: ProjectContext): string {
     .join('\n');
   return [
     brief,
+    b.intel ? `PRODUCT INTELLIGENCE (extracted before writing — claims must come from the verified facts):\n${intelToText(b.intel)}` : '',
     ctx.playbook?.trim()
       ? `STUDIO PLAYBOOK — the owner's production know-how (apply the creative and client knowledge; ignore anything about operating tools):\n${ctx.playbook.trim()}`
       : '',
@@ -51,36 +67,59 @@ export function briefToText(ctx: ProjectContext): string {
     .join('\n\n');
 }
 
-/** כללי הבית שנלמדו מהערות קודמות — מחייבים כמו האפיון, אלא אם האפיון אומר אחרת במפורש */
+/**
+ * סדר העדיפויות בין ההוראות. בלי זה, אפיון או כלל שנלמד שמכתיבים "מבנה מחייב" גוברים על הרעיון,
+ * והתסריט הופך לסיור בפיצ'רים (הכשל של "קבע לי תור" v5.2).
+ */
+export function priorityRule(): string {
+  return [
+    'PRIORITY OF INSTRUCTIONS (when they conflict, the higher one wins):',
+    '1. Facts, the offer, must-say items, terminology and legal limits from the brief and the product intelligence are binding. Never contradict them, never invent capabilities, prices, numbers or claims.',
+    '2. The chosen creative direction decides the story: the opening moment, the tension, the order of scenes.',
+    '3. The copy rules.',
+    '4. House rules and the studio playbook.',
+    'If the brief or a house rule dictates a scene-by-scene structure, a fixed order of features or a template, treat it as a list of things the viewer must understand by the end — NOT as the structure of the ad. Clarity requirements (who it is for, what the product is) are met inside the story of the idea.',
+  ].join('\n');
+}
+
+/** כללי הבית שנלמדו מהערות קודמות — מחייבים לעובדות, מונחים, טון וטעם; לא למבנה */
 export function lessonsBlock(lessons: string[]): string {
   return [
-    'HOUSE RULES LEARNED FROM THE OWNER\'S AND CLIENT\'S PAST FEEDBACK. They are mandatory: the owner must never have to give the same note twice. Follow them unless this brief explicitly says otherwise:',
+    "HOUSE RULES LEARNED FROM THE OWNER'S AND CLIENT'S PAST FEEDBACK. Follow them for facts, terminology, tone and taste — the owner must never have to give the same note twice. A house rule never dictates the ad's structure or scene order (see PRIORITY OF INSTRUCTIONS):",
     ...lessons.map((l) => `- ${l}`),
   ].join('\n');
 }
 
+/** תקציב מילים מציאותי: קצב הקריינות × האורך, פחות 10% לנשימה, לכרטיס הסיום ולוויזואל */
+export function wordBudget(brief: Pick<ProjectContext['brief'], 'durationSec' | 'language' | 'voiceoverNeeded'>): number {
+  if (!brief.durationSec || brief.voiceoverNeeded === false) return 0;
+  return Math.floor(brief.durationSec * wordsPerSecond(brief.language) * 0.9);
+}
+
 /**
  * כללי הקופי של הבית: מה מבדיל תסריט שנשמע כמו אדם מתסריט שנשמע כמו ברושור.
- * משותף לכתיבה, לתיקון ולביקורת — כדי שכולם ימדדו באותו סרגל.
+ * משותף לכתיבה, לתיקון ולביקורת — כדי שכולם ימדדו באותו סרגל. חלקם נבדקים גם בקוד (creative-checks.ts).
  */
 export function copyRules(ctx: ProjectContext): string {
   const hebrew = !ctx.brief.language || /עברית|hebrew/i.test(ctx.brief.language);
   const wps = wordsPerSecond(ctx.brief.language);
-  const max = ctx.brief.durationSec ? Math.round(ctx.brief.durationSec * wps) : 0;
+  const budget = wordBudget(ctx.brief);
   return [
     'COPY RULES (non-negotiable — this is what separates a human ad from a brochure):',
-    '- ONE idea per ad. The viewer must be able to repeat the ad in one sentence. Use at most 2 product features that serve that idea; drop the rest, even if the brief lists them.',
+    '- ONE idea per ad. The viewer must be able to repeat the ad in one sentence. Use at most 2 product features that serve that idea; everything else the brief lists goes to on-screen text, the end card, or is dropped.',
     '- Talk like a real person talking to ONE viewer — the way a sharp copywriter talks to a friend who owns that kind of business. Spoken, warm, a bit cheeky when the tone allows. Never like a feature list or a product page.',
     '- Concrete beats abstract: a real moment, a real detail, a real number from the brief. "הטלפון מצלצל כשהמספריים ביד" beats "ניהול תורים יעיל".',
-    '- Every line earns its place: a line that only explains what the product does is rewritten as what the viewer gets or feels, or cut.',
-    '- Vary the rhythm: mix very short lines (2–4 words) with normal ones. No two consecutive lines with the same structure.',
-    '- The hook is a moment or a line the viewer recognises from their own day — not a generic question.',
-    '- CTA: one short spoken line. Offer details (trial, no credit card, URL) go to on-screen text, not all into narration.',
-    max ? `- Length: about ${max} spoken words in total (${wps} words/second × ${ctx.brief.durationSec}s). Over that = cut, never speed up.` : '',
+    '- Every scene has one clear job: advance the story, show the pain or the desire, show a product benefit, build trust, strengthen the offer, or drive action. A scene with no job is cut.',
+    '- Every line earns its place. Narration never describes what the viewer already sees on screen.',
+    '- Vary the rhythm: mix very short lines (2–4 words) with normal ones. No two consecutive lines with the same structure or the same opening word.',
+    '- Avoid the automatic solutions unless there is a specific creative reason: opening on a routine problem, a montage of professionals, a list of features, a generic "join now" ending.',
+    '- The hook belongs to THIS idea: if it could open any competitor\'s ad, it is not a hook.',
+    '- CTA: one short spoken line that pays off the idea. Offer details (trial, no credit card, URL) go to on-screen text.',
+    budget ? `- Length: at most ${budget} spoken words in total (${wps} words/second × ${ctx.brief.durationSec}s, minus breathing room). Count them. Over that = cut, never speed up.` : '',
     hebrew
       ? [
-          '- Hebrew: everyday spoken Israeli Hebrew, the way people actually talk — not translated, not formal, not "שפת פרסומות". Address the viewer naturally (אתם / את / אתה); slang only where it sounds natural.',
-          '- BANNED phrases and patterns (they instantly sound like a brochure): "בשונה מ...", "הכל במקום אחד", "פשוט, מהיר ונוח", "בקלות ובמהירות", "הפתרון המושלם", "חוויית משתמש", "בלחיצת כפתור", "תנו ל... לעשות את העבודה", "הגיע הזמן", "עשרים וארבע שבע" in narration, chains of three adjectives, features joined by "ו" in one sentence, a rhetorical question answered right away by "עם X...".',
+          '- Hebrew: everyday spoken Israeli Hebrew, the way people actually talk — not translated, not formal, not "שפת פרסומות". Do not repeat "אתם" / "שלכם" in every line; real people say it once and move on.',
+          `- BANNED phrases and patterns (they instantly sound like a brochure): ${BANNED_HE.map((b) => `"${b}"`).join(', ')}, "תנו ל... לעשות את העבודה", chains of three adjectives, features joined by "ו" in one sentence, a rhetorical question answered right away by "עם X...".`,
         ].join('\n')
       : '- BANNED: brochure clichés ("all in one place", "seamless", "the perfect solution", "say goodbye to", "game-changer"), feature lists, chains of adjectives.',
   ]
@@ -92,14 +131,15 @@ export function scriptSystemPrompt(ctx: ProjectContext): string {
   const wps = wordsPerSecond(ctx.brief.language);
   return [
     'You are a senior commercial scriptwriter and creative director for short AI-generated marketing videos.',
-    'Write a production-ready script based strictly on the brief. Do not invent product claims, prices or facts that are not in the brief.',
+    'Write a production-ready script from the brief. Do not invent product claims, prices or facts that are not in the brief.',
     `Write narration and on-screen text in the brief's language (${ctx.brief.language || 'same language as the brief'}). Write visualAction and notes in the same language.`,
     'Narration must sound natural when read aloud: short sentences, spoken rhythm, no stage directions inside narration.',
+    priorityRule(),
     copyRules(ctx),
-    `Timing: assume about ${wps} spoken words per second. Each scene's estDurationSec must fit its narration, and the total must match the target duration within ±10%.`,
+    `Timing: about ${wps} spoken words per second. Each scene's estDurationSec must fit its narration, and the total must match the target duration within ±10%.`,
     'Structure: a hook in the first 1–3 seconds and a CTA at the end when the goal requires one. Between them, follow the story of the one idea — not a fixed problem/solution/benefit template.',
     `storyRole must be one of: ${STORY_ROLES.join(', ')}.`,
-    'visualAction describes what is seen on screen in one or two concrete, filmable sentences, suitable for AI image/video generation.',
+    'visualAction: the key image of the scene in one or two concrete, filmable sentences. No shot lists and no per-shot durations — the storyboard breaks scenes into shots later.',
     'notes: optional production notes (sound, transitions, emphasis). Use an empty string if none.',
   ].join('\n');
 }
@@ -110,12 +150,14 @@ export function creativeSystemPrompt(ctx: ProjectContext): string {
   return [
     'You are one of the best commercial copywriters and creative directors in the market, writing a short video ad for social media.',
     'Write it the way you would in a conversation with the studio owner: a finished, human, persuasive script — not a template, not JSON.',
-    'Base it strictly on the brief: no invented claims, prices, numbers or facts.',
     `Language of narration and on-screen text: ${ctx.brief.language || 'same language as the brief'}.`,
     ctx.brief.voiceoverNeeded === false ? 'There is NO voice-over: tell the story with visuals and short on-screen text only (every narration line is —).' : '',
+    priorityRule(),
     copyRules(ctx),
     '',
-    'Before writing, decide silently: who exactly is watching, which moment of their day we open on, and the ONE sentence the viewer should remember. Then write.',
+    ctx.brief.concept?.trim()
+      ? 'Build the whole ad on the CHOSEN CREATIVE DIRECTION in the brief: its hook, its tension and its promise. Do not drift back to a generic product walkthrough.'
+      : 'Before writing, decide silently: who exactly is watching, which moment of their day we open on, and the ONE sentence the viewer should remember. Then write.',
     'OUTPUT FORMAT (plain text, nothing else):',
     'כותרת: <short title>',
     'הרעיון: <the one sentence the viewer remembers>',
@@ -123,15 +165,23 @@ export function creativeSystemPrompt(ctx: ProjectContext): string {
     'סצנה N',
     'קריינות: <exact spoken words, or —>',
     'על המסך: <short on-screen text, or —>',
-    'רואים: <one or two concrete, filmable sentences>',
-    'שניות: <estimated seconds>',
+    'רואים: <one or two sentences: the key image only, no shot list>',
+    'שניות: <seconds, realistic for the narration>',
   ]
     .filter(Boolean)
     .join('\n');
 }
 
 export function creativeUserPrompt(ctx: ProjectContext): string {
-  return `BRIEF:\n${briefToText(ctx)}\n\nWrite the ad now.`;
+  return [
+    `BRIEF:\n${briefToText(ctx)}`,
+    ctx.rewriteNotes?.trim()
+      ? `THE PREVIOUS ATTEMPT WAS REJECTED. Write a NEW script from the brief and the chosen direction — do not reuse its wording, its scene order or its structure. Why it was rejected:\n${ctx.rewriteNotes.trim()}`
+      : '',
+    'Write the ad now.',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 export function structureSystemPrompt(): string {
@@ -148,7 +198,69 @@ export function structureUserPrompt(text: string): string {
   return `SCRIPT (plain text):\n${text}\n\nReturn the JSON.`;
 }
 
-/* ---------- כיווני קריאייטיב: 3 רעיונות שונים לפני שכותבים תסריט ---------- */
+/* ---------- A. הבנת המוצר: עובדות / הנחות / שאלות פתוחות, לפני כל רעיון ---------- */
+
+const s0 = { type: 'string' } as const;
+const arr0 = { type: 'array', items: s0 } as const;
+
+export const INTEL_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['audience', 'problem', 'desire', 'whatItDoes', 'advantage', 'proofs', 'offer', 'action', 'limits', 'facts', 'assumptions', 'openQuestions'],
+  properties: {
+    audience: s0,
+    problem: s0,
+    desire: s0,
+    whatItDoes: s0,
+    advantage: s0,
+    proofs: arr0,
+    offer: s0,
+    action: s0,
+    limits: s0,
+    facts: arr0,
+    assumptions: arr0,
+    openQuestions: arr0,
+  },
+} as const;
+
+export function intelSystemPrompt(ctx: ProjectContext): string {
+  return [
+    'You are the strategist of an ad studio. Before anyone has an idea, you extract what is true about the product and its buyer.',
+    'Fill: audience (exactly who, not a category list), problem (what they actually live through), desire (the result they want), whatItDoes (what the product really does), advantage (the real edge over the alternatives they use today), proofs (claims that can be shown credibly), offer, action (the one thing the viewer should do), limits (budget, format, length, production).',
+    'facts: only what the brief or the client website states. assumptions: reasonable but NOT stated — mark them as such. openQuestions: what is missing and matters for the ad.',
+    'Never invent capabilities, numbers, testimonials or claims. If the sources do not say it, it goes to assumptions or openQuestions.',
+    `Write in ${ctx.brief.language?.match(/english|אנגל/i) ? 'English' : 'Hebrew'}. Short, concrete sentences.`,
+  ].join('\n');
+}
+
+export function intelUserPrompt(ctx: ProjectContext, site: string): string {
+  return [`BRIEF:\n${briefToText({ ...ctx, brief: { ...ctx.brief, intel: null, concept: '' } })}`, site ? `CLIENT WEBSITE (text):\n${site}` : '', 'Extract the product intelligence now.']
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+export function intelToText(i: ProductIntel | null | undefined): string {
+  if (!i) return '';
+  const list = (t: string, a: string[]) => (a.length ? `${t}:\n${a.map((x) => `  - ${x}`).join('\n')}` : '');
+  return [
+    i.audience && `Audience: ${i.audience}`,
+    i.problem && `Problem: ${i.problem}`,
+    i.desire && `Desire: ${i.desire}`,
+    i.whatItDoes && `What it does: ${i.whatItDoes}`,
+    i.advantage && `Real advantage: ${i.advantage}`,
+    list('Proofs that can be shown', i.proofs),
+    i.offer && `Offer: ${i.offer}`,
+    i.action && `Action: ${i.action}`,
+    i.limits && `Limits: ${i.limits}`,
+    list('VERIFIED FACTS (only these may be claimed)', i.facts),
+    list('Assumptions (do not state as fact)', i.assumptions),
+    list('Open questions', i.openQuestions),
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/* ---------- B. כיווני קריאייטיב: 3 רעיונות שונים מהותית ---------- */
 
 export const CONCEPTS_JSON_SCHEMA = {
   type: 'object',
@@ -160,14 +272,8 @@ export const CONCEPTS_JSON_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['title', 'idea', 'hook', 'story', 'why'],
-        properties: {
-          title: { type: 'string' },
-          idea: { type: 'string' },
-          hook: { type: 'string' },
-          story: { type: 'string' },
-          why: { type: 'string' },
-        },
+        required: ['title', 'idea', 'insight', 'hook', 'tension', 'productRole', 'promise', 'standout'],
+        properties: { title: s0, idea: s0, insight: s0, hook: s0, tension: s0, productRole: s0, promise: s0, standout: s0 },
       },
     },
   },
@@ -175,12 +281,130 @@ export const CONCEPTS_JSON_SCHEMA = {
 
 export function conceptsSystemPrompt(ctx: ProjectContext): string {
   return [
-    'You are a top creative director. Propose exactly 3 creative directions for this video ad — genuinely different from each other (different angle, different opening moment, different emotion), not 3 variations of one idea.',
-    'Base them strictly on the brief: no invented claims or numbers.',
+    'You are a top creative director. Propose exactly 3 creative directions for this video ad.',
+    'They must be GENUINELY different: a different situation, a different opening moment, a different emotion or angle. Three wordings of the same situation is a failure.',
+    'Avoid the automatic solutions unless you can name the specific reason they fit: opening on a routine problem, a montage of professionals, a feature list, a generic "join now" ending.',
+    'Each direction: title (2–4 words); idea (the ONE sentence the viewer remembers); insight (the human or business truth it rests on); hook (the exact first spoken line, or the first image if there is no voice-over — specific to THIS idea, not swappable to any brand); tension (the conflict that keeps people watching); productRole (how the product enters the story — as the turn, not as a feature list); promise (the marketing promise); standout (why it would stand out against competitor ads in the feed).',
+    'Use only the verified facts. No invented claims or numbers.',
     copyRules(ctx),
     `Write everything in ${ctx.brief.language || 'the brief language'}.`,
-    'title: 2–4 words. idea: the ONE sentence the viewer remembers. hook: the exact first spoken line (or the first image if there is no voice-over). story: 2–3 sentences on how the ad unfolds. why: one sentence on why it works for this audience.',
   ].join('\n');
+}
+
+export function conceptsUserPrompt(ctx: ProjectContext, avoid: string[] = []): string {
+  return [
+    `BRIEF:\n${briefToText({ ...ctx, brief: { ...ctx.brief, concept: '' } })}`,
+    avoid.length ? `DIRECTIONS ALREADY REJECTED — do not repeat them or their situations:\n${avoid.map((a) => `- ${a}`).join('\n')}` : '',
+    'Propose the 3 directions now.',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+/* ---------- C. בחירת כיוון לפי קריטריונים מפורשים ---------- */
+
+const CRITERIA_KEYS = Object.keys(CONCEPT_CRITERIA) as ConceptCriterion[];
+
+export const SELECT_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['evaluations'],
+  properties: {
+    evaluations: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['index', 'scores', 'verdict'],
+        properties: {
+          index: { type: 'integer' },
+          scores: { type: 'object', additionalProperties: false, required: CRITERIA_KEYS, properties: Object.fromEntries(CRITERIA_KEYS.map((k) => [k, { type: 'integer' }])) },
+          verdict: s0,
+        },
+      },
+    },
+  },
+} as const;
+
+export function selectSystemPrompt(ctx: ProjectContext): string {
+  return [
+    'You are the head of strategy judging creative directions before any script is written. Judge harshly and independently.',
+    `Score each direction 1–10 on: ${CRITERIA_KEYS.map((k) => `${k} (${CONCEPT_CRITERIA[k]})`).join(', ')}.`,
+    'Scale: 5 = an average ad nobody remembers, 7 = good enough to run, 9+ = rare. Most directions deserve 4–7.',
+    'Do not confuse an idea that is easy to produce with an idea that is worth producing: feasibility is one criterion of six.',
+    'A hook that could open any competitor\'s ad scores at most 4 on stopScroll and differentiation.',
+    `verdict: one sentence in ${ctx.brief.language?.match(/english|אנגל/i) ? 'English' : 'Hebrew'} — the strongest reason for or against.`,
+  ].join('\n');
+}
+
+export function selectUserPrompt(ctx: ProjectContext, concepts: Array<Pick<Concept, 'title' | 'idea' | 'insight' | 'hook' | 'tension' | 'productRole' | 'promise' | 'standout'>>): string {
+  return [
+    `BRIEF:\n${briefToText({ ...ctx, brief: { ...ctx.brief, concept: '' } })}`,
+    `DIRECTIONS:\n${JSON.stringify(concepts.map((c, index) => ({ index, ...c })), null, 2)}`,
+    'Score every direction.',
+  ].join('\n\n');
+}
+
+/* ---------- QA קריאייטיבי עצמאי (ChatGPT): 100 נקודות, ראיות מתוך התסריט, ושער מעבר בקוד ---------- */
+
+const RUBRIC_KEYS = Object.keys(QA_RUBRIC) as QaCriterion[];
+const DETECTOR_KEYS = Object.keys(QA_DETECTORS) as QaDetector[];
+
+export const QA_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['scores', 'detectors', 'critical', 'unsupportedClaims', 'failStage', 'fixes'],
+  properties: {
+    scores: {
+      type: 'object',
+      additionalProperties: false,
+      required: RUBRIC_KEYS,
+      properties: Object.fromEntries(
+        RUBRIC_KEYS.map((k) => [k, { type: 'object', additionalProperties: false, required: ['score', 'evidence'], properties: { score: { type: 'integer' }, evidence: s0 } }]),
+      ),
+    },
+    detectors: {
+      type: 'object',
+      additionalProperties: false,
+      required: DETECTOR_KEYS,
+      properties: Object.fromEntries(
+        DETECTOR_KEYS.map((k) => [k, { type: 'object', additionalProperties: false, required: ['found', 'evidence'], properties: { found: { type: 'boolean' }, evidence: s0 } }]),
+      ),
+    },
+    critical: arr0,
+    unsupportedClaims: arr0,
+    failStage: { type: 'string', enum: Object.keys(QA_STAGES) },
+    fixes: arr0,
+  },
+} as const;
+
+export function qaSystemPrompt(ctx: ProjectContext): string {
+  const lang = ctx.brief.language?.match(/english|אנגל/i) ? 'English' : 'Hebrew';
+  return [
+    'You are an independent creative QA judge at an ad agency. You did not write this script and you do not assume it is good. Your job is to stop weak work from reaching the client.',
+    'A script that is complete, well-structured and full of detailed shots but would not make a real viewer stop, care and act is a FAIL. Judge the ad, not the formatting.',
+    `Score out of 100: ${RUBRIC_KEYS.map((k) => `${k} = ${QA_RUBRIC[k].label} (0–${QA_RUBRIC[k].max})`).join('; ')}.`,
+    'Every score needs evidence: quote the exact words or scene numbers from the script that justify it. A number without a quote is invalid.',
+    'Calibration: an average, forgettable but correct ad scores about 60–70 in total. 85+ means you would put it in front of the client without changes.',
+    `detectors — for each, found=true/false with evidence: ${DETECTOR_KEYS.map((k) => `${k} (${QA_DETECTORS[k]})`).join('; ')}.`,
+    'critical: failures that alone block the script (e.g. the viewer would not understand what the product is, a claim that contradicts the facts, the ad has no idea at all, it is far over the length).',
+    'unsupportedClaims: every product claim in the script that is NOT in the verified facts (quote it).',
+    'failStage — where the failure comes from, so the system goes back to the right step instead of rewording: "product" (the product or audience is misunderstood), "concept" (the idea itself is weak or generic — rewording will not fix it), "selection" (one of the other directions would clearly be stronger), "writing" (the idea is good, the execution is weak), "none" (passes).',
+    `fixes: up to 5 concrete instructions for the next attempt, aimed at the root cause. Write evidence, critical, unsupportedClaims and fixes in ${lang}.`,
+    'The CODE CHECKS list is measured, not opinion: treat each item as true.',
+  ].join('\n');
+}
+
+export function qaUserPrompt(ctx: ProjectContext, script: ScriptLike, codeChecks: string[], otherConcepts: Concept[]): string {
+  return [
+    `BRIEF (with product intelligence and the chosen direction):\n${briefToText(ctx)}`,
+    otherConcepts.length ? `OTHER DIRECTIONS THAT WERE CONSIDERED:\n${otherConcepts.map((c) => `- ${c.title}: ${c.idea}`).join('\n')}` : '',
+    `SCRIPT (JSON):\n${scriptJson(script)}`,
+    `CODE CHECKS:\n${codeChecks.length ? codeChecks.map((c) => `- ${c}`).join('\n') : '- (none failed)'}`,
+    'Judge it now.',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 export function scriptUserPrompt(ctx: ProjectContext): string {
@@ -338,6 +562,7 @@ export function scriptReviewSystemPrompt(ctx: ProjectContext, mode: 'copy' | 'vi
     return [
       'You are the visual director of a short AI-generated video ad. A copywriter wrote the script below; the words are final.',
       'DO NOT TOUCH THE WORDS: copy title, logline, narration, onScreenText, storyRole and estDurationSec exactly, character for character, and keep the same scenes in the same order. Any change there is discarded anyway.',
+      'visualAction stays ONE or TWO sentences: the key image of the scene. No shot lists, no per-shot durations, no camera breakdowns — the storyboard does that later.',
       'You work ONLY on visualAction (and notes). For every scene make visualAction: concrete and filmable for AI image/video generation in one or two sentences; showing exactly the moment the narration talks about; consistent across scenes (same characters, wardrobe, locations, product look); varied in shot size and camera so the ad has rhythm; realistic and believable for the target market.',
       `Write visualAction and notes in ${lang}.`,
       `reviewNotes: up to 5 short bullets in ${lang}: what you changed in the visuals, plus concrete visual suggestions for the owner (e.g. "סצנה 3: לצלם מעל הכתף, שיראו את המסך"). No notes about the copy. If nothing needed changing, one bullet: "ללא שינוי בוויזואל".`,

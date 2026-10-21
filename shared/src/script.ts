@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { qaReportSchema } from './creative.js';
 
 export const STORY_ROLES = ['hook', 'problem', 'solution', 'benefit', 'proof', 'cta', 'transition', 'other'] as const;
 
@@ -29,6 +30,8 @@ export const scriptContentSchema = z.object({
   title: z.string().default(''),
   logline: z.string().default(''),
   scenes: z.array(sceneSchema).default([]),
+  /** דוח ה-QA הקריאייטיבי של הגרסה (ChatGPT) */
+  qa: qaReportSchema.optional(),
 });
 
 export type ScriptContent = z.infer<typeof scriptContentSchema>;

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { conceptSchema, productIntelSchema } from './creative.js';
 
 export const ASPECT_RATIOS = ['9:16', '16:9', '1:1', '4:5', '4:3', '21:9'] as const;
 
@@ -51,6 +52,10 @@ export const briefSchema = z.object({
   notes: z.string().default(''),
   /** כיוון הקריאייטיב שאוהד בחר (רעיון + הוק) — התסריט נכתב סביבו */
   concept: z.string().default(''),
+  /** הבנת המוצר (ChatGPT): עובדות, הנחות ושאלות פתוחות — לפני כל רעיון */
+  intel: productIntelSchema.nullable().default(null),
+  /** 3 הכיוונים האחרונים עם הציונים (והאם נדחו ב-QA) */
+  conceptOptions: z.array(conceptSchema).default([]),
   /** שדות שה-AI מילא אוטומטית (יורדים מהרשימה כשאוהד עורך אותם) */
   aiFilled: z.array(z.string()).default([]),
   /** מה עוד חסר באפיון — שאלות קצרות מה-AI */

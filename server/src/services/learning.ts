@@ -162,6 +162,7 @@ export function distillPrompts(ctx: Ctx) {
     'Rules: imperative, specific and checkable (e.g. "Hook must show the product within the first 2 seconds"), one idea per rule, no project-specific trivia unless it is a lasting client preference.',
     'Scope: use "global" when it reflects the owner\'s general taste; use "client:<exact client name>" when it is specific to that client.',
     'Return the COMPLETE updated set of learned rules: keep the existing learned rules that still hold, merge duplicates, refine wording, drop rules that new feedback contradicts. At most 10 rules per scope+area.',
+    'NEVER turn feedback into a fixed script structure, a scene order, a numbered list of parts or a feature checklist (e.g. "the script is built of 7 parts in this order"). Such rules kill the creative idea. When the owner complains that something is unclear, write a clarity requirement instead (e.g. "by the end the viewer knows who it is for and what the product does").',
     'Write the rule text in Hebrew. Never duplicate a manual rule (they are kept as-is).',
   ].join('\n');
   const user = [

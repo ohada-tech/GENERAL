@@ -978,3 +978,24 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 @media (prefers-reduced-motion: reduce) { .urgent-live { animation: none; } }
 .urgent-item { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border, rgba(255,255,255,.08)); }
 .urgent-body { font-weight: 600; line-height: 1.45; }
+.concept-score { font-weight: 700; font-size: 12px; padding: 0 6px; border-radius: 4px; }
+.concept-score.ok { background: color-mix(in srgb, #19c7a3 18%, transparent); color: #19c7a3; }
+.concept-score.low { background: var(--warn-bg); color: var(--warn); }
+.concept-crit { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.concept-card.rejected { opacity: .55; }
+.intel-body { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; }
+.intel-body ul { margin: 2px 0 0; padding-inline-start: 18px; }
+
+/* דוח QA קריאייטיבי */
+.qa-panel.qa-fail { border-color: var(--warn); }
+.qa-panel.qa-pass { border-color: color-mix(in srgb, #19c7a3 45%, transparent); }
+.qa-head { background: none; border: 0; color: inherit; cursor: pointer; padding: 0; width: 100%; text-align: start; font: inherit; }
+.qa-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 16px; }
+.qa-row { display: flex; flex-direction: column; gap: 3px; }
+.qa-bar { height: 5px; border-radius: 3px; background: color-mix(in srgb, currentColor 12%, transparent); overflow: hidden; }
+.qa-bar span { display: block; height: 100%; }
+.qa-bar .ok { background: #19c7a3; }
+.qa-bar .low { background: var(--warn); }
+.qa-list { margin: 2px 0 0; padding-inline-start: 18px; }
+.ok-text { color: #19c7a3; }
+.warn-text { color: var(--warn); }
