@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { loadBridgeMode } from './services/bridge.js';
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
 import type { Ctx } from './context.js';
@@ -22,6 +23,7 @@ loadSecrets(config);
 const db = openDb(path.join(config.dataDir, 'production.db'));
 const ctx: Ctx = { db, config, providers: createProviders(config), now: () => new Date() };
 
+loadBridgeMode(ctx);
 const app = await buildApp(ctx, { logger: true, serveWeb: true });
 const worker = startWorker(ctx, (id) => isProjectCompleted(ctx, id));
 renumberLegacyScripts(ctx.db);

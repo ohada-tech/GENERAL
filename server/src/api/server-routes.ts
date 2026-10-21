@@ -13,6 +13,7 @@ import { extractDocText } from '../services/doc-text.js';
 import { autofillBrief } from '../services/auto-brief.js';
 import { previewScript, proposeConcepts } from '../services/concepts.js';
 import { judgeScript } from '../services/creative.js';
+import { bridge, setBridgeMode } from '../services/bridge.js';
 import { textProviderFor } from '../jobs/handlers.js';
 import { needsOwner } from '../services/attention.js';
 import { pushAll, subscribe, unsubscribe, vapidKeys } from '../services/push.js';
@@ -66,6 +67,17 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
 
   // כיווני קריאייטיב: 3 רעיונות מ-ChatGPT לפני התסריט (הבחירה נשמרת באפיון, brief.concept)
   app.post('/api/projects/:id/concepts', async (req) => proposeConcepts(ctx, (req.params as { id: string }).id));
+
+  // גשר למנוי ChatGPT: העובד המקומי (Codex) מושך בקשות ומחזיר תשובות
+  app.get('/api/bridge/status', async () => bridge.status());
+  app.post('/api/bridge/mode', async (req) => setBridgeMode(ctx, String(((req.body ?? {}) as { mode?: string }).mode ?? '')));
+  app.get('/api/bridge/next', async (req, reply) => {
+    const q = req.query as { wait?: string; worker?: string };
+    const r = await bridge.next(String(q.worker ?? 'codex'), Math.min(Math.max(Number(q.wait) || 0, 0), 25) * 1000);
+    if (!r) return reply.code(204).send();
+    return r;
+  });
+  app.post('/api/bridge/:rid/result', async (req) => ({ ok: bridge.answer((req.params as { rid: string }).rid, (req.body ?? {}) as { text?: string; error?: string }) }));
 
   // QA קריאייטיבי לגרסה קיימת — שיפוט בלבד, לא משנה את התסריט ולא נשמר
   app.post('/api/scripts/:vid/qa', async (req) => {

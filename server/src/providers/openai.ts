@@ -13,6 +13,7 @@ import {
   storyboardUserPrompt,
 } from './prompts.js';
 import { writeScriptTwoStep, type TextResult } from './writer.js';
+import { bridge } from '../services/bridge.js';
 import { ProviderError, type GenResult, type ProjectContext, type ScriptDraft, type TextProvider } from './types.js';
 
 export interface OpenAIConfig {
@@ -24,6 +25,9 @@ export interface OpenAIConfig {
 
 type FetchFn = typeof fetch;
 
+/** כשלי API שבהם עוברים למנוי (אם הגשר מחובר) */
+const BRIDGE_FALLBACK = new Set(['missing_api_key', 'auth', 'insufficient_quota', 'rate_limit', 'server', 'network']);
+
 export class OpenAITextProvider implements TextProvider {
   readonly id = 'openai';
   readonly label = 'ChatGPT (OpenAI API)';
@@ -34,8 +38,9 @@ export class OpenAITextProvider implements TextProvider {
     private readonly fetchFn: FetchFn = fetch,
   ) {}
 
+  /** מחובר: יש מפתח API, או שהגשר למנוי ChatGPT (Codex) פעיל במחשב של אוהד */
   isConfigured() {
-    return Boolean(this.cfg.apiKey);
+    return Boolean(this.cfg.apiKey) || bridge.usable(true);
   }
 
   /**
@@ -142,7 +147,42 @@ export class OpenAITextProvider implements TextProvider {
     );
   }
 
+  /**
+   * API קודם; אם הוא נכשל (אין קרדיט / אין מפתח / תקלה) והגשר מחובר — אותה בקשה דרך המנוי של ChatGPT (Codex).
+   * במצב "always" — רק המנוי.
+   */
   private async complete<T>(
+    name: string,
+    schema: object | null,
+    messages: Array<{ role: string; content: string }>,
+    modelOverride?: string,
+  ): Promise<{ data: T; model: string; usage?: GenResult<T>['usage'] }> {
+    if (bridge.usable(false) || (!this.cfg.apiKey && bridge.usable(true))) return this.viaBridge<T>(name, schema, messages);
+    try {
+      return await this.completeApi<T>(name, schema, messages, modelOverride);
+    } catch (e) {
+      if (e instanceof ProviderError && BRIDGE_FALLBACK.has(e.code) && bridge.usable(true)) return this.viaBridge<T>(name, schema, messages);
+      throw e;
+    }
+  }
+
+  private async viaBridge<T>(name: string, schema: object | null, messages: Array<{ role: string; content: string }>) {
+    const system = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
+    const user = messages.filter((m) => m.role !== 'system').map((m) => m.content).join('\n\n');
+    const text = (await bridge.call(name, system, user, schema)).trim();
+    if (!text) throw new ProviderError('תשובה ריקה מהמנוי של ChatGPT', true, 'empty_output');
+    let data: T;
+    if (!schema) data = text as T;
+    else
+      try {
+        data = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '')) as T;
+      } catch {
+        throw new ProviderError('הפלט מהמנוי של ChatGPT אינו JSON תקין', true, 'invalid_json');
+      }
+    return { data, model: 'ChatGPT מנוי (Codex)', usage: undefined };
+  }
+
+  private async completeApi<T>(
     name: string,
     schema: object | null,
     messages: Array<{ role: string; content: string }>,
