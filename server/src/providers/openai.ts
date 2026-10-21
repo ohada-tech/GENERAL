@@ -12,6 +12,7 @@ import {
   storyboardSystemPrompt,
   storyboardUserPrompt,
 } from './prompts.js';
+import { writeScriptTwoStep, type TextResult } from './writer.js';
 import { ProviderError, type GenResult, type ProjectContext, type ScriptDraft, type TextProvider } from './types.js';
 
 export interface OpenAIConfig {
@@ -75,17 +76,23 @@ export class OpenAITextProvider implements TextProvider {
     return (body.data ?? []).map((m) => m.id).sort();
   }
 
+  /** טיוטה ראשונה: כתיבה חופשית ואז חלוקה לסצנות (ראו writer.ts) */
   async generateScript(ctx: ProjectContext, opts?: { model?: string }): Promise<GenResult<ScriptDraft>> {
-    const { data, model, usage } = await this.complete<ScriptDraft>(
-      'script',
-      SCRIPT_JSON_SCHEMA,
+    return writeScriptTwoStep(this, ctx, opts?.model);
+  }
+
+  /** טקסט חופשי, בלי סכמה — כמו תשובה בצ'אט */
+  async text(system: string, user: string, modelOverride?: string): Promise<TextResult> {
+    const r = await this.complete<string>(
+      'text',
+      null,
       [
-        { role: 'system', content: scriptSystemPrompt(ctx) },
-        { role: 'user', content: scriptUserPrompt(ctx) },
+        { role: 'system', content: system },
+        { role: 'user', content: user },
       ],
-      opts?.model,
+      modelOverride,
     );
-    return { data: validateScript(data), provider: this.id, model, usage };
+    return { text: r.data, model: r.model, usage: r.usage };
   }
 
   async reviseScript(ctx: ProjectContext, base: ScriptContent, feedback: string, opts?: { model?: string }) {
@@ -137,7 +144,7 @@ export class OpenAITextProvider implements TextProvider {
 
   private async complete<T>(
     name: string,
-    schema: object,
+    schema: object | null,
     messages: Array<{ role: string; content: string }>,
     modelOverride?: string,
   ): Promise<{ data: T; model: string; usage?: GenResult<T>['usage'] }> {
@@ -157,7 +164,7 @@ export class OpenAITextProvider implements TextProvider {
         body: JSON.stringify({
           model,
           messages,
-          response_format: { type: 'json_schema', json_schema: { name, strict: true, schema } },
+          ...(schema ? { response_format: { type: 'json_schema', json_schema: { name, strict: true, schema } } } : {}),
         }),
         signal: AbortSignal.timeout(this.cfg.timeoutMs),
       });
@@ -200,7 +207,8 @@ export class OpenAITextProvider implements TextProvider {
       throw new ProviderError('תשובה ריקה מ-OpenAI', true, 'empty_output');
     }
     let data: T;
-    try {
+    if (!schema) data = content as T;
+    else try {
       data = JSON.parse(content) as T;
     } catch {
       throw new ProviderError('הפלט מהמודל אינו JSON תקין', true, 'invalid_json');

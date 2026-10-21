@@ -33,6 +33,7 @@ export function briefToText(ctx: ProjectContext): string {
     ['Voice notes', b.voiceNotes],
     ['Budget / constraints', [b.budget, b.constraints].filter(Boolean).join(' — ')],
     ['Extra notes', b.notes],
+    ['CHOSEN CREATIVE DIRECTION (the owner picked it — build the whole script on this idea)', b.concept],
     ['Links', b.links.filter((l) => l.url.trim()).map((l) => (l.label ? `${l.label}: ${l.url}` : l.url)).join(' | ')],
   ];
   const brief = lines
@@ -58,6 +59,35 @@ export function lessonsBlock(lessons: string[]): string {
   ].join('\n');
 }
 
+/**
+ * כללי הקופי של הבית: מה מבדיל תסריט שנשמע כמו אדם מתסריט שנשמע כמו ברושור.
+ * משותף לכתיבה, לתיקון ולביקורת — כדי שכולם ימדדו באותו סרגל.
+ */
+export function copyRules(ctx: ProjectContext): string {
+  const hebrew = !ctx.brief.language || /עברית|hebrew/i.test(ctx.brief.language);
+  const wps = wordsPerSecond(ctx.brief.language);
+  const max = ctx.brief.durationSec ? Math.round(ctx.brief.durationSec * wps) : 0;
+  return [
+    'COPY RULES (non-negotiable — this is what separates a human ad from a brochure):',
+    '- ONE idea per ad. The viewer must be able to repeat the ad in one sentence. Use at most 2 product features that serve that idea; drop the rest, even if the brief lists them.',
+    '- Talk like a real person talking to ONE viewer — the way a sharp copywriter talks to a friend who owns that kind of business. Spoken, warm, a bit cheeky when the tone allows. Never like a feature list or a product page.',
+    '- Concrete beats abstract: a real moment, a real detail, a real number from the brief. "הטלפון מצלצל כשהמספריים ביד" beats "ניהול תורים יעיל".',
+    '- Every line earns its place: a line that only explains what the product does is rewritten as what the viewer gets or feels, or cut.',
+    '- Vary the rhythm: mix very short lines (2–4 words) with normal ones. No two consecutive lines with the same structure.',
+    '- The hook is a moment or a line the viewer recognises from their own day — not a generic question.',
+    '- CTA: one short spoken line. Offer details (trial, no credit card, URL) go to on-screen text, not all into narration.',
+    max ? `- Length: about ${max} spoken words in total (${wps} words/second × ${ctx.brief.durationSec}s). Over that = cut, never speed up.` : '',
+    hebrew
+      ? [
+          '- Hebrew: everyday spoken Israeli Hebrew, the way people actually talk — not translated, not formal, not "שפת פרסומות". Address the viewer naturally (אתם / את / אתה); slang only where it sounds natural.',
+          '- BANNED phrases and patterns (they instantly sound like a brochure): "בשונה מ...", "הכל במקום אחד", "פשוט, מהיר ונוח", "בקלות ובמהירות", "הפתרון המושלם", "חוויית משתמש", "בלחיצת כפתור", "תנו ל... לעשות את העבודה", "הגיע הזמן", "עשרים וארבע שבע" in narration, chains of three adjectives, features joined by "ו" in one sentence, a rhetorical question answered right away by "עם X...".',
+        ].join('\n')
+      : '- BANNED: brochure clichés ("all in one place", "seamless", "the perfect solution", "say goodbye to", "game-changer"), feature lists, chains of adjectives.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 export function scriptSystemPrompt(ctx: ProjectContext): string {
   const wps = wordsPerSecond(ctx.brief.language);
   return [
@@ -65,11 +95,91 @@ export function scriptSystemPrompt(ctx: ProjectContext): string {
     'Write a production-ready script based strictly on the brief. Do not invent product claims, prices or facts that are not in the brief.',
     `Write narration and on-screen text in the brief's language (${ctx.brief.language || 'same language as the brief'}). Write visualAction and notes in the same language.`,
     'Narration must sound natural when read aloud: short sentences, spoken rhythm, no stage directions inside narration.',
+    copyRules(ctx),
     `Timing: assume about ${wps} spoken words per second. Each scene's estDurationSec must fit its narration, and the total must match the target duration within ±10%.`,
-    'Structure the story with clear roles (hook in the first 1–3 seconds, then problem/solution/benefit/proof as relevant, end with a CTA when the goal requires one).',
+    'Structure: a hook in the first 1–3 seconds and a CTA at the end when the goal requires one. Between them, follow the story of the one idea — not a fixed problem/solution/benefit template.',
     `storyRole must be one of: ${STORY_ROLES.join(', ')}.`,
     'visualAction describes what is seen on screen in one or two concrete, filmable sentences, suitable for AI image/video generation.',
     'notes: optional production notes (sound, transitions, emphasis). Use an empty string if none.',
+  ].join('\n');
+}
+
+/* ---------- כתיבה בשני שלבים: קודם טקסט חופשי (כמו בצ'אט), אחר כך חלוקה לסצנות מילה במילה ---------- */
+
+export function creativeSystemPrompt(ctx: ProjectContext): string {
+  return [
+    'You are one of the best commercial copywriters and creative directors in the market, writing a short video ad for social media.',
+    'Write it the way you would in a conversation with the studio owner: a finished, human, persuasive script — not a template, not JSON.',
+    'Base it strictly on the brief: no invented claims, prices, numbers or facts.',
+    `Language of narration and on-screen text: ${ctx.brief.language || 'same language as the brief'}.`,
+    ctx.brief.voiceoverNeeded === false ? 'There is NO voice-over: tell the story with visuals and short on-screen text only (every narration line is —).' : '',
+    copyRules(ctx),
+    '',
+    'Before writing, decide silently: who exactly is watching, which moment of their day we open on, and the ONE sentence the viewer should remember. Then write.',
+    'OUTPUT FORMAT (plain text, nothing else):',
+    'כותרת: <short title>',
+    'הרעיון: <the one sentence the viewer remembers>',
+    'then for each scene:',
+    'סצנה N',
+    'קריינות: <exact spoken words, or —>',
+    'על המסך: <short on-screen text, or —>',
+    'רואים: <one or two concrete, filmable sentences>',
+    'שניות: <estimated seconds>',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+export function creativeUserPrompt(ctx: ProjectContext): string {
+  return `BRIEF:\n${briefToText(ctx)}\n\nWrite the ad now.`;
+}
+
+export function structureSystemPrompt(): string {
+  return [
+    'You convert a finished ad script from plain text into structured JSON scenes. You are a typist, not a writer.',
+    'Copy narration, on-screen text and visuals WORD FOR WORD from the text. Do not rewrite, shorten, translate, polish or "fix" any wording. "—" means an empty string.',
+    'title: the title line. logline: the "הרעיון" line.',
+    `storyRole: pick the closest of: ${STORY_ROLES.join(', ')}.`,
+    'estDurationSec: the seconds written for the scene (a number). notes: empty string unless the text has production notes for that scene.',
+  ].join('\n');
+}
+
+export function structureUserPrompt(text: string): string {
+  return `SCRIPT (plain text):\n${text}\n\nReturn the JSON.`;
+}
+
+/* ---------- כיווני קריאייטיב: 3 רעיונות שונים לפני שכותבים תסריט ---------- */
+
+export const CONCEPTS_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['concepts'],
+  properties: {
+    concepts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['title', 'idea', 'hook', 'story', 'why'],
+        properties: {
+          title: { type: 'string' },
+          idea: { type: 'string' },
+          hook: { type: 'string' },
+          story: { type: 'string' },
+          why: { type: 'string' },
+        },
+      },
+    },
+  },
+} as const;
+
+export function conceptsSystemPrompt(ctx: ProjectContext): string {
+  return [
+    'You are a top creative director. Propose exactly 3 creative directions for this video ad — genuinely different from each other (different angle, different opening moment, different emotion), not 3 variations of one idea.',
+    'Base them strictly on the brief: no invented claims or numbers.',
+    copyRules(ctx),
+    `Write everything in ${ctx.brief.language || 'the brief language'}.`,
+    'title: 2–4 words. idea: the ONE sentence the viewer remembers. hook: the exact first spoken line (or the first image if there is no voice-over). story: 2–3 sentences on how the ad unfolds. why: one sentence on why it works for this audience.',
   ].join('\n');
 }
 
@@ -218,13 +328,28 @@ export const STORYBOARD_REVIEW_JSON_SCHEMA = {
 const reviewNotesRule = (lang: string) =>
   `reviewNotes: 1–3 bullet points in ${lang || 'the brief language'}, each at most 10 words, stating only what you changed (e.g. "סצנה 6: תוקנה שגיאת כתיב"). No praise, no explanations, no restating the feedback. If you changed nothing, return one bullet: "ללא שינוי".`;
 
-export function scriptReviewSystemPrompt(ctx: ProjectContext): string {
+/**
+ * ביקורת תסריט. "visual": Claude — עובד רק על מה שרואים (הקופי של ChatGPT נשאר כמו שהוא, נאכף גם בקוד).
+ * "copy": ChatGPT כעורך קופי ("שפר עם ChatGPT").
+ */
+export function scriptReviewSystemPrompt(ctx: ProjectContext, mode: 'copy' | 'visual' = 'copy'): string {
+  const lang = ctx.brief.language || 'the brief language';
+  if (mode === 'visual') {
+    return [
+      'You are the visual director of a short AI-generated video ad. A copywriter wrote the script below; the words are final.',
+      'DO NOT TOUCH THE WORDS: copy title, logline, narration, onScreenText, storyRole and estDurationSec exactly, character for character, and keep the same scenes in the same order. Any change there is discarded anyway.',
+      'You work ONLY on visualAction (and notes). For every scene make visualAction: concrete and filmable for AI image/video generation in one or two sentences; showing exactly the moment the narration talks about; consistent across scenes (same characters, wardrobe, locations, product look); varied in shot size and camera so the ad has rhythm; realistic and believable for the target market.',
+      `Write visualAction and notes in ${lang}.`,
+      `reviewNotes: up to 5 short bullets in ${lang}: what you changed in the visuals, plus concrete visual suggestions for the owner (e.g. "סצנה 3: לצלם מעל הכתף, שיראו את המסך"). No notes about the copy. If nothing needed changing, one bullet: "ללא שינוי בוויזואל".`,
+    ].join('\n');
+  }
   return [
     scriptSystemPrompt(ctx),
     '',
-    'ROLE NOW: you are the reviewing creative director. Another AI wrote the draft below. Review it strictly against the brief and return an improved, complete script.',
-    'Check: the hook lands in the first 1–3 seconds; the key message is clear; every claim is supported by the brief; tone and language fit the audience; narration sounds natural aloud; timing per scene and in total fits the target duration; visualAction is concrete and filmable for AI generation; the CTA matches the goal.',
-    'Keep what works. Do not rewrite for the sake of rewriting.',
+    'ROLE NOW: you are the editor. Another writer wrote the draft below. Your job is to protect its voice, not to replace it.',
+    'Read every narration line aloud in your head. Change a line ONLY if it: breaks a COPY RULE (banned phrase, feature list, brochure tone, sounds translated or formal), makes a claim the brief does not support, or pushes the total over the target length. Everything else stays word for word.',
+    'Also check: the ad can be summed up in one sentence (if not, cut the scene that dilutes it); the hook is a recognisable moment; the CTA is one short spoken line; visualAction is concrete and filmable for AI generation.',
+    'When you change a line, write it the way a person would say it: shorter and more concrete. Never make a line longer or more formal. Do not rewrite for the sake of rewriting.',
     reviewNotesRule(ctx.brief.language),
   ].join('\n');
 }

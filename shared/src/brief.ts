@@ -49,6 +49,8 @@ export const briefSchema = z.object({
   /** מזהי קבצים שהועלו (טבלת assets) */
   attachmentIds: z.array(z.string()).default([]),
   notes: z.string().default(''),
+  /** כיוון הקריאייטיב שאוהד בחר (רעיון + הוק) — התסריט נכתב סביבו */
+  concept: z.string().default(''),
   /** שדות שה-AI מילא אוטומטית (יורדים מהרשימה כשאוהד עורך אותם) */
   aiFilled: z.array(z.string()).default([]),
   /** מה עוד חסר באפיון — שאלות קצרות מה-AI */

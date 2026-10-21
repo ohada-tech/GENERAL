@@ -31,14 +31,16 @@ export async function improveScript(
   note?: string,
 ): Promise<GenResult<ScriptDraft>> {
   if (!reviewer.isConfigured()) throw new ProviderError(`${NAMES[reviewer.id] ?? reviewer.label} לא מחובר — הוסף מפתח בחלון "מפתחות"`, false, 'not_configured');
+  const visual = reviewer.id === 'claude';
   const r = await reviewer.json<{ reviewNotes: string[]; script: ScriptDraft }>(
     'script_review',
     SCRIPT_REVIEW_JSON_SCHEMA,
-    scriptReviewSystemPrompt(ctx),
+    scriptReviewSystemPrompt(ctx, visual ? 'visual' : 'copy'),
     scriptReviewUserPrompt(ctx, base, note?.trim() || undefined),
   );
+  const reviewed = validateScript(r.data?.script);
   return {
-    data: validateScript(r.data?.script),
+    data: visual ? lockCopy(reviewed, base) : reviewed,
     provider: reviewer.id,
     model: r.model,
     usage: r.usage,
@@ -93,14 +95,16 @@ export class CollabTextProvider implements TextProvider {
   }
 
   private async reviewScript(ctx: ProjectContext, draft: GenResult<ScriptDraft>, feedback?: string, base?: ScriptContent): Promise<GenResult<ScriptDraft>> {
+    const visual = this.reviewer.id === 'claude';
     const r = await this.reviewer.json<{ reviewNotes: string[]; script: ScriptDraft }>(
       'script_review',
       SCRIPT_REVIEW_JSON_SCHEMA,
-      scriptReviewSystemPrompt(ctx),
+      scriptReviewSystemPrompt(ctx, visual ? 'visual' : 'copy'),
       scriptReviewUserPrompt(ctx, draft.data, feedback, base),
     );
+    const reviewed = validateScript(r.data?.script);
     return {
-      data: validateScript(r.data?.script),
+      data: visual ? lockCopy(reviewed, draft.data) : reviewed,
       provider: 'collab',
       model: this.label2(draft, r.model),
       usage: sumUsage(draft.usage, r.usage),
@@ -134,6 +138,28 @@ export class CollabTextProvider implements TextProvider {
       reviewer: nameOf(this.reviewer),
     };
   }
+}
+
+/**
+ * אוהד: Claude לא כותב קופי. הטקסט (כותרת, קריינות, טקסט על המסך, תזמון) נלקח תמיד מהטיוטה של ChatGPT;
+ * מ-Claude נלקחים רק "מה רואים" וההערות — לפי מספר הסצנה.
+ */
+export function lockCopy(reviewed: ScriptDraft, draft: ScriptDraft | ScriptContent): ScriptDraft {
+  return {
+    title: draft.title,
+    logline: draft.logline,
+    scenes: draft.scenes.map((d, i) => {
+      const v = reviewed.scenes[i];
+      return {
+        storyRole: d.storyRole,
+        narration: d.narration,
+        onScreenText: d.onScreenText,
+        estDurationSec: d.estDurationSec,
+        visualAction: v?.visualAction?.trim() || d.visualAction,
+        notes: v?.notes?.trim() || d.notes,
+      };
+    }),
+  };
 }
 
 const notes = (v: unknown) => (Array.isArray(v) ? v.map(String).filter(Boolean).slice(0, 8) : []);

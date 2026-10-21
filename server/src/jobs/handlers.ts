@@ -30,11 +30,11 @@ export interface JobHandler<R = unknown> {
   onFinalFail?(ctx: Ctx, job: Job, err: unknown): void;
 }
 
-function textProviderFor(ctx: Ctx, projectId: string): { provider: TextProvider; model?: string } {
+export function textProviderFor(ctx: Ctx, projectId: string): { provider: TextProvider; model?: string } {
   const project = getProject(ctx.db, projectId);
   if (!project) throw new GateError('הפרויקט נמחק');
-  const key =
-    project.settings.textProvider === 'collab' && project.settings.collabWriter === 'claude' ? 'collab:claude' : project.settings.textProvider;
+  // אוהד: Claude לא כותב קופי — "Claude כותב" ו"Claude בלבד" עוברים לשיתוף שבו ChatGPT כותב ו-Claude עובד רק על הוויזואל
+  const key = project.settings.textProvider === 'claude' ? 'collab' : project.settings.textProvider;
   const provider = ctx.providers.text[key];
   if (!provider) throw new ProviderError(`ספק טקסט לא מוכר: ${project.settings.textProvider}`, false, 'unknown_provider');
   return { provider, model: project.settings.textModel || undefined };

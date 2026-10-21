@@ -83,20 +83,16 @@ export function SettingsTab({ detail, reload, health }: TabProps) {
         ) : (
           <>
             <div className="grid-2">
-              <Field label="מי כותב" hint="שיתוף: מודל אחד כותב טיוטה והשני עובר עליה כבמאי, משפר ומסביר מה שינה.">
-                <select value={s.textProvider} onChange={(e) => setS({ ...s, textProvider: e.target.value as ProjectSettings['textProvider'] })}>
-                  <option value="collab">ChatGPT + Claude בשיתוף (מומלץ)</option>
+              <Field label="מי כותב" hint="הקופי (קריינות וטקסט על המסך) תמיד של ChatGPT. Claude עובד רק על מה שרואים.">
+                <select value={s.textProvider === 'claude' ? 'collab' : s.textProvider} onChange={(e) => setS({ ...s, textProvider: e.target.value as ProjectSettings['textProvider'] })}>
+                  <option value="collab">ChatGPT כותב + Claude משפר ויזואל (מומלץ)</option>
                   <option value="openai">ChatGPT בלבד</option>
-                  <option value="claude">Claude בלבד</option>
                   <option value="demo">הדגמה (ללא AI)</option>
                 </select>
               </Field>
-              {s.textProvider === 'collab' ? (
+              {s.textProvider === 'collab' || s.textProvider === 'claude' ? (
                 <Field label="סדר העבודה">
-                  <select value={s.collabWriter} onChange={(e) => setS({ ...s, collabWriter: e.target.value as ProjectSettings['collabWriter'] })}>
-                    <option value="openai">ChatGPT כותב → Claude מבקר ומשפר</option>
-                    <option value="claude">Claude כותב → ChatGPT מבקר ומשפר</option>
-                  </select>
+                  <div className="small muted">ChatGPT כותב את הקופי → Claude משפר את "מה רואים" ונותן הצעות. הקופי של ChatGPT לא משתנה.</div>
                 </Field>
               ) : s.textProvider !== 'demo' ? (
                 <Field label="מודל" hint="ריק = ברירת המחדל שבחיבור">

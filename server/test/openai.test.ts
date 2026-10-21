@@ -36,22 +36,26 @@ async function expectProviderError(p: Promise<unknown>, retryable: boolean, code
 }
 
 describe('OpenAITextProvider', () => {
-  it('sends a structured-output request and parses the script', async () => {
-    let sent: any;
+  it('writes free text first (like the chat), then structures it into scenes', async () => {
+    const sent: any[] = [];
     const fetchFn = (async (url: string, init: RequestInit) => {
-      sent = { url, body: JSON.parse(String(init.body)), auth: (init.headers as any).Authorization };
+      sent.push({ url, body: JSON.parse(String(init.body)), auth: (init.headers as any).Authorization });
       return new Response(JSON.stringify(okScript), { status: 200 });
     }) as unknown as typeof fetch;
     const p = new OpenAITextProvider(cfg, fetchFn);
     const r = await p.generateScript(ctx, { model: 'override-model' });
-    expect(sent.url).toBe('https://api.example/v1/chat/completions');
-    expect(sent.auth).toBe('Bearer sk-test');
-    expect(sent.body.model).toBe('override-model');
-    expect(sent.body.response_format.type).toBe('json_schema');
-    expect(sent.body.response_format.json_schema.strict).toBe(true);
+    expect(sent).toHaveLength(2);
+    const [creative, structure] = sent;
+    expect(creative.url).toBe('https://api.example/v1/chat/completions');
+    expect(creative.auth).toBe('Bearer sk-test');
+    expect(creative.body.model).toBe('override-model');
+    expect(creative.body.response_format).toBeUndefined();
+    expect(creative.body.messages[0].content).toContain('COPY RULES');
+    expect(structure.body.response_format.json_schema.strict).toBe(true);
+    expect(structure.body.messages[0].content).toContain('WORD FOR WORD');
     expect(r.data.scenes[0].narration).toBe('שלום');
     expect(r.model).toBe('gpt-test-2026');
-    expect(r.usage?.outputTokens).toBe(20);
+    expect(r.usage?.outputTokens).toBe(40);
   });
 
   it('missing API key is a non-retryable error', async () => {

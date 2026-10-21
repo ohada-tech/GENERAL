@@ -19,7 +19,9 @@ function fakeModel(id: string, configured = true): JsonCapableProvider & { revie
     async json<T>(name: string, _schema: object, _sys: string, user: string) {
       this.reviews.push(name);
       const draft = JSON.parse(user.split('DRAFT SCRIPT (JSON):\n')[1]?.split('\n\nReturn')[0] ?? '{}');
-      const data = { reviewNotes: ['חיזקתי את ההוק'], script: { ...draft, title: `${draft.title} (משופר)` } };
+      // המבקר "מנסה" לשנות גם קופי — זה חייב להיזרק כשהמבקר הוא Claude
+      const scenes = (draft.scenes ?? []).map((s: any) => ({ ...s, narration: 'שוכתב', visualAction: `${s.visualAction} (ויזואל)` }));
+      const data = { reviewNotes: ['חיזקתי את ההוק'], script: { ...draft, title: `${draft.title} (משופר)`, scenes } };
       return { data: data as T, model: `${id}-m` };
     },
   };
@@ -28,14 +30,17 @@ function fakeModel(id: string, configured = true): JsonCapableProvider & { revie
 const pc = { name: 'P', clientName: 'C', brief: { ...FULL_BRIEF, characters: [], links: [], attachmentIds: [] } as any };
 
 describe('ChatGPT + Claude collaboration', () => {
-  it('the writer drafts and the reviewer returns an improved script with notes', async () => {
+  it('ChatGPT writes the copy; Claude improves only the visuals (copy is locked)', async () => {
     const gpt = fakeModel('openai');
     const claude = fakeModel('claude');
     const collab = new CollabTextProvider(gpt, claude);
     expect(collab.label).toBe('ChatGPT כותב · Claude משפר');
+    const written = await gpt.generateScript(pc);
     const r = await collab.generateScript(pc);
     expect(claude.reviews).toEqual(['script_review']);
-    expect(r.data.title).toContain('(משופר)');
+    expect(r.data.title).toBe(written.data.title);
+    expect(r.data.scenes.map((s) => s.narration)).toEqual(written.data.scenes.map((s) => s.narration));
+    expect(r.data.scenes.every((s) => s.visualAction.endsWith('(ויזואל)'))).toBe(true);
     expect(r.reviewNotes).toEqual(['חיזקתי את ההוק']);
     expect(r.model).toBe('ChatGPT (openai-m) + Claude (claude-m)');
   });

@@ -888,8 +888,8 @@ function ImproveBar({
         <button className="btn" disabled={act.busy || running} onClick={() => go('openai')} title="ChatGPT עובר על התסריט ומשפר — נוצרת גרסה חדשה">
           ✨ שפר עם ChatGPT
         </button>
-        <button className="btn btn-ghost" disabled={act.busy || running} onClick={() => go('claude')}>
-          שפר עם Claude
+        <button className="btn btn-ghost" disabled={act.busy || running} onClick={() => go('claude')} title="Claude משפר רק את &quot;מה רואים&quot; ונותן הצעות. הקריינות והטקסט על המסך לא משתנים">
+          🎬 שפר ויזואל עם Claude
         </button>
       </div>
       {!isLatest && <div className="small muted">משפר את v{version.label} — תיווצר ממנה גרסה חדשה (הגרסאות האחרות לא משתנות)</div>}

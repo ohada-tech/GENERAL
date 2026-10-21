@@ -960,3 +960,12 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .bell { display: flex; align-items: center; gap: 6px; }
 .push-cta { background: var(--holo); color: var(--on-holo); border: 0; font-weight: 600; white-space: nowrap; }
 @media (max-width: 640px) { .push-cta { padding-inline: 8px; font-size: 12px; } }
+
+/* כיוון קריאייטיב */
+.concept-picker { margin-bottom: 14px; }
+.concept-picker textarea { width: 100%; }
+.concept-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.concept-card { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: var(--r-md); }
+.concept-card.chosen { border-color: var(--brand-violet); box-shadow: 0 0 0 1px var(--brand-violet) inset; }
+.concept-card .btn { margin-top: auto; align-self: flex-start; }
+.concept-idea { font-weight: 600; line-height: 1.4; }

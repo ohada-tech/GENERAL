@@ -11,6 +11,8 @@ import { requestFeedbackReview } from '../services/feedback-review.js';
 import * as calls from '../services/client-calls.js';
 import { extractDocText } from '../services/doc-text.js';
 import { autofillBrief } from '../services/auto-brief.js';
+import { previewScript, proposeConcepts } from '../services/concepts.js';
+import { textProviderFor } from '../jobs/handlers.js';
 import { needsOwner } from '../services/attention.js';
 import { pushAll, subscribe, unsubscribe, vapidKeys } from '../services/push.js';
 import { scriptDocx } from '../services/script-docx.js';
@@ -60,6 +62,16 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/api/scripts/:vid/translate', async (req) =>
     translateScript(ctx, (req.params as { vid: string }).vid, (((req.body ?? {}) as { to?: string }).to ?? 'he') as TranslateLang),
   );
+
+  // כיווני קריאייטיב: 3 רעיונות מ-ChatGPT לפני התסריט (הבחירה נשמרת באפיון, brief.concept)
+  app.post('/api/projects/:id/concepts', async (req) => proposeConcepts(ctx, (req.params as { id: string }).id));
+
+  // תסריט לבדיקה בלבד (לא נשמר) — להשוואה בין שיטות כתיבה
+  app.post('/api/projects/:id/script/preview', async (req) => {
+    const id = (req.params as { id: string }).id;
+    const { provider, model } = textProviderFor(ctx, id);
+    return previewScript(ctx, id, provider, model);
+  });
 
   // התראות Push למחשב / לטלפון
   app.get('/api/push/key', async () => ({ publicKey: vapidKeys(ctx).publicKey }));

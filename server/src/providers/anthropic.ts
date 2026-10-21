@@ -14,6 +14,7 @@ import {
   storyboardSystemPrompt,
   storyboardUserPrompt,
 } from './prompts.js';
+import { writeScriptTwoStep, type TextResult } from './writer.js';
 import { ProviderError, type GenResult, type ProjectContext, type ScriptDraft, type TextProvider } from './types.js';
 
 export interface AnthropicConfig {
@@ -55,9 +56,15 @@ export class AnthropicTextProvider implements TextProvider {
     }
   }
 
+  /** טיוטה ראשונה: כתיבה חופשית ואז חלוקה לסצנות (ראו writer.ts) */
   async generateScript(ctx: ProjectContext, opts?: { model?: string }): Promise<GenResult<ScriptDraft>> {
-    const r = await this.json<ScriptDraft>('script', SCRIPT_JSON_SCHEMA, scriptSystemPrompt(ctx), scriptUserPrompt(ctx), opts?.model);
-    return { data: validateScript(r.data), provider: this.id, model: r.model, usage: r.usage };
+    return writeScriptTwoStep(this, ctx, opts?.model);
+  }
+
+  /** טקסט חופשי, בלי סכמה */
+  async text(system: string, user: string, modelOverride?: string): Promise<TextResult> {
+    const r = await this.call(system, user, modelOverride, null);
+    return { text: r.text, model: r.model, usage: r.usage };
   }
 
   async reviseScript(ctx: ProjectContext, base: ScriptContent, feedback: string, opts?: { model?: string }) {
@@ -92,6 +99,17 @@ export class AnthropicTextProvider implements TextProvider {
 
   /** קריאה כללית עם JSON Schema. */
   async json<T>(_name: string, schema: object, system: string, user: string, modelOverride?: string): Promise<JsonResult<T>> {
+    const r = await this.call(system, user, modelOverride, schema);
+    let data: T;
+    try {
+      data = JSON.parse(r.text) as T;
+    } catch {
+      throw new ProviderError('הפלט מ-Claude אינו JSON תקין', true, 'invalid_json');
+    }
+    return { data, model: r.model, usage: r.usage };
+  }
+
+  private async call(system: string, user: string, modelOverride: string | undefined, schema: object | null) {
     if (!this.cfg.apiKey) {
       throw new ProviderError('Claude לא מחובר. לחץ על "מפתחות" בסרגל העליון והדבק מפתח Anthropic API.', false, 'missing_api_key');
     }
@@ -105,7 +123,7 @@ export class AnthropicTextProvider implements TextProvider {
         fallbacks: 'default',
         system,
         messages: [{ role: 'user', content: user }],
-        output_config: { effort: 'high', format: { type: 'json_schema', schema: schema as Record<string, unknown> } },
+        output_config: schema ? { effort: 'high', format: { type: 'json_schema', schema: schema as Record<string, unknown> } } : { effort: 'high' },
       });
       msg = await stream.finalMessage();
     } catch (e) {
@@ -123,12 +141,6 @@ export class AnthropicTextProvider implements TextProvider {
     if (msg.stop_reason === 'max_tokens') throw new ProviderError('התשובה מ-Claude נקטעה (חריגה מאורך פלט)', true, 'truncated');
     const text = msg.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
     if (!text) throw new ProviderError('תשובה ריקה מ-Claude', true, 'empty_output');
-    let data: T;
-    try {
-      data = JSON.parse(text) as T;
-    } catch {
-      throw new ProviderError('הפלט מ-Claude אינו JSON תקין', true, 'invalid_json');
-    }
-    return { data, model: msg.model || model, usage: { inputTokens: msg.usage.input_tokens, outputTokens: msg.usage.output_tokens } };
+    return { text, model: msg.model || model, usage: { inputTokens: msg.usage.input_tokens, outputTokens: msg.usage.output_tokens } };
   }
 }
