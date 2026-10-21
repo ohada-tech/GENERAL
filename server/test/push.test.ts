@@ -51,8 +51,15 @@ describe('Push alerts when something waits for Ohad', () => {
     expect(sent[0].title).toContain('Claude מחכה לך · Car rental');
     expect(sent[0].body).toBe('תפתח את Chrome עם התוסף של Claude');
     expect(sent[0].link).toBe(`/projects/${p.id}`);
-    const bell = (await app.inject({ url: '/api/notifications' })).json();
-    expect(bell[0].kind).toBe('approval_needed');
+    // דחוף — באזור "מחכה לך", לא בפעמון
+    const urgent = (await app.inject({ url: '/api/attention' })).json();
+    expect(urgent).toHaveLength(1);
+    expect(urgent[0].readAt).toBeNull();
+    expect((await app.inject({ url: '/api/notifications' })).json()).toHaveLength(0);
+    await app.inject({ method: 'POST', url: '/api/notifications/read-all' });
+    expect((await app.inject({ url: '/api/attention' })).json()[0].readAt).toBeNull();
+    await app.inject({ method: 'POST', url: `/api/attention/${urgent[0].id}/done` });
+    expect((await app.inject({ url: '/api/attention' })).json()[0].readAt).not.toBeNull();
     expect((await app.inject({ method: 'POST', url: '/api/attention', payload: {} })).statusCode).toBe(400);
     expect((await app.inject({ method: 'POST', url: '/api/push/subscribe', payload: { endpoint: 'http://x' } })).statusCode).toBe(400);
   });

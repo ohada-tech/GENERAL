@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, useApi } from '../lib/api';
 import { fmtRelative } from '../lib/format';
-import { enablePush, pushSupported, setBadge } from '../lib/push';
+import { enablePush, pushSupported } from '../lib/push';
 
 const ICON: Record<string, string> = {
   approval_needed: '🟡',
@@ -26,15 +26,12 @@ export function NotificationBell() {
   const navigate = useNavigate();
   const unread = (data ?? []).filter((n) => !n.readAt);
   const canEnable = !pushOn && (perm === 'default' || (perm === 'granted' && pushSupported()));
-  const waiting = unread.filter((n) => n.kind === 'approval_needed').length;
 
   // המכשיר הזה כבר אישר התראות? רושמים אותו בשקט (בלי לשאול)
   useEffect(() => {
     void enablePush(false).then(setPushOn).catch(() => undefined);
   }, []);
 
-  // המספר על אייקון האפליקציה בשורת המשימות = כמה דברים מחכים לך
-  useEffect(() => setBadge(waiting), [waiting]);
 
   const go = (link: string) => (/^https?:\/\//.test(link) ? window.open(link, '_blank', 'noopener') : navigate(link));
 

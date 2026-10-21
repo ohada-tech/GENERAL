@@ -969,3 +969,12 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .concept-card.chosen { border-color: var(--brand-violet); box-shadow: 0 0 0 1px var(--brand-violet) inset; }
 .concept-card .btn { margin-top: auto; align-self: flex-start; }
 .concept-idea { font-weight: 600; line-height: 1.4; }
+
+/* "מחכה לך": הודעות דחופות, נפרד מהפעמון */
+.urgent { position: relative; }
+.urgent-btn { background: #e5484d; color: #fff; border: 0; font-weight: 700; white-space: nowrap; }
+.urgent-live { animation: urgent-pulse 1.6s var(--ease) infinite; }
+@keyframes urgent-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(229, 72, 77, .55); } 50% { box-shadow: 0 0 0 7px rgba(229, 72, 77, 0); } }
+@media (prefers-reduced-motion: reduce) { .urgent-live { animation: none; } }
+.urgent-item { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border, rgba(255,255,255,.08)); }
+.urgent-body { font-weight: 600; line-height: 1.45; }

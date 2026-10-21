@@ -212,12 +212,15 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
   });
 
   /* ---------- notifications ---------- */
+  const URGENT = "dedupe_key LIKE 'attention:%'";
+  const NOT_URGENT = "(dedupe_key IS NULL OR dedupe_key NOT LIKE 'attention:%')";
   app.get('/api/notifications', async (req) => {
     const q = req.query as { unread?: string; limit?: string };
     const limit = Math.min(Number(q.limit) || 50, 200);
     const rows = ctx.db
       .prepare(
-        `SELECT * FROM notifications ${q.unread === '1' ? 'WHERE read_at IS NULL' : ''} ORDER BY created_at DESC, rowid DESC LIMIT ?`,
+        // "מחכה לך" (סשן תקוע) מוצג בנפרד, לא בפעמון
+        `SELECT * FROM notifications WHERE ${NOT_URGENT}${q.unread === '1' ? ' AND read_at IS NULL' : ''} ORDER BY created_at DESC, rowid DESC LIMIT ?`,
       )
       .all(limit);
     return rows.map((r) => mapNotification(r as any));
@@ -227,7 +230,19 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     return { ok: true };
   });
   app.post('/api/notifications/read-all', async () => {
-    ctx.db.prepare('UPDATE notifications SET read_at = ? WHERE read_at IS NULL').run(now());
+    ctx.db.prepare(`UPDATE notifications SET read_at = ? WHERE read_at IS NULL AND ${NOT_URGENT}`).run(now());
+    return { ok: true };
+  });
+
+  /* ---------- "מחכה לך": הודעות דחופות — סשן שנעצר ומחכה לאוהד (נפרד מהפעמון) ---------- */
+  app.get('/api/attention', async () => {
+    const rows = ctx.db
+      .prepare(`SELECT * FROM notifications WHERE ${URGENT} ORDER BY (read_at IS NULL) DESC, created_at DESC, rowid DESC LIMIT 30`)
+      .all();
+    return rows.map((r) => mapNotification(r as any));
+  });
+  app.post('/api/attention/:nid/done', async (req) => {
+    ctx.db.prepare(`UPDATE notifications SET read_at = ? WHERE id = ? AND read_at IS NULL AND ${URGENT}`).run(now(), (req.params as any).nid);
     return { ok: true };
   });
 

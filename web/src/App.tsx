@@ -6,6 +6,7 @@ import { BrandLockup } from './components/Brand';
 import { KeysModal, KeysTag, type Keys, type KeyStatus } from './components/Keys';
 import { Login } from './components/Login';
 import { NotificationBell } from './components/NotificationBell';
+import { UrgentInbox } from './components/UrgentInbox';
 import { ThemeToggle } from './components/ThemeToggle';
 import { TimerWidget } from './components/TimerWidget';
 import { Loading, Tag } from './components/ui';
@@ -77,6 +78,7 @@ function Shell({ canLogout }: { canLogout: boolean }) {
             <KeysTag keys={health.data?.keys} onClick={() => setKeysOpen(true)} />
           )}
           {!isCloud() && <ThemeToggle />}
+          <UrgentInbox />
           <NotificationBell />
           {canLogout && (
             <button className="btn-link small" onClick={logout} title="יציאה">
