@@ -1,6 +1,7 @@
 import type { NotificationKind } from '@apos/shared';
 import type { Ctx } from '../context.js';
 import { uid } from '../db/db.js';
+import { pushAll } from './push.js';
 
 export interface NotifyInput {
   projectId: string | null;
@@ -28,5 +29,10 @@ export function notify(ctx: Ctx, n: NotifyInput): boolean {
       n.dedupeKey ?? null,
       ctx.now().toISOString(),
     );
-  return Number(res.changes) > 0;
+  const added = Number(res.changes) > 0;
+  // מה שמחכה לאוהד קופץ גם כהתראה במחשב / בטלפון, גם כשהמערכת סגורה
+  if (added && n.kind === 'approval_needed') {
+    void pushAll(ctx, { title: n.title, body: n.body, link: n.link, tag: n.dedupeKey ?? undefined }).catch((e) => console.warn('[push]', (e as Error).message));
+  }
+  return added;
 }

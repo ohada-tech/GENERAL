@@ -14,3 +14,49 @@ self.addEventListener('fetch', (e) => {
   if (e.request.mode !== 'navigate') return; // API, קבצים ומדיה — ישירות לרשת, בלי התערבות
   e.respondWith(fetch(e.request).catch(() => new Response(OFFLINE, { headers: { 'content-type': 'text/html; charset=utf-8' } })));
 });
+
+// התראות Push: קופצות גם כשהמערכת סגורה, ומסמנות את האייקון בשורת המשימות
+self.addEventListener('push', (e) => {
+  let d = {};
+  try {
+    d = e.data ? e.data.json() : {};
+  } catch {
+    d = { title: 'AI Production AP', body: e.data ? e.data.text() : '' };
+  }
+  e.waitUntil(
+    (async () => {
+      await self.registration.showNotification(d.title || 'AI Production AP', {
+        body: d.body || '',
+        tag: d.tag || undefined,
+        renotify: Boolean(d.tag),
+        requireInteraction: true,
+        lang: 'he',
+        dir: 'rtl',
+        icon: '/icons/icon-192.png',
+        badge: '/icons/icon-192.png',
+        data: { link: d.link || '/' },
+      });
+      const open = await self.registration.getNotifications();
+      if (self.navigator.setAppBadge) await self.navigator.setAppBadge(open.length).catch(() => {});
+    })(),
+  );
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const link = (e.notification.data && e.notification.data.link) || '/';
+  e.waitUntil(
+    (async () => {
+      const left = await self.registration.getNotifications();
+      if (self.navigator.setAppBadge) await (left.length ? self.navigator.setAppBadge(left.length) : self.navigator.clearAppBadge()).catch(() => {});
+      if (/^https?:\/\//.test(link) && !link.startsWith(self.location.origin)) return self.clients.openWindow(link);
+      const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const win = all.find((c) => c.url.startsWith(self.location.origin));
+      if (win) {
+        await win.focus();
+        return win.navigate ? win.navigate(new URL(link, self.location.origin).href) : undefined;
+      }
+      return self.clients.openWindow(link);
+    })(),
+  );
+});

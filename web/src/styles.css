@@ -955,3 +955,8 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .auto-brief-questions ul { margin: 6px 0 0; padding-inline-start: 18px; }
 .auto-brief-questions li { margin: 3px 0; }
 .ai-dot { font-size: 10px; background: color-mix(in srgb, var(--brand-violet) 14%, transparent); color: var(--brand-violet); padding: 0 6px; border-radius: 4px; font-weight: 600; margin-inline-start: 6px; }
+
+/* כפתור הפעלת התראות ליד הפעמון — עד שמפעילים */
+.bell { display: flex; align-items: center; gap: 6px; }
+.push-cta { background: var(--holo); color: var(--on-holo); border: 0; font-weight: 600; white-space: nowrap; }
+@media (max-width: 640px) { .push-cta { padding-inline: 8px; font-size: 12px; } }

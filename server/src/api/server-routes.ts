@@ -11,6 +11,8 @@ import { requestFeedbackReview } from '../services/feedback-review.js';
 import * as calls from '../services/client-calls.js';
 import { extractDocText } from '../services/doc-text.js';
 import { autofillBrief } from '../services/auto-brief.js';
+import { needsOwner } from '../services/attention.js';
+import { pushAll, subscribe, unsubscribe, vapidKeys } from '../services/push.js';
 import { scriptDocx } from '../services/script-docx.js';
 import { scriptHtml } from '../services/script-html.js';
 import * as share from '../services/share.js';
@@ -58,6 +60,18 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/api/scripts/:vid/translate', async (req) =>
     translateScript(ctx, (req.params as { vid: string }).vid, (((req.body ?? {}) as { to?: string }).to ?? 'he') as TranslateLang),
   );
+
+  // התראות Push למחשב / לטלפון
+  app.get('/api/push/key', async () => ({ publicKey: vapidKeys(ctx).publicKey }));
+  app.post('/api/push/subscribe', async (req) => subscribe(ctx, (req.body ?? {}) as never));
+  app.post('/api/push/unsubscribe', async (req) => unsubscribe(ctx, String(((req.body ?? {}) as { endpoint?: string }).endpoint ?? '')));
+  app.post('/api/push/test', async () => pushAll(ctx, { title: 'AI Production AP', body: 'ההתראות פועלות ✓', link: '/', tag: 'push-test' }));
+
+  // סשן של Claude (או כל כלי אחר) תקוע ומחכה לאוהד — התראה קופצת מיד
+  app.post('/api/attention', async (req, reply) => {
+    reply.code(201);
+    return needsOwner(ctx, (req.body ?? {}) as { projectId?: string; text?: string; by?: string; link?: string });
+  });
 
   // עדכוני התקדמות (מאוהד או מסשן Claude שעבד על הפרויקט מחוץ למערכת)
   app.post('/api/projects/:id/progress', async (req, reply) => {

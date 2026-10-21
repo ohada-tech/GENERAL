@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, useApi } from '../lib/api';
 import { fmtRelative } from '../lib/format';
+import { enablePush, pushSupported, setBadge } from '../lib/push';
 
 const ICON: Record<string, string> = {
   approval_needed: '🟡',
@@ -19,9 +20,23 @@ export function NotificationBell() {
   const [perm, setPerm] = useState<NotificationPermission | 'unsupported'>(
     typeof window !== 'undefined' && 'Notification' in window ? window.Notification.permission : 'unsupported',
   );
+  const [pushOn, setPushOn] = useState(false);
+  const [pushMsg, setPushMsg] = useState('');
   const seen = useRef<Set<string> | null>(null);
   const navigate = useNavigate();
   const unread = (data ?? []).filter((n) => !n.readAt);
+  const canEnable = !pushOn && (perm === 'default' || (perm === 'granted' && pushSupported()));
+  const waiting = unread.filter((n) => n.kind === 'approval_needed').length;
+
+  // המכשיר הזה כבר אישר התראות? רושמים אותו בשקט (בלי לשאול)
+  useEffect(() => {
+    void enablePush(false).then(setPushOn).catch(() => undefined);
+  }, []);
+
+  // המספר על אייקון האפליקציה בשורת המשימות = כמה דברים מחכים לך
+  useEffect(() => setBadge(waiting), [waiting]);
+
+  const go = (link: string) => (/^https?:\/\//.test(link) ? window.open(link, '_blank', 'noopener') : navigate(link));
 
   // התראת דפדפן להתראות חדשות שלא נראו מאז טעינת הדף
   useEffect(() => {
@@ -33,26 +48,40 @@ export function NotificationBell() {
     for (const n of data) {
       if (seen.current.has(n.id)) continue;
       seen.current.add(n.id);
-      if (!n.readAt && perm === 'granted') {
+      // מה שמחכה לך כבר קופץ כ-Push מהשרת — לא להקפיץ פעמיים
+      if (!n.readAt && perm === 'granted' && !(pushOn && n.kind === 'approval_needed')) {
         const bn = new window.Notification(n.title, { body: n.body, tag: n.id, lang: 'he', dir: 'rtl' });
         bn.onclick = () => {
           window.focus();
-          if (n.link) navigate(n.link);
+          if (n.link) go(n.link);
         };
       }
     }
-  }, [data, perm, navigate]);
+  }, [data, perm, pushOn]);
 
   const ask = async () => {
     if (perm === 'unsupported') return;
-    setPerm(await window.Notification.requestPermission());
+    try {
+      const on = pushSupported() ? await enablePush(true) : false;
+      setPushOn(on);
+      setPerm(window.Notification.permission);
+      if (!pushSupported()) setPerm(await window.Notification.requestPermission());
+      setPushMsg(on ? 'מופעל: התראות יקפצו גם כשהמערכת סגורה' : '');
+    } catch (e) {
+      setPushMsg(`לא הצלחתי להפעיל: ${(e as Error).message}`);
+    }
+  };
+
+  const test = async () => {
+    const r = await api.post<{ sent: number }>('/api/push/test').catch(() => ({ sent: 0 }));
+    setPushMsg(r.sent ? `נשלחה התראת בדיקה ל-${r.sent} מכשירים` : 'אין מכשיר רשום — לחץ "הפעל התראות"');
   };
 
   const openItem = async (n: Notification) => {
     if (!n.readAt) await api.post(`/api/notifications/${n.id}/read`).catch(() => undefined);
     setOpen(false);
     void reload();
-    if (n.link) navigate(n.link);
+    if (n.link) go(n.link);
   };
 
   const readAll = async () => {
@@ -62,6 +91,11 @@ export function NotificationBell() {
 
   return (
     <div className="bell">
+      {canEnable && (
+        <button className="btn btn-sm push-cta" onClick={ask} title="התראה קופצת במחשב ובטלפון כשמשהו מחכה לך — גם כשהמערכת סגורה">
+          🔔 הפעל התראות
+        </button>
+      )}
       <button className="btn btn-ghost bell-btn" onClick={() => setOpen((o) => !o)} aria-label="התראות">
         🔔{unread.length > 0 && <span className="bell-count">{unread.length}</span>}
       </button>
@@ -70,9 +104,14 @@ export function NotificationBell() {
           <div className="bell-head">
             <strong>התראות</strong>
             <div className="row gap-s">
-              {perm === 'default' && (
+              {canEnable && (
                 <button className="btn btn-sm" onClick={ask}>
-                  הפעל התראות דפדפן
+                  הפעל התראות
+                </button>
+              )}
+              {pushOn && (
+                <button className="btn btn-sm btn-ghost" onClick={test}>
+                  שלח התראת בדיקה
                 </button>
               )}
               {perm === 'denied' && <span className="muted small">התראות דפדפן חסומות בהגדרות הדפדפן</span>}
@@ -83,6 +122,7 @@ export function NotificationBell() {
               )}
             </div>
           </div>
+          {pushMsg && <div className="small muted pad">{pushMsg}</div>}
           {(data ?? []).length === 0 ? (
             <div className="muted pad">אין התראות</div>
           ) : (
