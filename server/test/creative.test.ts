@@ -258,6 +258,26 @@ describe('אחרי 2 סבבי תיקון בלי מעבר: עוצרים ומבק�
   });
 });
 
+describe('בדיקת QA לגרסה קיימת', () => {
+  it('שופט בלבד: מחזיר דוח עם בדיקות הקוד, ולא משנה את הגרסה', async () => {
+    const { ctx, gpt, p } = setup('booking', { qa: [qaPass(), qaFail('concept')] });
+    cmd.completeBrief(ctx, p.id);
+    await drain(ctx);
+    const [v] = listScripts(ctx.db, p.id);
+    // מחליפים את התוכן במקרה הכשל, כמו גרסה ישנה שנכתבה לפני השער
+    ctx.db.prepare('UPDATE script_versions SET content = ? WHERE id = ?').run(JSON.stringify({ ...FEATURE_TOUR_FAIL, scenes: FEATURE_TOUR_FAIL.scenes.map((s, i) => ({ id: `s${i}`, ...s })) }), v.id);
+    const before = JSON.stringify(listScripts(ctx.db, p.id)[0].content);
+    const { buildApp } = await import('../src/app.js');
+    const app = await buildApp(ctx);
+    const r = (await app.inject({ method: 'POST', url: `/api/scripts/${v.id}/qa` })).json();
+    expect(JSON.stringify(listScripts(ctx.db, p.id)[0].content)).toBe(before);
+    expect(r.passed).toBe(false);
+    expect(r.failStage).toBe('concept');
+    expect(r.codeChecks.join()).toContain('קריינות ארוכה מדי');
+    expect(gpt.calls.at(-1)!.user).toContain('קריינות ארוכה מדי');
+  });
+});
+
 describe('"כתוב מחדש" מול גרסה שאושרה', () => {
   it('נוצרת גרסה חדשה מהעובדות והכיוון; הגרסה המאושרת והקריינות שלה לא משתנות', async () => {
     const { ctx, gpt, p } = setup('booking');

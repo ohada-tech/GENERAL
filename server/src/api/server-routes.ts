@@ -12,6 +12,7 @@ import * as calls from '../services/client-calls.js';
 import { extractDocText } from '../services/doc-text.js';
 import { autofillBrief } from '../services/auto-brief.js';
 import { previewScript, proposeConcepts } from '../services/concepts.js';
+import { judgeScript } from '../services/creative.js';
 import { textProviderFor } from '../jobs/handlers.js';
 import { needsOwner } from '../services/attention.js';
 import { pushAll, subscribe, unsubscribe, vapidKeys } from '../services/push.js';
@@ -65,6 +66,13 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
 
   // כיווני קריאייטיב: 3 רעיונות מ-ChatGPT לפני התסריט (הבחירה נשמרת באפיון, brief.concept)
   app.post('/api/projects/:id/concepts', async (req) => proposeConcepts(ctx, (req.params as { id: string }).id));
+
+  // QA קריאייטיבי לגרסה קיימת — שיפוט בלבד, לא משנה את התסריט ולא נשמר
+  app.post('/api/scripts/:vid/qa', async (req) => {
+    const v = getScript(ctx.db, (req.params as { vid: string }).vid);
+    if (!v) throw new NotFoundError('גרסת תסריט');
+    return judgeScript(ctx, v.projectId, v.content);
+  });
 
   // תסריט לבדיקה בלבד (לא נשמר) — להשוואה בין שיטות כתיבה
   app.post('/api/projects/:id/script/preview', async (req) => {
