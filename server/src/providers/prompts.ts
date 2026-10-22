@@ -3,6 +3,7 @@
  * הפלט חייב להיות מובנה (Structured Outputs) כדי שהתסריט והשוטים יישמרו כנתונים ולא כטקסט חופשי.
  */
 import {
+  ANIMATION_MODEL_OPTIONS,
   BANNED_HE,
   CONCEPT_CRITERIA,
   QA_DETECTORS,
@@ -429,15 +430,18 @@ export function reviseUserPrompt(ctx: ProjectContext, base: ScriptContent, feedb
   ].join('\n\n');
 }
 
+/** פרויקטים ישנים שמורים עם "Kling 2.6" וכו' — מודל שלא ברשימה הנוכחית מוחלף בברירת המחדל */
+const animationDefault = (model: string) => (ANIMATION_MODEL_OPTIONS.includes(model) ? model : ANIMATION_MODEL_OPTIONS[0]);
+
 export function storyboardSystemPrompt(defaults: { imageModel: string; animationModel: string }): string {
   return [
     'You are a cinematographer and storyboard artist preparing shots for AI image generation and AI video animation.',
     'Break each script scene into one or more shots. Keep shot durations realistic for AI video (usually 2–8 seconds) and the sum close to the scene duration.',
     'For every shot fill all fields concretely: shot type, camera angle, composition and subject placement, body/head/gaze movement, lens & depth of field when relevant, lighting, color & mood, character description and wardrobe, and consistency requirements versus other shots (same character identity, wardrobe, product look, logo).',
     'imagePrompt: a detailed English prompt for a photorealistic still frame (subject, action, environment, camera, lens, lighting, color grade, realistic human skin texture when people appear, aspect ratio). No brand names of AI tools inside the prompt.',
-    'animationPrompt: an English prompt describing only the motion over the shot duration (subject motion, camera motion, pacing). Keep it consistent with the still frame.',
+    'animationPrompt: an English prompt describing only the motion over the shot duration — the still frame already carries the look. ONE subject action written as beats and ONE camera move (name, start → end, speed); stacked camera moves cause jitter and drift. Phrase it positively ("locked camera", not "the camera does not move"). Keep it consistent with the still frame.',
     `imageModel: default "${defaults.imageModel}" unless there is a clear reason otherwise.`,
-    `animationModel: choose "Kling 2.6" for simple or moderate motion; "Seedance 1.5 Pro" when the shot needs very high realism, complex human motion, emotional performance or cinematic quality; "Hailuo 2.3" for simple, budget-friendly shots. Default "${defaults.animationModel}". Explain the choice briefly in animationModelReason.`,
+    `animationModel: choose "Kling 3.0" for most shots (cinematic camera moves, moderate motion, product moves); "Seedance 2.0" when the shot needs very high realism, complex human motion, emotional performance or exact product identity; "Seedance 2.0 Mini" for simple, budget-friendly shots. Default "${animationDefault(defaults.animationModel)}". Explain the choice briefly in animationModelReason.`,
     'Fields other than imagePrompt / animationPrompt may be written in the same language as the script.',
     'sceneIndex is the zero-based index of the script scene the shot belongs to; narration is the exact narration part covered by the shot (empty string if none).',
   ].join('\n');

@@ -134,4 +134,4 @@ export function detectPlatform(url: string): string {
 
 /** ברירות מחדל לכלי יצירה — ניתן לשנות לכל פרויקט ולכל שוט. */
 export const IMAGE_MODEL_OPTIONS = ['Nano Banana 2', 'Nano Banana Pro', 'Seedream 5 Lite', 'ידני / אחר'];
-export const ANIMATION_MODEL_OPTIONS = ['Kling 2.6', 'Seedance 1.5 Pro', 'Hailuo 2.3', 'ידני / אחר'];
+export const ANIMATION_MODEL_OPTIONS = ['Kling 3.0', 'Seedance 2.0', 'Seedance 2.0 Mini', 'ידני / אחר'];

@@ -82,7 +82,8 @@ export interface VideoModelDef {
   creditsPerSec: number;
   /** משכי וידאו נתמכים (שניות) */
   durations: number[];
-  imageField: 'image_urls' | 'input_urls' | 'image_url';
+  /** שדה התמונה הראשונה בבקשה: מערך (image_urls / input_urls) או כתובת בודדת (image_url / first_frame_url) */
+  imageField: 'image_urls' | 'input_urls' | 'image_url' | 'first_frame_url';
   durationAsString: boolean;
   hasAspect: boolean;
   extra?: Record<string, unknown>;
@@ -90,42 +91,49 @@ export interface VideoModelDef {
   match: string[];
 }
 
+/**
+ * מודלי ההנפשה (KIE, docs.kie.ai, נבדק 23.10.2026). שלושתם גם ב-Higgsfield Unlimited, כך שאותה המלצה
+ * בסטורי בורד מתאימה גם לייצור ידני בלי קרדיטים. הסדר קובע: הראשון הוא ברירת המחדל, ו-Mini לפני Seedance 2.0
+ * כדי ש"Seedance 2.0 Mini" לא ייתפס כ-Seedance 2.0. מזהים ישנים (kling-2.6, seedance-1.5-pro, hailuo-2.3)
+ * נופלים לברירת המחדל, ו"Kling 2.6" / "Seedance 1.5 Pro" בשוטים ישנים מנותבים למודל החדש לפי מילת המפתח.
+ */
 export const VIDEO_MODELS: VideoModelDef[] = [
   {
-    id: 'kling-2.6',
-    apiModel: 'kling-2.6/image-to-video',
-    label: 'Kling 2.6 · תנועה פשוטה-בינונית, משתלם',
-    creditsPerSec: 10,
-    durations: [5, 10],
+    id: 'kling-3.0',
+    apiModel: 'kling-3.0/video',
+    label: 'Kling 3.0 · ברירת מחדל, תנועה ומצלמה קולנועיות',
+    creditsPerSec: 18, // pro בלי סאונד, 1080p
+    durations: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     imageField: 'image_urls',
     durationAsString: true,
-    hasAspect: true,
-    extra: { sound: false },
+    // עם תמונה ראשונה הקליפ מקבל את יחס התמונה, ו-KIE מתעלם מ-aspect_ratio
+    hasAspect: false,
+    extra: { sound: false, mode: 'pro', multi_shots: false },
     match: ['kling'],
   },
   {
-    id: 'seedance-1.5-pro',
-    apiModel: 'bytedance/seedance-1.5-pro',
-    label: 'Seedance 1.5 Pro · ריאליזם גבוה, תנועה אנושית מורכבת',
-    creditsPerSec: 8,
-    durations: [8, 10],
-    imageField: 'input_urls',
-    durationAsString: true,
+    id: 'seedance-2-mini',
+    apiModel: 'bytedance/seedance-2-mini',
+    label: 'Seedance 2.0 Mini · שוטים פשוטים, חסכוני',
+    creditsPerSec: 8.2, // 720p
+    durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    imageField: 'first_frame_url',
+    durationAsString: false,
     hasAspect: true,
-    extra: { resolution: '1080p' },
-    match: ['seedance'],
+    extra: { resolution: '720p', generate_audio: false },
+    match: ['seedance 2.0 mini', 'seedance mini', 'seedance-2-mini'],
   },
   {
-    id: 'hailuo-2.3',
-    apiModel: 'hailuo/2-3-image-to-video-standard',
-    label: 'Hailuo 2.3 · חסכוני',
-    creditsPerSec: 4,
-    durations: [6, 10],
-    imageField: 'image_url',
-    durationAsString: true,
-    hasAspect: false,
-    extra: { resolution: '768P' },
-    match: ['hailuo'],
+    id: 'seedance-2',
+    apiModel: 'bytedance/seedance-2',
+    label: 'Seedance 2.0 · ריאליזם גבוה, תנועה אנושית ומוצר',
+    creditsPerSec: 24.8, // 720p, בלי וידאו רפרנס
+    durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    imageField: 'first_frame_url',
+    durationAsString: false,
+    hasAspect: true,
+    extra: { resolution: '720p', generate_audio: false },
+    match: ['seedance'],
   },
 ];
 

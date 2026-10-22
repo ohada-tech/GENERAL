@@ -88,7 +88,7 @@ export const STAGES: StageDefinition[] = [
     number: '06',
     label: 'הנפשה',
     labelEn: 'Animation Production',
-    description: 'הנפשת כל תמונה מאושרת לקליפ (Kling / Seedance / Hailuo לפי השוט).',
+    description: 'הנפשת כל תמונה מאושרת לקליפ (Kling 3.0 / Seedance 2.0 לפי השוט).',
     availability: 'available',
     phase: 4,
     gates: ['internal'],

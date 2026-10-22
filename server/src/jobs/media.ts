@@ -201,7 +201,7 @@ const clipGenerate: JobHandler<MediaOut> = {
       const imageUrl = await uploadAsset(ctx, frame.assetId);
       const input: Record<string, unknown> = {
         prompt,
-        [vm.imageField]: vm.imageField === 'image_url' ? imageUrl : [imageUrl],
+        [vm.imageField]: vm.imageField === 'image_url' || vm.imageField === 'first_frame_url' ? imageUrl : [imageUrl],
         duration: vm.durationAsString ? String(duration) : duration,
         ...vm.extra,
       };

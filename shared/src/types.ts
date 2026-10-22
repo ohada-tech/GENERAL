@@ -15,12 +15,12 @@ export const projectSettingsSchema = z.object({
   autoGenerateScript: z.boolean().default(true),
   autoGenerateStoryboard: z.boolean().default(true),
   defaultImageModel: z.string().default('Nano Banana 2'),
-  defaultAnimationModel: z.string().default('Kling 2.6'),
+  defaultAnimationModel: z.string().default('Kling 3.0'),
   /** מי מייצר תמונות וקליפים: kie = אוטומטי דרך KIE; higgsfield = Claude מריץ ב-Higgsfield (Unlimited או קרדיטים) או העלאה ידנית */
   generator: z.enum(['kie', 'higgsfield']).default('kie'),
   /** הפקה (05–09) דרך KIE */
   imageModel: z.string().default('nano-banana-2'),
-  videoModel: z.string().default('kling-2.6'),
+  videoModel: z.string().default('kling-3.0'),
   voiceId: z.string().default('EkK5I93UQWFDigLMpZcX'),
   /** קריינות ומוזיקה: elevenlabs = ישירות מהחשבון שלך (כל הקולות שלך); kie = דרך KIE */
   audioProvider: z.enum(['elevenlabs', 'kie']).default('elevenlabs'),
