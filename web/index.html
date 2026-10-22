@@ -18,9 +18,14 @@
     <script>
       // מחיל את ערכת הצבעים השמורה לפני הציור הראשון — בלי הבזק של ערכה שגויה
       try {
-        var t = localStorage.getItem('apos-theme');
+        // ברירת מחדל: אוטומטי לפי השעה — כהה מ-20:00 עד 07:00 (כמו lib/theme.ts)
+        var t = localStorage.getItem('apos-theme-v2');
+        if (!t) {
+          var h = new Date().getHours();
+          t = h >= 20 || h < 7 ? 'dark' : 'light';
+        }
         if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
-        var light = t === 'light' || (!t && window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches);
+        var light = t === 'light' || (t === 'system' && window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches);
         document.querySelector('meta[name="theme-color"]').setAttribute('content', light ? '#f6f5f9' : '#0a0a0b');
       } catch (e) {}
     </script>

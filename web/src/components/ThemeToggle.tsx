@@ -1,9 +1,16 @@
 import { useTheme, type ThemePref } from '../lib/theme';
 
-const LABEL: Record<ThemePref, string> = { system: 'לפי המערכת', light: 'בהירה', dark: 'כהה' };
+const LABEL: Record<ThemePref, string> = { auto: 'אוטומטי — כהה מ-20:00 עד 07:00', system: 'לפי המערכת', light: 'בהירה', dark: 'כהה' };
 
 function Icon({ pref }: { pref: ThemePref }) {
   const p = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true };
+  if (pref === 'auto')
+    return (
+      <svg {...p}>
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 7v5l3.2 2" />
+      </svg>
+    );
   if (pref === 'light')
     return (
       <svg {...p}>
@@ -25,7 +32,7 @@ function Icon({ pref }: { pref: ThemePref }) {
   );
 }
 
-/** מחליף ערכת צבעים: מערכת → בהירה → כהה */
+/** מחליף ערכת צבעים: אוטומטי לפי השעה → בהירה → כהה → לפי המערכת */
 export function ThemeToggle() {
   const { pref, cycle } = useTheme();
   return (

@@ -600,19 +600,26 @@ function ScriptEditor({
             </div>
           </div>
           {/* אותו סדר כמו בתצוגה: קריינות, טקסט על המסך, ויזואל, הערות — ובכיוון של שפת התסריט */}
-          <div className={`grid-2 ${ltr ? 'scene-fields-ltr' : ''}`} dir={ltr ? 'ltr' : 'rtl'}>
-            <Field label={ltr ? 'Narration' : 'קריינות'}>
-              <textarea rows={3} value={s.narration} onChange={(e) => setScene(i, { narration: e.target.value })} />
-            </Field>
-            <Field label={ltr ? 'On-screen text' : 'טקסט על המסך'}>
-              <textarea rows={3} value={s.onScreenText} onChange={(e) => setScene(i, { onScreenText: e.target.value })} />
-            </Field>
-            <Field label={ltr ? 'Visual' : 'מה רואים'}>
-              <textarea rows={3} value={s.visualAction} onChange={(e) => setScene(i, { visualAction: e.target.value })} />
-            </Field>
-            <Field label={ltr ? 'Notes' : 'הערות'}>
-              <input value={s.notes} onChange={(e) => setScene(i, { notes: e.target.value })} />
-            </Field>
+          {/* כל שדה עם כותרת בולטת וצבע משלו — שתמיד יהיה ברור מה עורכים. קריינות ומה רואים ברוחב מלא */}
+          <div className="sf-stack" dir={ltr ? 'ltr' : 'rtl'}>
+            <label className="sf sf-narr">
+              <span className="sf-label">🎙️ {ltr ? 'Narration — what we hear' : 'קריינות — מה שומעים'}</span>
+              <textarea rows={Math.max(2, Math.ceil(s.narration.length / 80))} value={s.narration} onChange={(e) => setScene(i, { narration: e.target.value })} placeholder={ltr ? 'No narration' : 'בלי קריינות'} />
+            </label>
+            <label className="sf sf-visual">
+              <span className="sf-label">👁 {ltr ? 'Visual — what we see' : 'מה רואים — ויזואל'}</span>
+              <textarea rows={Math.max(2, Math.ceil(s.visualAction.length / 90))} value={s.visualAction} onChange={(e) => setScene(i, { visualAction: e.target.value })} />
+            </label>
+            <div className="sf-row">
+              <label className="sf sf-onscreen">
+                <span className="sf-label">🔤 {ltr ? 'On-screen text' : 'טקסט על המסך'}</span>
+                <textarea rows={2} value={s.onScreenText} onChange={(e) => setScene(i, { onScreenText: e.target.value })} />
+              </label>
+              <label className="sf sf-notes">
+                <span className="sf-label">📝 {ltr ? 'Production notes' : 'הערות הפקה'}</span>
+                <input value={s.notes} onChange={(e) => setScene(i, { notes: e.target.value })} />
+              </label>
+            </div>
           </div>
         </div>
       ))}

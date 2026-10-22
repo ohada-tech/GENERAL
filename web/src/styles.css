@@ -1010,3 +1010,17 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .narr-meta { display: flex; flex-direction: column; gap: 2px; padding-top: 6px; }
 .narr-visual { grid-column: 2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 640px) { .narr-row { grid-template-columns: 1fr; } .narr-meta { flex-direction: row; gap: 10px; padding-top: 0; } .narr-visual { grid-column: 1; } }
+
+/* עורך תסריט: כל שדה עם כותרת וצבע משלו — קריינות וויזואל בולטים וברוחב מלא */
+.sf-stack { display: flex; flex-direction: column; gap: 10px; }
+.sf { display: flex; flex-direction: column; gap: 5px; border-inline-start: 4px solid var(--sf-c, var(--border)); padding-inline-start: 10px; }
+.sf-label { font-size: 14px; font-weight: 700; color: var(--sf-c, var(--text-2)); }
+.sf textarea, .sf input { width: 100%; }
+.sf-narr { --sf-c: #19c7a3; }
+.sf-narr textarea { font-size: 16px; line-height: 1.55; }
+.sf-visual { --sf-c: var(--brand-violet); }
+.sf-onscreen { --sf-c: #e8a33d; }
+.sf-notes { --sf-c: var(--text-3, #8a8a96); }
+.sf-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 640px) { .sf-row { grid-template-columns: 1fr; } }
+.scene-edit > .row:first-child strong { font-size: 15px; }
