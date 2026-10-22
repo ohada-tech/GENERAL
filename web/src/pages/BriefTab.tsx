@@ -1,9 +1,19 @@
-import { ASPECT_RATIOS, openDiscoveryQuestions, validateBrief, type Asset, type Brief, type DiscoveryQuestion } from '@apos/shared';
-import { useEffect, useMemo, useState } from 'react';
+import {
+  ASPECT_RATIOS,
+  changedBriefFields,
+  openDiscoveryQuestions,
+  rebaseBrief,
+  validateBrief,
+  type Asset,
+  type Brief,
+  type DiscoveryQuestion,
+  type Project,
+} from '@apos/shared';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AiFilledContext, aiLabels, AutoBrief } from '../components/AutoBrief';
 import { ConceptPicker } from '../components/ConceptPicker';
 import { Field, InlineError, Tag } from '../components/ui';
-import { api, assetUrl, useAction } from '../lib/api';
+import { api, ApiError, assetUrl, useAction } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
 import type { TabProps } from './ProjectPage';
 
@@ -11,30 +21,58 @@ const PLATFORMS = ['Instagram Reels', 'TikTok', 'YouTube', 'YouTube Shorts', 'Fa
 
 export function BriefTab({ detail, reload }: TabProps) {
   const { project, state } = detail;
+  // base = האפיון בשרת שהטופס מבוסס עליו. נשמרים רק שדות שאוהד שינה ביחס אליו,
+  // כדי ששמירה מהטופס לא תמחק שדות שמילוי אוטומטי (או Claude/ChatGPT) כתבו בינתיים.
+  const baseRef = useRef<Brief>(project.brief);
   const [draft, setDraft] = useState<Brief>(project.brief);
-  const [dirty, setDirty] = useState(false);
   const save = useAction();
   const complete = useAction();
 
-  // סנכרון מהשרת רק כשאין עריכה מקומית
-  useEffect(() => {
-    if (!dirty) setDraft(project.brief);
-  }, [project.brief, dirty]);
-
-  const v = useMemo(() => validateBrief(draft), [draft]);
-  const missing = new Set(v.missingRequired.map((m) => m.field));
-  const set = <K extends keyof Brief>(k: K, val: Brief[K]) => {
-    setDraft((d) => ({ ...d, [k]: val }));
-    setDirty(true);
+  /** האפיון בשרת התעדכן: שדות שלא נערכו בטופס מקבלים את הערך החדש, שדות שנערכו נשארים. */
+  const accept = (prev: Brief, server: Brief) => {
+    baseRef.current = server;
+    setDraft((d) => rebaseBrief(prev, d, server));
   };
 
+  useEffect(() => {
+    if (JSON.stringify(baseRef.current) === JSON.stringify(project.brief)) return;
+    accept(baseRef.current, project.brief);
+  }, [project.brief]);
+
+  const dirtyFields = changedBriefFields(baseRef.current, draft);
+  const dirty = dirtyFields.length > 0;
+  const v = useMemo(() => validateBrief(draft), [draft]);
+  const missing = new Set(v.missingRequired.map((m) => m.field));
+  const set = <K extends keyof Brief>(k: K, val: Brief[K]) => setDraft((d) => ({ ...d, [k]: val }));
+  const pick = (b: Brief, keys: Array<keyof Brief>) => Object.fromEntries(keys.map((k) => [k, b[k]])) as Partial<Brief>;
+
   const doSave = async () => {
-    const r = await save.run(() => api.put(`/api/projects/${project.id}/brief`, { brief: draft }));
+    const sent = draft;
+    const fields = changedBriefFields(baseRef.current, sent);
+    if (!fields.length) return true;
+    const r = await save.run(async () => {
+      try {
+        return await api.put<Project>(`/api/projects/${project.id}/brief`, { brief: pick(sent, fields), base: pick(baseRef.current, fields) });
+      } catch (e) {
+        // השדה התעדכן במערכת מאז שהטופס נטען — מושכים את הערכים החדשים, העריכה של אוהד נשארת בטופס
+        if (e instanceof ApiError && e.status === 409) await reload();
+        throw e;
+      }
+    });
     if (r) {
-      setDirty(false);
+      accept(sent, r.brief);
       await reload();
     }
     return r;
+  };
+
+  /** שמירה מיידית של שדה אחד (בחירת כיוון, קובץ מצורף) בלי לשלוח את שאר הטופס. */
+  const saveNow = async (patch: Partial<Brief>) => {
+    setDraft((d) => ({ ...d, ...patch }));
+    const prev = baseRef.current;
+    const r = await api.put<Project>(`/api/projects/${project.id}/brief`, { brief: patch });
+    accept(prev, r.brief);
+    await reload();
   };
 
   const doComplete = async () => {
@@ -59,13 +97,7 @@ export function BriefTab({ detail, reload }: TabProps) {
         brief={draft}
         reload={reload}
         beforeRun={() => (dirty ? doSave() : Promise.resolve())}
-        onChange={async (concept) => {
-          // הבחירה נשמרת מיד באפיון
-          set('concept', concept);
-          await api.put(`/api/projects/${project.id}/brief`, { brief: { ...draft, concept } });
-          setDirty(false);
-          await reload();
-        }}
+        onChange={(concept) => saveNow({ concept }) /* הבחירה נשמרת מיד באפיון */}
       />
       <div className="sticky-bar">
         <div className="row gap-s">
@@ -308,14 +340,8 @@ export function BriefTab({ detail, reload }: TabProps) {
         <Attachments
           projectId={project.id}
           attachments={attachments}
-          onUploaded={async (a) => {
-            const ids = [...draft.attachmentIds, a.id];
-            set('attachmentIds', ids);
-            // העלאה נשמרת מיד באפיון כדי שלא תאבד ברענון
-            await api.put(`/api/projects/${project.id}/brief`, { brief: { ...draft, attachmentIds: ids } });
-            setDirty(false);
-            await reload();
-          }}
+          // העלאה נשמרת מיד באפיון כדי שלא תאבד ברענון
+          onUploaded={(a) => saveNow({ attachmentIds: [...draft.attachmentIds, a.id] })}
           onRemove={(id) => set('attachmentIds', draft.attachmentIds.filter((x) => x !== id))}
         />
       </section>

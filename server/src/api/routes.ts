@@ -89,7 +89,8 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
   /* ---------- brief ---------- */
   app.put('/api/projects/:id/brief', async (req) => {
     const { id } = req.params as { id: string };
-    return cmd.updateBrief(ctx, id, ((req.body ?? {}) as Body).brief ?? {});
+    const { brief, base } = (req.body ?? {}) as Body;
+    return cmd.updateBrief(ctx, id, brief ?? {}, { base });
   });
   app.post('/api/projects/:id/brief/complete', async (req) => cmd.completeBrief(ctx, (req.params as any).id));
   app.post('/api/projects/:id/brief/reopen', async (req) => cmd.reopenBrief(ctx, (req.params as any).id));

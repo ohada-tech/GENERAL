@@ -3,6 +3,7 @@
  * כל פקודה בודקת את נקודות האישור (Gates) לפני שהיא משנה מצב, ורושמת Event.
  */
 import {
+  BRIEF_FIELD_LABELS,
   briefSchema,
   detectPlatform,
   projectSettingsSchema,
@@ -137,8 +138,28 @@ export function setPipelineState(ctx: Ctx, id: string, action: 'pause' | 'resume
 
 /* ---------------- Brief ---------------- */
 
-export function updateBrief(ctx: Ctx, id: string, patch: Partial<Brief>, opts: { by?: string; note?: string } = {}) {
+/**
+ * base = הערכים שהטופס ראה לפני העריכה. שדה שהשתנה בשרת מאז (למשל במילוי אוטומטי)
+ * ושהשמירה הייתה דורסת בערך אחר — 409 עם האפיון העדכני, במקום למחוק בשקט.
+ */
+export function updateBrief(ctx: Ctx, id: string, patch: Partial<Brief>, opts: { by?: string; note?: string; base?: Partial<Brief> } = {}) {
   const p = mustProject(ctx, id);
+  if (opts.base) {
+    const cur = p.brief as Record<string, unknown>;
+    const base = briefSchema.parse({ ...p.brief, ...opts.base }) as Record<string, unknown>;
+    const next = briefSchema.parse({ ...p.brief, ...patch }) as Record<string, unknown>;
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    const conflicts = Object.keys(patch).filter((k) => k in opts.base! && !same(cur[k], base[k]) && !same(cur[k], next[k]));
+    if (conflicts.length) {
+      const labels = conflicts.map((k) => BRIEF_FIELD_LABELS[k as keyof Brief] ?? k).join(', ');
+      const many = conflicts.length > 1;
+      const msg = `${many ? 'השדות' : 'השדה'} ${labels} ${many ? 'עודכנו' : 'עודכן'} בינתיים במערכת ולא ${many ? 'נשמרו' : 'נשמר'}. שאר הטופס רוענן; הערך שלך נשאר — שמור שוב כדי להחליף את הערך החדש.`;
+      throw new GateError(msg, 409, {
+        conflicts,
+        brief: p.brief,
+      });
+    }
+  }
   const brief = briefSchema.parse({ ...p.brief, ...patch });
   // שדה שאוהד שינה בעצמו כבר לא "מולא על ידי AI"
   if (!('aiFilled' in patch)) {

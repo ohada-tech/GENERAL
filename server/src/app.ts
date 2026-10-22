@@ -32,7 +32,7 @@ export async function buildApp(ctx: Ctx, opts: { logger?: boolean; serveWeb?: bo
         details: err.issues.map((i) => `${i.path.join('.')}: ${i.message}`),
       });
     }
-    if (err instanceof GateError) return reply.code(err.statusCode).send({ error: err.message });
+    if (err instanceof GateError) return reply.code(err.statusCode).send({ ...err.data, error: err.message });
     const e = err as { statusCode?: number; message?: string };
     const status = e.statusCode ?? 500;
     if (status >= 500) app.log.error(err);

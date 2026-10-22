@@ -16,6 +16,8 @@ export class GateError extends Error {
   constructor(
     message: string,
     readonly statusCode = 409,
+    /** שדות נוספים שנשלחים ללקוח יחד עם השגיאה */
+    readonly data?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'GateError';

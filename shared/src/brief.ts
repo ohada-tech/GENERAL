@@ -116,6 +116,23 @@ export const BRIEF_FIELD_LABELS: Partial<Record<keyof Brief, string>> = {
   links: 'קישורים',
 };
 
+const sameValue = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/** השדות שהשתנו בין שתי גרסאות של האפיון. */
+export function changedBriefFields(base: Brief, draft: Brief): Array<keyof Brief> {
+  return (Object.keys(draft) as Array<keyof Brief>).filter((k) => !sameValue(base[k], draft[k]));
+}
+
+/**
+ * מיזוג בשלושה כיוונים: שדה שאוהד לא נגע בו בטופס מקבל את הערך החדש מהשרת
+ * (למשל ממילוי אוטומטי שרץ באמצע), ושדה שאוהד ערך נשאר כמו שהוא בטופס.
+ */
+export function rebaseBrief(base: Brief, draft: Brief, server: Brief): Brief {
+  const out = { ...server } as Record<string, unknown>;
+  for (const k of changedBriefFields(base, draft)) out[k] = draft[k];
+  return out as Brief;
+}
+
 export function validateBrief(brief: Brief): BriefValidation {
   const required: Array<keyof Brief> = [
     'videoType',
