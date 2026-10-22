@@ -35,6 +35,8 @@ export const mapProject = (r: Row): Project => ({
   briefCompletedAt: r.brief_completed_at ?? null,
   settings: projectSettingsSchema.parse(parse(r.settings, {})),
   pipelineState: r.pipeline_state,
+  deliveredAt: r.delivered_at ?? null,
+  deliveredNote: r.delivered_note ?? '',
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });

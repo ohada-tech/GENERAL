@@ -299,15 +299,19 @@ function VersionView({
   };
   const timing = computeTiming(version.content, language, target);
   // תרגום לתצוגה בלבד: עברית ↔ אנגלית לפי השפה שבה התסריט באמת כתוב (לא לפי הבריף — שם כתוב לפעמים "עברית" לתסריט באנגלית)
-  const toLang: 'he' | 'en' = mostlyHebrew(version.content) ? 'en' : 'he';
+  const srcLang: 'he' | 'en' = mostlyHebrew(version.content) ? 'he' : 'en';
+  const toLang: 'he' | 'en' = srcLang === 'he' ? 'en' : 'he';
   const [translated, setTranslated] = useState<ScriptContent | null>(null);
   const tr = useAction();
   useEffect(() => setTranslated(null), [version.id]);
-  const toggleTranslate = async () => {
-    if (translated) return setTranslated(null);
-    const r = await tr.run(() => api.post<{ content: ScriptContent }>(`/api/scripts/${version.id}/translate`, { to: toLang }));
+  // "to English" / "to Hebrew": השפה של המקור מחזירה למקור, השנייה מתרגמת (לתצוגה, ל-PDF ול-Word)
+  const showLang = async (lang: 'he' | 'en') => {
+    if (lang === srcLang) return setTranslated(null);
+    if (translated) return;
+    const r = await tr.run(() => api.post<{ content: ScriptContent }>(`/api/scripts/${version.id}/translate`, { to: lang }));
     if (r) setTranslated(r.content);
   };
+  const shown: 'he' | 'en' = translated ? toLang : srcLang;
   const c = translated ?? version.content;
   // כיוון לפי השפה של מה שמוצג (גם אחרי תרגום)
   const ltr = !mostlyHebrew(c);
@@ -324,10 +328,54 @@ function VersionView({
             {!isLatest && ' · גרסה ישנה (לקריאה)'}
           </div>
         </div>
-        <div className="row gap-s">
+        {/* הסדר שאוהד ביקש: עריכה, מחיקה, PDF, Word, שפה, בחר כסופי, ובסוף שלח ללקוח */}
+        <div className="row gap-s version-actions">
+          <button className="btn" onClick={onEdit} title="בסיום תבחר: לשמור על הגרסה הזו או כגרסה חדשה">
+            ✎ ערוך
+          </button>
+          {version.status !== 'client_approved' && (
+            <ConfirmButton
+              className="btn btn-danger-ghost"
+              confirmLabel="למחוק? לחץ שוב"
+              disabled={del.busy}
+              onConfirm={async () => {
+                const r = await del.run(() => api.del(`/api/scripts/${version.id}`));
+                if (r) await onChanged();
+              }}
+            >
+              🗑 מחק
+            </ConfirmButton>
+          )}
           {!isCloud() && (
-            <button className={`btn ${translated ? 'btn-primary' : ''}`} onClick={toggleTranslate} disabled={tr.busy} title="תרגום לתצוגה בלבד — מה שנשלח ללקוח נשאר בשפת המקור">
-              {tr.busy ? 'מתרגם…' : translated ? '↩ הצג מקור' : `🌐 ${toLang === 'he' ? 'תרגם לעברית' : 'Translate to English'}`}
+            <a className="btn" href={`/api/scripts/${version.id}/view${translated ? `?lang=${toLang}` : ''}`} target="_blank" rel="noopener" title={translated ? 'פותח את התרגום בדפדפן — ומשם שמירה כ-PDF' : "פותח את התסריט בדפדפן, ממותג — ומשם 'שמור כ-PDF' לשליחה ללקוח"}>
+              👁 פתח / PDF
+            </a>
+          )}
+          {!isCloud() && (
+            <a className="btn" href={`/api/scripts/${version.id}/docx${translated ? `?lang=${toLang}` : ''}`} download title={translated ? 'קובץ Word של התרגום' : 'קובץ Word מעוצב לשליחה ללקוח — בלי הערות פנימיות'}>
+              ⬇ Word
+            </a>
+          )}
+          {!isCloud() && (
+            <div className="seg lang-seg" role="group" aria-label="שפת התצוגה" title="תרגום לתצוגה, ל-PDF ול-Word — הגרסה עצמה לא משתנה">
+              <button className={shown === 'en' ? 'on' : ''} disabled={tr.busy} onClick={() => showLang('en')}>
+                {tr.busy && toLang === 'en' ? '…' : 'to English'}
+              </button>
+              <button className={shown === 'he' ? 'on' : ''} disabled={tr.busy} onClick={() => showLang('he')}>
+                {tr.busy && toLang === 'he' ? '…' : 'to Hebrew'}
+              </button>
+            </div>
+          )}
+          {isFinal ? (
+            <Tag tone="ok">⭐ הגרסה הסופית</Tag>
+          ) : (
+            <button
+              className="btn"
+              disabled={fin.busy}
+              onClick={chooseFinal}
+              title={isLatest ? 'מאשר את הגרסה הזו פנימית כגרסה הסופית' : 'יוצר עותק של הגרסה הזו כגרסה האחרונה ומאשר אותו כסופי (ההיסטוריה נשמרת)'}
+            >
+              ⭐ בחר כסופי
             </button>
           )}
           {!isCloud() && (
@@ -335,51 +383,13 @@ function VersionView({
               📤 שלח ללקוח
             </button>
           )}
-          {!isCloud() && (
-            <a className="btn" href={`/api/scripts/${version.id}/view${translated ? `?lang=${toLang}` : ''}`} target="_blank" rel="noopener" title={translated ? 'פותח את התרגום בדפדפן — ומשם שמירה כ-PDF' : "פותח את התסריט בדפדפן, ממותג — ומשם 'שמור כ-PDF' לשליחה ללקוח"}>
-              👁 פתח / PDF{translated ? ` (${toLang === 'he' ? 'עברית' : 'English'})` : ''}
-            </a>
-          )}
-          {!isCloud() && (
-            <a className="btn" href={`/api/scripts/${version.id}/docx${translated ? `?lang=${toLang}` : ''}`} download title={translated ? 'קובץ Word של התרגום' : 'קובץ Word מעוצב לשליחה ללקוח — בלי הערות פנימיות'}>
-              ⬇ הורד כ-Word{translated ? ` (${toLang === 'he' ? 'עברית' : 'English'})` : ''}
-            </a>
-          )}
-            {isFinal ? (
-              <Tag tone="ok">⭐ הגרסה הסופית</Tag>
-            ) : (
-              <button
-                className="btn"
-                disabled={fin.busy}
-                onClick={chooseFinal}
-                title={isLatest ? 'מאשר את הגרסה הזו פנימית כגרסה הסופית' : 'יוצר עותק של הגרסה הזו כגרסה האחרונה ומאשר אותו כסופי (ההיסטוריה נשמרת)'}
-              >
-                ⭐ בחר כסופי
-              </button>
-            )}
-            {version.status !== 'client_approved' && (
-              <ConfirmButton
-                className="btn btn-danger-ghost"
-                confirmLabel="למחוק? לחץ שוב"
-                disabled={del.busy}
-                onConfirm={async () => {
-                  const r = await del.run(() => api.del(`/api/scripts/${version.id}`));
-                  if (r) await onChanged();
-                }}
-              >
-                🗑 מחק
-              </ConfirmButton>
-            )}
-            <button className="btn" onClick={onEdit} title="בסיום תבחר: לשמור על הגרסה הזו או כגרסה חדשה">
-            ✎ ערוך
-          </button>
         </div>
       </div>
       <InlineError error={tr.error} onClose={tr.clearError} />
       <InlineError error={fin.error} onClose={fin.clearError} />
       {sharing && <ShareDialog version={version} lang={translated ? toLang : null} onClose={() => setSharing(false)} />}
       <InlineError error={del.error} onClose={del.clearError} />
-      {translated && <div className="notice small">מוצג תרגום ל{toLang === 'he' ? 'עברית' : 'אנגלית'} · הכפתורים Word ו-PDF מורידים עכשיו את התרגום · "↩ הצג מקור" מחזיר למקור</div>}
+      {translated && <div className="notice small">מוצג תרגום ל{toLang === 'he' ? 'עברית' : 'אנגלית'} · Word ו-PDF מורידים עכשיו את התרגום · "{srcLang === 'he' ? 'to Hebrew' : 'to English'}" מחזיר למקור</div>}
       {c.logline && <p className="logline" dir={ltr ? 'ltr' : 'rtl'}>{c.logline}</p>}
       <TimingSummary content={version.content} language={language} target={target} />
       {/* תסריט באנגלית: משמאל לימין; בעברית: מימין לשמאל. בשניהם: קריינות, טקסט על המסך, ויזואל, ואז השאר */}

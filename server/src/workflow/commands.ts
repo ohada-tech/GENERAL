@@ -242,6 +242,30 @@ export function requestScriptRevision(ctx: Ctx, versionId: string, feedback: str
   });
 }
 
+/**
+ * "נמסר ללקוח": הסרטון נשלח והלקוח אישר — גם כשההפקה נעשתה מחוץ למערכת (סשן Claude, קאפקאט).
+ * מסמן את כל השלבים כהושלמו בלי להפעיל אוטומציות (לא יוצר סטורי בורד, לא מריץ משימות). ניתן לביטול.
+ */
+export function markDelivered(ctx: Ctx, projectId: string, input: { note?: string; by?: string } = {}) {
+  const p = mustProject(ctx, projectId);
+  const note = String(input.note ?? '').trim().slice(0, 300);
+  const by = String(input.by ?? '').trim().slice(0, 40) || owner(ctx);
+  const at = ctx.now().toISOString();
+  return tx(ctx.db, () => {
+    ctx.db.prepare('UPDATE projects SET delivered_at = ?, delivered_note = ?, updated_at = ? WHERE id = ?').run(at, note, at, projectId);
+    emit(ctx, { projectId, type: 'project.progress', actor: by, message: `✅ נמסר ללקוח והסרטון אושר${note ? `: ${note}` : ''}`, payload: { by, delivered: true } });
+    return { ...p, deliveredAt: at, deliveredNote: note };
+  });
+}
+
+export function unmarkDelivered(ctx: Ctx, projectId: string) {
+  mustProject(ctx, projectId);
+  const at = ctx.now().toISOString();
+  ctx.db.prepare("UPDATE projects SET delivered_at = NULL, delivered_note = '', updated_at = ? WHERE id = ?").run(at, projectId);
+  emit(ctx, { projectId, type: 'project.progress', actor: owner(ctx), message: 'בוטל הסימון "נמסר ללקוח"', payload: { delivered: false } });
+  return { ok: true };
+}
+
 /** "כתוב מחדש": תסריט חדש מהעובדות ומהכיוון (עם QA), בלי לשמר את הנוסח והמבנה של הגרסה החלשה */
 export function requestScriptRewrite(ctx: Ctx, versionId: string, note: string) {
   const v = getScript(ctx.db, versionId);

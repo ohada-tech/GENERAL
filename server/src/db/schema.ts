@@ -343,4 +343,8 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX idx_share_links_version ON share_links(script_version_id, created_at);
   CREATE INDEX idx_share_links_project ON share_links(project_id, created_at);
   `,
+  /* v15 — "נמסר ללקוח": פרויקט שההפקה שלו נעשתה מחוץ למערכת (סשן Claude, קאפקאט) והסרטון אושר */ `
+  ALTER TABLE projects ADD COLUMN delivered_at TEXT;
+  ALTER TABLE projects ADD COLUMN delivered_note TEXT NOT NULL DEFAULT '';
+  `,
 ];

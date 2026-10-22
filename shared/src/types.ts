@@ -46,6 +46,9 @@ export interface Project {
   briefCompletedAt: string | null;
   settings: ProjectSettings;
   pipelineState: PipelineState;
+  /** נמסר ללקוח והסרטון אושר (גם כשההפקה נעשתה מחוץ למערכת) */
+  deliveredAt: string | null;
+  deliveredNote: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -219,6 +222,7 @@ export interface ProjectState {
   myActions: ActionItem[];
   blockers: Array<{ stage: StageKey; reason: string; source: string; id?: string }>;
   pipelineState: PipelineState;
+  deliveredAt: string | null;
   briefValidation: BriefValidation;
   lastActivityAt: string | null;
 }

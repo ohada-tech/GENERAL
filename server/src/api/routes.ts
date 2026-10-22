@@ -118,6 +118,12 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     const b = (req.body ?? {}) as { by?: string; note?: string; doc?: { name?: string; text?: string } };
     return cmd.requestScriptImprove(ctx, (req.params as any).vid, b.by ?? 'openai', b.note ?? '', b.doc);
   });
+  // "נמסר ללקוח" (גם כשההפקה נעשתה מחוץ למערכת) — וביטול
+  app.post('/api/projects/:id/delivered', async (req) => {
+    const b = (req.body ?? {}) as { note?: string; by?: string };
+    return cmd.markDelivered(ctx, (req.params as any).id, b);
+  });
+  app.delete('/api/projects/:id/delivered', async (req) => cmd.unmarkDelivered(ctx, (req.params as any).id));
   app.post('/api/scripts/:vid/rewrite', async (req) =>
     cmd.requestScriptRewrite(ctx, (req.params as any).vid, String(((req.body ?? {}) as { note?: string }).note ?? '')),
   );

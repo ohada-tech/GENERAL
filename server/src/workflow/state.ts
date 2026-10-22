@@ -321,6 +321,20 @@ export function computeProjectState(input: StateInput): ProjectState {
     actions.unshift({ kind: 'task', stage: 'brief', label: 'ה-Pipeline מושהה — הפעל מחדש כדי שמשימות ירוצו', tab: 'overview' });
   }
 
+  // נמסר ללקוח (גם מחוץ למערכת): כל השלבים הושלמו, ואין פעולות פתוחות
+  if (project.deliveredAt) {
+    for (const d of STAGES) {
+      const st = stages[d.key];
+      if (st.status !== 'completed') {
+        st.status = 'completed';
+        st.blockedReason = null;
+        st.detail = 'נמסר ללקוח (ההפקה נעשתה מחוץ למערכת)';
+      }
+      st.milestones = st.milestones.map((m) => ({ ...m, done: true }));
+    }
+    actions.length = 0;
+  }
+
   const ordered = STAGES.map((d) => stages[d.key]);
   const all = ordered.flatMap((s) => s.milestones);
   const progress = all.length ? Math.round((all.filter((m) => m.done).length / all.length) * 100) : 0;
@@ -348,6 +362,7 @@ export function computeProjectState(input: StateInput): ProjectState {
     myActions: actions,
     blockers: derivedBlockers,
     pipelineState: project.pipelineState,
+    deliveredAt: project.deliveredAt ?? null,
     briefValidation: bv,
     lastActivityAt: input.lastActivityAt,
   };

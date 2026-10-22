@@ -1024,3 +1024,5 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .sf-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 @media (max-width: 640px) { .sf-row { grid-template-columns: 1fr; } }
 .scene-edit > .row:first-child strong { font-size: 15px; }
+.delivered-tag { color: #19c7a3; font-weight: 600; }
+.lang-seg { margin: 0; } .lang-seg button { padding: 5px 12px; direction: ltr; } .version-actions { flex-wrap: wrap; }

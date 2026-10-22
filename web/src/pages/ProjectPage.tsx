@@ -90,6 +90,19 @@ export function ProjectPage({ health }: { health: Health | null }) {
     void reload();
   };
 
+  // "נמסר ללקוח": גם כשההפקה נעשתה מחוץ למערכת. ביטול — אם סומן בטעות
+  const setDelivered = async (on: boolean) => {
+    if (on) {
+      const note = window.prompt('נמסר ללקוח והסרטון אושר. הערה קצרה (לא חובה):', '');
+      if (note === null) return;
+      await pipeline.run(() => api.post(`/api/projects/${project.id}/delivered`, { note }));
+    } else {
+      if (!window.confirm('לבטל את הסימון "נמסר ללקוח"?')) return;
+      await pipeline.run(() => api.del(`/api/projects/${project.id}/delivered`));
+    }
+    void reload();
+  };
+
   const props: TabProps = { detail: data, reload, health };
 
   return (
@@ -140,11 +153,21 @@ export function ProjectPage({ health }: { health: Health | null }) {
               <span>{project.clientName || 'ללא לקוח'}</span>
               {project.brief.dueDate && <span>יעד {fmtDate(project.brief.dueDate)}</span>}
               <span>עודכן {fmtRelative(project.updatedAt)}</span>
+              {project.deliveredAt && <span className="delivered-tag" title={project.deliveredNote || undefined}>✅ נמסר ללקוח · {fmtDate(project.deliveredAt)}</span>}
             </span>
           }
           under={!isCloud() ? <ProgressLine projectId={project.id} /> : undefined}
           actions={
             <>
+              {project.deliveredAt ? (
+                <button className="btn btn-sm btn-ghost" disabled={pipeline.busy} onClick={() => setDelivered(false)} title="מחזיר את הפרויקט לשלב שבו הוא היה">
+                  ↺ בטל "נמסר"
+                </button>
+              ) : (
+                <button className="btn btn-sm" disabled={pipeline.busy} onClick={() => setDelivered(true)} title="הסרטון נשלח והלקוח אישר — גם אם ההפקה נעשתה מחוץ למערכת. הפרויקט יעבור ל'נמסרו'">
+                  ✅ סמן כנמסר
+                </button>
+              )}
               <ProjectTimerButton projectId={project.id} />
               {state.pipelineState === 'active' ? (
                 <>
