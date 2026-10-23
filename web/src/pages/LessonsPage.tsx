@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { ConfirmButton, Empty, ErrorBox, InlineError, Loading, Tag } from '../components/ui';
 import { api, useAction, useApi } from '../lib/api';
 import { fmtRelative } from '../lib/format';
+import { Icon } from '../components/Icon';
 
 type Lesson = { id: string; scope: string; area: string; text: string; source: 'learned' | 'manual'; active: boolean; updatedAt: string };
 type Feedback = { id: string; client: string; area: string; kind: string; text: string; distilled: boolean; createdAt: string };
@@ -271,7 +272,7 @@ function KnowledgeSection() {
           </div>
         </div>
         <label className="btn" title="העלה קובצי SKILL.md">
-          ⬆ הוסף סקיל
+          <Icon n="upload" /> הוסף סקיל
           <input type="file" accept=".md,text/markdown,text/plain" multiple hidden onChange={onFiles} disabled={act.busy} />
         </label>
       </div>

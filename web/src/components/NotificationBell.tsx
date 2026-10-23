@@ -4,13 +4,14 @@ import { useNavigate } from 'react-router-dom';
 import { api, useApi } from '../lib/api';
 import { fmtRelative } from '../lib/format';
 import { enablePush, pushSupported } from '../lib/push';
+import { Icon } from './Icon';
 
 const ICON: Record<string, string> = {
-  approval_needed: '🟡',
-  success: '✅',
-  error: '⛔',
-  warning: '⚠️',
-  info: 'ℹ️',
+  approval_needed: 'hourglass',
+  success: 'checkCircle',
+  error: 'block',
+  warning: 'alert',
+  info: 'info',
 };
 
 /** פעמון התראות: התראות בתוך ה-Dashboard + התראות דפדפן (בכפוף להרשאה). */
@@ -90,11 +91,11 @@ export function NotificationBell() {
     <div className="bell">
       {canEnable && (
         <button className="btn btn-sm push-cta" onClick={ask} title="התראה קופצת במחשב ובטלפון כשמשהו מחכה לך — גם כשהמערכת סגורה">
-          🔔 הפעל התראות
+          <Icon n="bell" /> הפעל התראות
         </button>
       )}
       <button className="btn btn-ghost bell-btn" onClick={() => setOpen((o) => !o)} aria-label="התראות">
-        🔔{unread.length > 0 && <span className="bell-count">{unread.length}</span>}
+        <Icon n="bell" />{unread.length > 0 && <span className="bell-count">{unread.length}</span>}
       </button>
       {open && (
         <div className="bell-panel" onMouseLeave={() => setOpen(false)}>
@@ -127,7 +128,9 @@ export function NotificationBell() {
               {data!.map((n) => (
                 <li key={n.id} className={n.readAt ? 'read' : ''}>
                   <button className="bell-item" onClick={() => openItem(n)}>
-                    <span>{ICON[n.kind] ?? '•'}</span>
+                    <span className={`bell-ic bell-ic-${n.kind}`}>
+                      <Icon n={ICON[n.kind] ?? 'dot'} />
+                    </span>
                     <span className="bell-text">
                       <span className="bell-title">{n.title}</span>
                       {n.body && <span className="bell-body">{n.body}</span>}

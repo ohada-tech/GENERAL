@@ -3,6 +3,7 @@
  * תסריט שלא עבר מסומן בבירור — הוא לא מוצג כאילו אושר.
  */
 import { QA_DETECTORS, QA_PASS_EACH, QA_PASS_TOTAL, QA_RUBRIC, QA_STAGES, type QaCriterion, type QaDetector, type QaReport } from '@apos/shared';
+import { Icon } from './Icon';
 import { useState } from 'react';
 
 export function QaPanel({ qa }: { qa: QaReport }) {
@@ -12,7 +13,7 @@ export function QaPanel({ qa }: { qa: QaReport }) {
     <section className={`card stack qa-panel ${qa.passed ? 'qa-pass' : 'qa-fail'}`}>
       <button className="row between gap-s qa-head" onClick={() => setOpen((x) => !x)}>
         <strong>
-          {qa.passed ? '✅' : '⛔'} QA קריאייטיבי: {qa.total}/100
+          <Icon n={qa.passed ? 'checkCircle' : 'block'} /> QA קריאייטיבי: {qa.total}/100
         </strong>
         <span className="small muted">
           {qa.passed ? `עבר (רף ${QA_PASS_TOTAL})` : `לא עבר — ${QA_STAGES[qa.failStage as keyof typeof QA_STAGES] ?? qa.failStage}`} · {qa.rounds} סבבים · {qa.judge} {open ? '▴' : '▾'}

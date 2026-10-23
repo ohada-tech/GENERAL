@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Icon } from '../components/Icon';
 import type { CloudStore, SaveState } from './persist';
 
 /** מצב השמירה בענן — כדי שיהיה ברור מתי הנתונים באמת נשמרו. */
@@ -29,7 +30,7 @@ export function CloudBanner({ store, reason }: { store: CloudStore | null; reaso
   if (s.kind === 'error') return <div className="cloud-banner danger">השמירה בענן נכשלה: {s.message}</div>;
   return (
     <div className="cloud-save small muted" aria-live="polite">
-      {s.kind === 'saving' ? 'שומר…' : s.kind === 'dirty' ? 'שינויים ממתינים לשמירה…' : '☁ נשמר בענן'}
+      {s.kind === 'saving' ? 'שומר…' : s.kind === 'dirty' ? 'שינויים ממתינים לשמירה…' : <><Icon n="cloud" /> נשמר בענן</>}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { Icon } from '../components/Icon';
 import {
   ASPECT_RATIOS,
   changedBriefFields,
@@ -445,10 +446,10 @@ function DiscoveryCard({ projectId, draft }: { projectId: string; draft: Brief }
           </div>
         </div>
         <button className="btn" onClick={ask} disabled={ai.busy} title="Claude עובר על האפיון ומציע מה עוד חייבים לשאול בפרויקט הזה">
-          {ai.busy ? 'Claude בודק…' : '🔍 מה עוד לשאול?'}
+          {ai.busy ? 'Claude בודק…' : <><Icon n="search" /> מה עוד לשאול?</>}
         </button>
         <button className="btn btn-ghost" onClick={copy} disabled={!open.length && !aiQs?.length}>
-          {copied ? 'הועתק ✓' : '📋 העתק לשליחה ללקוח'}
+          {copied ? 'הועתק ✓' : <><Icon n="copy" /> העתק לשליחה ללקוח</>}
         </button>
         {open.length > 0 && (
           <button className="btn-link small" onClick={() => setShow((x) => !x)}>

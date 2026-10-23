@@ -1,6 +1,7 @@
 import { formatClock, STAGE_BY_KEY } from '@apos/shared';
 import { Link } from 'react-router-dom';
 import { useTimer } from '../lib/timer';
+import { Icon } from './Icon';
 
 /** טיימר פעיל בסרגל העליון — נראה מכל מסך, עם עצירה בלחיצה. */
 export function TimerWidget() {
@@ -14,7 +15,7 @@ export function TimerWidget() {
       </Link>
       <span className="timer-clock">{formatClock(elapsed)}</span>
       <button className="btn btn-sm" onClick={() => stop()} disabled={busy}>
-        ⏹ עצור
+        <Icon n="stop" /> עצור
       </button>
     </div>
   );
@@ -27,7 +28,7 @@ export function ProjectTimerButton({ projectId }: { projectId: string }) {
   if (mine) {
     return (
       <button className="btn btn-timer-on" onClick={() => stop()} disabled={busy} title="עצור טיימר">
-        ⏹ {formatClock(elapsed)}
+        <Icon n="stop" /> {formatClock(elapsed)}
       </button>
     );
   }
@@ -38,7 +39,7 @@ export function ProjectTimerButton({ projectId }: { projectId: string }) {
       disabled={busy}
       title={running ? `יעצור את הטיימר של "${running.projectName}"` : 'התחל למדוד זמן עבודה על השלב הנוכחי'}
     >
-      ⏱ התחל טיימר
+      <Icon n="timer" /> התחל טיימר
     </button>
   );
 }

@@ -1026,3 +1026,19 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .scene-edit > .row:first-child strong { font-size: 15px; }
 .delivered-tag { color: #19c7a3; font-weight: 600; }
 .lang-seg { margin: 0; } .lang-seg button { padding: 5px 12px; direction: ltr; } .version-actions { flex-wrap: wrap; }
+
+/* אייקונים (components/Icon.tsx) — באותה שפה בכל המערכת */
+.ic { flex: none; display: inline-block; vertical-align: -0.2em; }
+.btn .ic, .bell-btn .ic { vertical-align: 0; }
+.ic-holo { filter: drop-shadow(0 0 6px rgba(169, 190, 247, .35)); }
+.bell-ic { display: inline-flex; width: 26px; height: 26px; border-radius: 8px; align-items: center; justify-content: center; flex: none; background: color-mix(in srgb, currentColor 12%, transparent); }
+.bell-ic-approval_needed { color: #e8a33d; }
+.bell-ic-success { color: #19c7a3; }
+.bell-ic-error { color: #e5484d; }
+.bell-ic-warning { color: #e8a33d; }
+.bell-ic-info { color: var(--brand-violet); }
+.sf-label .ic, .ph-actions .ic { color: inherit; }
+:root { --ic-h1: #7ee6e6; --ic-h2: #a9bef7; --ic-h3: #c8a6ff; }
+:root[data-theme='light'] { --ic-h1: #0e9f9f; --ic-h2: #4f63d2; --ic-h3: #8b4fe8; }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) { --ic-h1: #0e9f9f; --ic-h2: #4f63d2; --ic-h3: #8b4fe8; } }
+:root[data-theme='light'] .ic-holo { filter: none; }

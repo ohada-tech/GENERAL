@@ -23,6 +23,7 @@ import { SettingsTab } from './SettingsTab';
 import { StoryboardTab } from './StoryboardTab';
 import { TimeTab } from './TimeTab';
 import { ProductionTab } from './ProductionTab';
+import { Icon } from '../components/Icon';
 
 export interface ProjectDetail {
   project: Project;
@@ -44,7 +45,7 @@ const TABS: Array<{ key: string; label: string }> = [
   { key: 'script', label: '02 תסריט' },
   { key: 'storyboard', label: '03–04 סטורי בורד ורפרנסים' },
   { key: 'production', label: '05–09 הפקה' },
-  { key: 'time', label: '⏱ זמן עבודה' },
+  { key: 'time', label: 'זמן עבודה' },
   { key: 'activity', label: 'היסטוריה' },
   { key: 'jobs', label: 'משימות והרצות' },
   { key: 'settings', label: 'הגדרות' },
@@ -52,7 +53,7 @@ const TABS: Array<{ key: string; label: string }> = [
 
 const EXTRA_TABS: Array<{ key: string; label: string }> = [
   { key: 'overview', label: 'סקירה' },
-  { key: 'time', label: '⏱ זמן עבודה' },
+  { key: 'time', label: 'זמן עבודה' },
   { key: 'activity', label: 'היסטוריה' },
   { key: 'jobs', label: 'משימות והרצות' },
   { key: 'settings', label: 'הגדרות' },
@@ -120,15 +121,15 @@ export function ProjectPage({ health }: { health: Health | null }) {
           {state.pipelineState === 'active' ? (
             <>
               <button className="btn btn-sm" disabled={pipeline.busy} onClick={() => setPipeline('pause')}>
-                ⏸ השהה
+                <Icon n="pause" /> השהה
               </button>
               <button className="btn btn-sm btn-danger-ghost" disabled={pipeline.busy} onClick={() => setConfirmStop(true)}>
-                ⏹ עצור
+                <Icon n="stop" /> עצור
               </button>
             </>
           ) : (
             <button className="btn btn-sm btn-primary" disabled={pipeline.busy} onClick={() => setPipeline('resume')}>
-              ▶ הפעל מחדש
+              <Icon n="play" /> הפעל מחדש
             </button>
           )}
         </div>
@@ -153,7 +154,7 @@ export function ProjectPage({ health }: { health: Health | null }) {
               <span>{project.clientName || 'ללא לקוח'}</span>
               {project.brief.dueDate && <span>יעד {fmtDate(project.brief.dueDate)}</span>}
               <span>עודכן {fmtRelative(project.updatedAt)}</span>
-              {project.deliveredAt && <span className="delivered-tag" title={project.deliveredNote || undefined}>✅ נמסר ללקוח · {fmtDate(project.deliveredAt)}</span>}
+              {project.deliveredAt && <span className="delivered-tag" title={project.deliveredNote || undefined}><Icon n="checkCircle" /> נמסר ללקוח · {fmtDate(project.deliveredAt)}</span>}
             </span>
           }
           under={!isCloud() ? <ProgressLine projectId={project.id} /> : undefined}
@@ -165,22 +166,22 @@ export function ProjectPage({ health }: { health: Health | null }) {
                 </button>
               ) : (
                 <button className="btn btn-sm" disabled={pipeline.busy} onClick={() => setDelivered(true)} title="הסרטון נשלח והלקוח אישר — גם אם ההפקה נעשתה מחוץ למערכת. הפרויקט יעבור ל'נמסרו'">
-                  ✅ סמן כנמסר
+                  <Icon n="checkCircle" /> סמן כנמסר
                 </button>
               )}
               <ProjectTimerButton projectId={project.id} />
               {state.pipelineState === 'active' ? (
                 <>
                   <button className="btn btn-sm" disabled={pipeline.busy} onClick={() => setPipeline('pause')} title="משימות לא ירוצו עד להפעלה מחדש">
-                    ⏸ השהה
+                    <Icon n="pause" /> השהה
                   </button>
                   <button className="btn btn-sm btn-danger-ghost" disabled={pipeline.busy} onClick={() => setConfirmStop(true)}>
-                    ⏹ עצור
+                    <Icon n="stop" /> עצור
                   </button>
                 </>
               ) : (
                 <button className="btn btn-sm btn-primary" disabled={pipeline.busy} onClick={() => setPipeline('resume')}>
-                  ▶ הפעל מחדש
+                  <Icon n="play" /> הפעל מחדש
                 </button>
               )}
             </>
@@ -469,7 +470,7 @@ function ProgressLine({ projectId }: { projectId: string }) {
     <div className="progress-line">
       {u ? (
         <span className="small">
-          <span className="muted">📝 {u.by} · {fmtRelative(u.at)}:</span> {u.text}
+          <span className="muted"><Icon n="note" /> {u.by} · {fmtRelative(u.at)}:</span> {u.text}
         </span>
       ) : (
         <span className="small muted">אין עדיין עדכוני התקדמות</span>

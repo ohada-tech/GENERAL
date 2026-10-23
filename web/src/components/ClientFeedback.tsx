@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, useAction } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
 import { InlineError, Tag } from './ui';
+import { Icon } from './Icon';
 
 type Kind = 'comment' | 'suggestion' | 'edit' | 'note';
 
@@ -151,7 +152,7 @@ export function ClientFeedbackImport({
   return (
     <section className="card stack">
       <div className="row between">
-        <h2>📥 הערות לקוח</h2>
+        <h2><Icon n="inbox" /> הערות לקוח</h2>
         <button className="btn btn-ghost btn-sm" onClick={onClose}>
           סגור
         </button>
@@ -185,7 +186,7 @@ export function ClientFeedbackImport({
               }}
             />
             <button className="btn btn-ghost" disabled={act.busy} onClick={() => audio.current?.click()} title="ElevenLabs מתמלל, ChatGPT שולף מה הלקוח ביקש והחליט">
-              📞 העלה הקלטת שיחה
+              <Icon n="phone" /> העלה הקלטת שיחה
             </button>
             <input
               ref={audio}
@@ -238,14 +239,14 @@ export function ClientFeedbackImport({
           {review && (
             <div className="feedback-review stack">
               <div className="row between wrap gap-s">
-                <strong>🧠 הדעה של ChatGPT</strong>
+                <strong><Icon n="brain" holo /> הדעה של ChatGPT</strong>
                 <span className="small muted">
                   {review.model} · {fmtDateTime(review.at)}
                 </span>
               </div>
               {review.timing && (
                 <div className={`small ${review.timing.targetSec && review.timing.afterSec > review.timing.targetSec ? 'warn-text' : 'muted'}`}>
-                  ⏱ קריינות עכשיו ≈ {review.timing.beforeSec} ש׳ · עם העריכות של הלקוח ≈ {review.timing.afterSec} ש׳
+                  <Icon n="timer" /> קריינות עכשיו ≈ {review.timing.beforeSec} ש׳ · עם העריכות של הלקוח ≈ {review.timing.afterSec} ש׳
                   {review.timing.targetSec ? ` · יעד ${review.timing.targetSec} ש׳` : ''}
                 </div>
               )}
@@ -258,7 +259,7 @@ export function ClientFeedbackImport({
               )}
               {!!review.conflicts?.length && (
                 <div className="stack-xs">
-                  <strong className="small">⚠ סתירות וכפילויות</strong>
+                  <strong className="small"><Icon n="alert" /> סתירות וכפילויות</strong>
                   <ul className="small">
                     {review.conflicts.map((c, i) => (
                       <li key={i}>{c}</li>
@@ -269,9 +270,9 @@ export function ClientFeedbackImport({
               {!!review.questionsForClient?.length && (
                 <div className="stack-xs">
                   <div className="row between wrap gap-s">
-                    <strong className="small">❓ שאלות ללקוח</strong>
+                    <strong className="small"><Icon n="question" /> שאלות ללקוח</strong>
                     <button className="btn btn-ghost btn-sm" onClick={copyQuestions} title="מעתיק את השאלות, מוכן להדבקה בוואטסאפ">
-                      📋 העתק
+                      <Icon n="copy" /> העתק
                     </button>
                   </div>
                   <ol className="small">
@@ -343,15 +344,15 @@ export function ClientFeedbackImport({
           </ol>
           <div className="row gap-s wrap">
             <button className="btn btn-ghost" disabled={act.busy || reviewRunning || !chosen.length} onClick={askChatGPT} title="ChatGPT נותן דעה על כל הערה. התסריט לא משתנה">
-              🧠 {review ? 'דעה חדשה מ-ChatGPT' : 'מה ChatGPT חושב?'}
+              <Icon n="brain" holo /> {review ? 'דעה חדשה מ-ChatGPT' : 'מה ChatGPT חושב?'}
             </button>
             <button className="btn btn-ghost" disabled={act.busy} onClick={save} title="שומר את הבחירות וההחלטות שלך, בלי לשנות את התסריט">
-              💾 שמור
+              <Icon n="save" /> שמור
             </button>
           </div>
           <div className="row gap-s wrap">
             <button className="btn" disabled={act.busy || running || !chosen.length || !base} onClick={apply} title="ChatGPT מתקן, Claude בודק — נוצרת גרסה חדשה">
-              ✨ תקן את v{base?.label} לפי {chosen.length} הערות
+              <Icon n="sparkle" holo /> תקן את v{base?.label} לפי {chosen.length} הערות
             </button>
             <span className="small muted">
               {chosen.length && chosen.every((it) => it.scenes.length)
@@ -376,16 +377,16 @@ function CallTranscript({ callId }: { callId: string }) {
   };
   return (
     <details className="small" onToggle={(e) => (e.currentTarget as HTMLDetailsElement).open && void load()}>
-      <summary>📄 התמלול המלא של השיחה</summary>
+      <summary><Icon n="file" /> התמלול המלא של השיחה</summary>
       <div className="call-transcript">{text ?? 'טוען…'}</div>
     </details>
   );
 }
 
 const FIELDS = [
-  ['narration', '🎙'],
-  ['onScreenText', '🅣'],
-  ['visualAction', '🎬'],
+  ['narration', 'mic'],
+  ['onScreenText', 'type'],
+  ['visualAction', 'clapper'],
 ] as const;
 
 function sceneChanges(before: ScriptContent['scenes'][number] | undefined, after: ScriptContent['scenes'][number] | undefined) {
@@ -428,13 +429,13 @@ export function ClientFeedbackChanges({ imp, base, result }: { imp: FeedbackImpo
                         {!it.scenes.length && <strong>סצנה {i + 1}</strong>}
                         {d.map((c, k) => (
                           <div key={k}>
-                            {c.icon} <span className="muted strike">{c.before || '—'}</span> ← <span className="diff-hl">{c.after || '—'}</span>
+                            <Icon n={c.icon} /> <span className="muted strike">{c.before || '—'}</span> ← <span className="diff-hl">{c.after || '—'}</span>
                           </div>
                         ))}
                       </div>
                     ))
                   ) : (
-                    <span className="warn-text">⚠ לא השתנה דבר {it.scenes.length ? 'בסצנה הזאת' : 'בתסריט'} — כדאי לבדוק</span>
+                    <span className="warn-text"><Icon n="alert" /> לא השתנה דבר {it.scenes.length ? 'בסצנה הזאת' : 'בתסריט'} — כדאי לבדוק</span>
                   )}
                 </td>
               </tr>

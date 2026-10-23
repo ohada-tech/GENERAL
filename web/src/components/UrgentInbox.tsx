@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, useApi } from '../lib/api';
 import { fmtRelative } from '../lib/format';
 import { setBadge } from '../lib/push';
+import { Icon } from './Icon';
 
 export function UrgentInbox() {
   const { data, reload } = useApi<Notification[]>('/api/attention', { pollMs: 5000 });
@@ -33,12 +34,12 @@ export function UrgentInbox() {
   return (
     <div className="urgent">
       <button className={`btn btn-sm urgent-btn ${pending.length ? 'urgent-live' : ''}`} onClick={() => setOpen((o) => !o)} aria-label="הודעות דחופות">
-        ⏳ מחכה לך{pending.length ? ` · ${pending.length}` : ''}
+        <Icon n="hourglass" /> מחכה לך{pending.length ? ` · ${pending.length}` : ''}
       </button>
       {open && (
         <div className="bell-panel urgent-panel" onMouseLeave={() => setOpen(false)}>
           <div className="bell-head">
-            <strong>⏳ מחכה לך</strong>
+            <strong><Icon n="hourglass" /> מחכה לך</strong>
             <span className="muted small">עבודה שעומדת עד שתגיב</span>
           </div>
           {pending.length === 0 ? (

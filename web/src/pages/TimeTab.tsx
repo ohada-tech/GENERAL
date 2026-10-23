@@ -13,6 +13,7 @@ import { api, useAction, useApi } from '../lib/api';
 import { fmtDate, fmtDateTime } from '../lib/format';
 import { useTimer } from '../lib/timer';
 import type { TabProps } from './ProjectPage';
+import { Icon } from '../components/Icon';
 
 interface TimeData {
   summary: TimeSummary;
@@ -81,7 +82,7 @@ export function TimeTab({ detail }: TabProps) {
                 setNote('');
               }}
             >
-              ⏹ עצור ושמור
+              <Icon n="stop" /> עצור ושמור
             </button>
           </div>
         ) : (
@@ -102,7 +103,7 @@ export function TimeTab({ detail }: TabProps) {
                 setNote('');
               }}
             >
-              ▶ התחל טיימר
+              <Icon n="play" /> התחל טיימר
             </button>
             {timer.running && <span className="small muted">יעצור את הטיימר של "{timer.running.projectName}"</span>}
           </div>
@@ -294,7 +295,7 @@ function EntryRow({ entry, liveSec, onDone }: { entry: TimeEntry; liveSec: numbe
       <td className="small">{fmtDateTime(entry.startedAt)}</td>
       <td>
         {running ? (
-          <Tag tone="info">⏱ {formatClock(liveSec ?? entry.durationSec)}</Tag>
+          <Tag tone="info"><Icon n="timer" /> {formatClock(liveSec ?? entry.durationSec)}</Tag>
         ) : (
           formatDuration(entry.durationSec)
         )}

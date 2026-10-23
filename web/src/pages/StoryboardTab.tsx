@@ -18,6 +18,7 @@ import { ConfirmButton, Empty, ErrorBox, Field, InlineError, Loading, ModeTag, M
 import { api, assetUrl, isCloud, useAction, useApi } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
 import type { TabProps } from './ProjectPage';
+import { Icon } from '../components/Icon';
 
 interface StoryboardData {
   versions: Storyboard[];
@@ -192,7 +193,7 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
                   <div className="row between">
                     <StatusBadge status={approvalTone(s.approval)} label={SHOT_APPROVAL_LABELS[s.approval]} />
                     <span className="small muted" title="רפרנסים מאושרים / סה״כ">
-                      🖼 {r.filter((x) => x.status === 'approved').length}/{r.length}
+                      <Icon n="image" /> {r.filter((x) => x.status === 'approved').length}/{r.length}
                     </span>
                   </div>
                   {!s.imagePrompt && <div className="small warn-text">חסר פרומפט תמונה</div>}
@@ -502,7 +503,7 @@ function References({ shot, refs, readOnly, onChanged }: { shot: Shot; refs: Ref
         {refs.map((r) => (
           <li key={r.id} className={`ref ref-${r.status}`}>
             <a href={r.url} target="_blank" rel="noreferrer" className="ref-thumb">
-              {r.imageUrl ? <img src={r.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span>🔗</span>}
+              {r.imageUrl ? <img src={r.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <Icon n="link" />}
             </a>
             <div className="ref-body">
               <div className="row gap-s wrap">

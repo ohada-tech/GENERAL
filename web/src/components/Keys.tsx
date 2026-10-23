@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api, useAction, useApi } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
 import { ConfirmButton, Field, InlineError, Modal, Tag } from './ui';
+import { Icon } from './Icon';
 
 export type KeyService = 'openai' | 'anthropic' | 'kie' | 'elevenlabs';
 
@@ -62,7 +63,7 @@ export function KeysTag({ keys, onClick }: { keys: Keys | undefined; onClick: ()
     <button className="tag-btn" onClick={onClick} title="מפתחות API — נשמרים בשרת בלבד">
       <Tag tone={all ? 'auto' : 'warn'}>
         <span className="keys-full">{all ? `מחובר: ${text}` : `מפתחות: ${text}`}</span>
-        <span className="keys-short">🔑 {all ? '✓' : '⚠'}</span>
+        <span className="keys-short"><Icon n="key" /> <Icon n={all ? 'check' : 'alert'} /></span>
       </Tag>
     </button>
   );

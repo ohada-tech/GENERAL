@@ -6,6 +6,7 @@ import { CONCEPT_CRITERIA, CONCEPT_MIN_AVG, conceptAvg, conceptText, type Brief,
 import { useState } from 'react';
 import { api, useAction } from '../lib/api';
 import { InlineError } from './ui';
+import { Icon } from './Icon';
 
 export function ConceptPicker({
   projectId,
@@ -36,20 +37,20 @@ export function ConceptPicker({
     <section className="card stack concept-picker">
       <div className="row between wrap gap-s">
         <div>
-          <h2>🎯 כיוון קריאייטיב</h2>
+          <h2><Icon n="target" holo /> כיוון קריאייטיב</h2>
           <div className="small muted">
             קודם הבנת המוצר, אחר כך 3 כיוונים שונים מהותית. ChatGPT מדרג ובוחר את החזק (רף: {CONCEPT_MIN_AVG}/10), ואתה יכול להחליף. התסריט נכתב רק אחרי שיש כיוון.
           </div>
         </div>
         <button className="btn" disabled={act.busy} onClick={propose}>
-          {act.busy ? 'ChatGPT חושב… (עד דקה)' : options.length ? '3 כיוונים חדשים' : '🎯 הצע 3 כיוונים'}
+          {act.busy ? 'ChatGPT חושב… (עד דקה)' : options.length ? '3 כיוונים חדשים' : <><Icon n="target" holo /> הצע 3 כיוונים</>}
         </button>
       </div>
 
       {intel && (
         <div className="intel">
           <button className="btn-link small" onClick={() => setShowIntel((x) => !x)}>
-            🔎 הבנת המוצר · {intel.facts.length} עובדות · {intel.assumptions.length} הנחות · {intel.openQuestions.length} שאלות פתוחות {showIntel ? '▴' : '▾'}
+            <Icon n="search" /> הבנת המוצר · {intel.facts.length} עובדות · {intel.assumptions.length} הנחות · {intel.openQuestions.length} שאלות פתוחות {showIntel ? '▴' : '▾'}
           </button>
           {showIntel && (
             <div className="intel-body small">
@@ -67,9 +68,9 @@ export function ConceptPicker({
                     <strong>{k}:</strong> {v}
                   </div>
                 ))}
-              <IntelList title="✅ עובדות מאומתות" items={intel.facts} />
-              <IntelList title="🟡 הנחות (לא נאמרות כעובדה)" items={intel.assumptions} />
-              <IntelList title="❓ שאלות פתוחות" items={intel.openQuestions} />
+              <IntelList icon="checkCircle" title="עובדות מאומתות" items={intel.facts} />
+              <IntelList icon="dot" title="הנחות (לא נאמרות כעובדה)" items={intel.assumptions} />
+              <IntelList icon="question" title="שאלות פתוחות" items={intel.openQuestions} />
             </div>
           )}
         </div>
@@ -92,11 +93,13 @@ export function ConceptPicker({
   );
 }
 
-function IntelList({ title, items }: { title: string; items: string[] }) {
+function IntelList({ icon, title, items }: { icon: string; title: string; items: string[] }) {
   if (!items.length) return null;
   return (
     <div>
-      <strong>{title}</strong>
+      <strong>
+        <Icon n={icon} /> {title}
+      </strong>
       <ul>
         {items.map((x) => (
           <li key={x}>{x}</li>
@@ -134,7 +137,7 @@ function ConceptCard({ c, chosen, onChoose }: { c: Concept; chosen: boolean; onC
           ))}
         </div>
       )}
-      {c.verdict && <div className="small">⚖️ {c.verdict}</div>}
+      {c.verdict && <div className="small"><Icon n="scale" /> {c.verdict}</div>}
       {c.rejected && <div className="small warn-text">נפסל ב-QA</div>}
       <button className={`btn btn-sm ${chosen ? '' : 'btn-primary'}`} disabled={chosen} onClick={onChoose}>
         {chosen ? '✓ נבחר' : 'בחר בכיוון הזה'}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, useAction, useApi } from '../lib/api';
 import { fmtRelative } from '../lib/format';
 import { InlineError, Tag } from './ui';
+import { Icon } from './Icon';
 
 type Msg = {
   id: string;
@@ -95,7 +96,7 @@ export function DevChat() {
   return (
     <>
       <button ref={fab} className="devchat-fab" onClick={() => setOpen((x) => !x)} title="בקשות שינוי ל-Claude שמפתח את המערכת">
-        💬 שינויים במערכת
+        <Icon n="chat" /> שינויים במערכת
         {unread > 0 && <span className="bell-count">{unread}</span>}
       </button>
       {open && (
@@ -108,7 +109,7 @@ export function DevChat() {
                 onClick={() => window.open(SESSION_URL, 'claude-dev', 'width=560,height=900')}
                 title="פותח בחלון צדדי את הצ'אט הישיר עם Claude — לבקשות דחופות"
               >
-                צ'אט ישיר ↗
+                <>צ'אט ישיר <Icon n="external" /></>
               </button>
               <button className="icon-btn" onClick={() => setOpen(false)} aria-label="סגור">
                 ✕
@@ -170,7 +171,7 @@ export function DevChat() {
             />
             <div className="row gap-s">
               <label className="btn btn-sm btn-ghost" title="צרף צילום מסך">
-                📎 תמונה
+                <Icon n="clip" /> תמונה
                 <input type="file" accept="image/*" multiple hidden onChange={(e) => void upload([...(e.target.files ?? [])])} />
               </label>
               <span className="grow" />

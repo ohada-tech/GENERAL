@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { canPromptInstall, isInstalledApp, onInstallChange, promptInstall } from '../lib/install';
 import { Modal } from './ui';
+import { Icon } from './Icon';
 
 /** כפתור "התקן כאפליקציה" — נעלם כשהמערכת כבר פתוחה כאפליקציה */
 export function InstallApp() {
@@ -15,13 +16,13 @@ export function InstallApp() {
   return (
     <>
       <button className="btn-link small install-link" onClick={onClick} title="התקן את המערכת כאפליקציה במחשב — חלון נפרד, בלי הדפדפן">
-        ⬇ התקן אפליקציה
+        <Icon n="download" /> התקן אפליקציה
       </button>
       {help && (
         <Modal title="התקנת המערכת כאפליקציה במחשב" onClose={() => setHelp(false)}>
           <div className="stack">
             <p>
-              <b>Chrome או Edge (Windows / Mac):</b> לחץ על סמל ההתקנה בצד שורת הכתובת (מסך עם חץ ⬇), או בתפריט ⋮ ←{' '}
+              <b>Chrome או Edge (Windows / Mac):</b> לחץ על סמל ההתקנה בצד שורת הכתובת (מסך עם חץ <Icon n="download" />), או בתפריט ⋮ ←{' '}
               <b>"שמירה ושיתוף" ← "התקנת הדף כאפליקציה"</b> (ב-Edge: <b>אפליקציות ← "התקן אתר זה כאפליקציה"</b>).
             </p>
             <p>

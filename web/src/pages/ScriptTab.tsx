@@ -24,6 +24,7 @@ import { ConfirmButton, Empty, ErrorBox, Field, InlineError, Loading, ModeTag, S
 import { api, isCloud, useAction, useApi } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
 import type { TabProps } from './ProjectPage';
+import { Icon } from '../components/Icon';
 
 interface ScriptsData {
   versions: ScriptVersion[];
@@ -102,7 +103,7 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
         </div>
         {!isCloud() && versions.length > 0 && (
           <button className="btn btn-sm btn-ghost" onClick={() => setFeedbackOpen(true)} disabled={feedbackOpen} title="Google Doc, Word או טקסט עם הערות הלקוח ← תיקון התסריט">
-            📥 הערות לקוח{pendingImport ? ' (ממתין לתיקון)' : ''}
+            <Icon n="inbox" /> הערות לקוח{pendingImport ? ' (ממתין לתיקון)' : ''}
           </button>
         )}
         <InlineError error={gen.error} onClose={gen.clearError} />
@@ -119,7 +120,7 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
               <button className={`version-item ${selected?.id === v.id ? 'on' : ''}`} onClick={() => { setSelectedId(v.id); setEditing(null); }}>
                 <span className="row between">
                   <strong>
-                    {v.id === latest?.id && (v.status === 'internal_approved' || v.status === 'client_approved') ? '⭐ ' : ''}v{v.label}
+                    {v.id === latest?.id && (v.status === 'internal_approved' || v.status === 'client_approved') ? <Icon n="star" holo /> : ''}v{v.label}
                   </strong>
                   <StatusBadge status={statusTone(v.status)} label={SCRIPT_STATUS_LABELS[v.status]} />
                 </span>
@@ -242,7 +243,7 @@ function DeletedVersions({ items, onDone }: { items: NonNullable<ScriptsData['de
   const act = useAction();
   return (
     <details className="deleted-versions">
-      <summary className="small muted">🗑 גרסאות שנמחקו ({items.length})</summary>
+      <summary className="small muted"><Icon n="trash" /> גרסאות שנמחקו ({items.length})</summary>
       <ul>
         {items.map((v) => (
           <li key={v.id} className="row between gap-s small">
@@ -343,17 +344,17 @@ function VersionView({
                 if (r) await onChanged();
               }}
             >
-              🗑 מחק
+              <Icon n="trash" /> מחק
             </ConfirmButton>
           )}
           {!isCloud() && (
             <a className="btn" href={`/api/scripts/${version.id}/view${translated ? `?lang=${toLang}` : ''}`} target="_blank" rel="noopener" title={translated ? 'פותח את התרגום בדפדפן — ומשם שמירה כ-PDF' : "פותח את התסריט בדפדפן, ממותג — ומשם 'שמור כ-PDF' לשליחה ללקוח"}>
-              👁 פתח / PDF
+              <Icon n="eye" /> פתח / PDF
             </a>
           )}
           {!isCloud() && (
             <a className="btn" href={`/api/scripts/${version.id}/docx${translated ? `?lang=${toLang}` : ''}`} download title={translated ? 'קובץ Word של התרגום' : 'קובץ Word מעוצב לשליחה ללקוח — בלי הערות פנימיות'}>
-              ⬇ Word
+              <Icon n="download" /> Word
             </a>
           )}
           {!isCloud() && (
@@ -367,7 +368,7 @@ function VersionView({
             </div>
           )}
           {isFinal ? (
-            <Tag tone="ok">⭐ הגרסה הסופית</Tag>
+            <Tag tone="ok"><Icon n="star" holo /> הגרסה הסופית</Tag>
           ) : (
             <button
               className="btn"
@@ -375,12 +376,12 @@ function VersionView({
               onClick={chooseFinal}
               title={isLatest ? 'מאשר את הגרסה הזו פנימית כגרסה הסופית' : 'יוצר עותק של הגרסה הזו כגרסה האחרונה ומאשר אותו כסופי (ההיסטוריה נשמרת)'}
             >
-              ⭐ בחר כסופי
+              <Icon n="star" holo /> בחר כסופי
             </button>
           )}
           {!isCloud() && (
             <button className="btn btn-primary" onClick={() => setSharing(true)} title="קישור פרטי ללקוח + הודעת וואטסאפ מוכנה, ומעקב אם הוא פתח">
-              📤 שלח ללקוח
+              <Icon n="send" /> שלח ללקוח
             </button>
           )}
         </div>
@@ -543,7 +544,7 @@ function ScriptEditor({
           כל השדות
         </button>
         <button role="tab" aria-selected={narrOnly} className={narrOnly ? 'on' : ''} onClick={() => setNarrOnly(true)}>
-          🎙️ קריינות בלבד
+          <Icon n="mic" holo /> קריינות בלבד
         </button>
       </div>
       {narrOnly && (
@@ -568,7 +569,7 @@ function ScriptEditor({
                 />
                 {s.visualAction && (
                   <div className="narr-visual small muted" title={s.visualAction}>
-                    👁 {s.visualAction}
+                    <Icon n="eye" /> {s.visualAction}
                   </div>
                 )}
               </div>
@@ -613,20 +614,20 @@ function ScriptEditor({
           {/* כל שדה עם כותרת בולטת וצבע משלו — שתמיד יהיה ברור מה עורכים. קריינות ומה רואים ברוחב מלא */}
           <div className="sf-stack" dir={ltr ? 'ltr' : 'rtl'}>
             <label className="sf sf-narr">
-              <span className="sf-label">🎙️ {ltr ? 'Narration — what we hear' : 'קריינות — מה שומעים'}</span>
+              <span className="sf-label"><Icon n="mic" holo /> {ltr ? 'Narration — what we hear' : 'קריינות — מה שומעים'}</span>
               <textarea rows={Math.max(2, Math.ceil(s.narration.length / 80))} value={s.narration} onChange={(e) => setScene(i, { narration: e.target.value })} placeholder={ltr ? 'No narration' : 'בלי קריינות'} />
             </label>
             <label className="sf sf-visual">
-              <span className="sf-label">👁 {ltr ? 'Visual — what we see' : 'מה רואים — ויזואל'}</span>
+              <span className="sf-label"><Icon n="eye" /> {ltr ? 'Visual — what we see' : 'מה רואים — ויזואל'}</span>
               <textarea rows={Math.max(2, Math.ceil(s.visualAction.length / 90))} value={s.visualAction} onChange={(e) => setScene(i, { visualAction: e.target.value })} />
             </label>
             <div className="sf-row">
               <label className="sf sf-onscreen">
-                <span className="sf-label">🔤 {ltr ? 'On-screen text' : 'טקסט על המסך'}</span>
+                <span className="sf-label"><Icon n="type" /> {ltr ? 'On-screen text' : 'טקסט על המסך'}</span>
                 <textarea rows={2} value={s.onScreenText} onChange={(e) => setScene(i, { onScreenText: e.target.value })} />
               </label>
               <label className="sf sf-notes">
-                <span className="sf-label">📝 {ltr ? 'Production notes' : 'הערות הפקה'}</span>
+                <span className="sf-label"><Icon n="note" /> {ltr ? 'Production notes' : 'הערות הפקה'}</span>
                 <input value={s.notes} onChange={(e) => setScene(i, { notes: e.target.value })} />
               </label>
             </div>
@@ -707,7 +708,7 @@ function ApprovalPanel({
         <div className="approval-row">
           {!isCloud() && (
             <a className="btn" href={`/api/scripts/${version.id}/docx`} download>
-              ⬇ Word לשליחה ללקוח
+              <Icon n="download" /> Word לשליחה ללקוח
             </a>
           )}
           <span className="small">שלח את התסריט ללקוח. לאחר שאישר:</span>
@@ -840,9 +841,9 @@ function SceneCell({ s, fields }: { s: ScriptContent['scenes'][number]; fields: 
   const hl = (f: string) => (fields.includes(f) ? 'diff-hl' : '');
   return (
     <div className="small">
-      <div className={hl('narration')} dir="auto">🎙 {s.narration}</div>
+      <div className={hl('narration')} dir="auto"><Icon n="mic" holo /> {s.narration}</div>
       {s.onScreenText && <div className={hl('onScreenText')} dir="auto">🅣 {s.onScreenText}</div>}
-      <div className={hl('visualAction')} dir="auto">🎬 {s.visualAction}</div>
+      <div className={hl('visualAction')} dir="auto"><Icon n="clapper" holo /> {s.visualAction}</div>
       <div className={`muted ${hl('estDurationSec')}`}>{s.estDurationSec}ש׳</div>
     </div>
   );
@@ -952,7 +953,7 @@ function ImproveBar({
         {!isCloud() && (
           <>
             <button className="btn btn-ghost" disabled={upload.busy} onClick={() => fileRef.current?.click()} title="מצרף Word, טקסט או Markdown — הטקסט שלו נשלח עם ההנחיה">
-              📎 צרף קובץ
+              <Icon n="clip" /> צרף קובץ
             </button>
             <input
               ref={fileRef}
@@ -970,19 +971,19 @@ function ImproveBar({
           </>
         )}
         <button className="btn btn-primary" disabled={act.busy || running} onClick={rewrite} title="ChatGPT כותב תסריט חדש מהעובדות ומהכיוון — לא מלטש את הנוסח הזה — ועובר QA. ההנחיה (אם יש) מסבירה מה לא עבד">
-          ✍️ כתוב מחדש
+          <Icon n="pen" /> כתוב מחדש
         </button>
         <button className="btn" disabled={act.busy || running} onClick={() => go('openai')} title="תיקון בתוך אותו שלד: ChatGPT מלטש את הגרסה הזו — נוצרת גרסה חדשה">
-          ✨ שפר עם ChatGPT
+          <Icon n="sparkle" holo /> שפר עם ChatGPT
         </button>
         <button className="btn btn-ghost" disabled={act.busy || running} onClick={() => go('claude')} title="Claude משפר רק את &quot;מה רואים&quot; ונותן הצעות. הקריינות והטקסט על המסך לא משתנים">
-          🎬 שפר ויזואל עם Claude
+          <Icon n="clapper" holo /> שפר ויזואל עם Claude
         </button>
       </div>
       {!isLatest && <div className="small muted">משפר את v{version.label} — תיווצר ממנה גרסה חדשה (הגרסאות האחרות לא משתנות)</div>}
       {doc && (
         <div className="row gap-s small attached-doc">
-          <Tag tone="info">📎 {doc.name}</Tag>
+          <Tag tone="info"><Icon n="clip" /> {doc.name}</Tag>
           <span className="muted">
             {doc.text.length.toLocaleString('he-IL')} תווים{doc.truncated ? ' (נחתך ל-15,000)' : ''} · יישלח עם ההנחיה
           </span>

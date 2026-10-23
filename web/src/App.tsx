@@ -16,6 +16,7 @@ import { LessonsPage } from './pages/LessonsPage';
 import { InstallApp } from './components/InstallApp';
 import { DevChat } from './components/DevChat';
 import { ProjectPage } from './pages/ProjectPage';
+import { Icon, IconDefs } from './components/Icon';
 
 export interface Health {
   ok: boolean;
@@ -49,6 +50,7 @@ function Shell({ canLogout }: { canLogout: boolean }) {
   };
   return (
     <div className="app">
+      <IconDefs />
       <header className="topbar">
         <Link to="/" className="brand" aria-label="AI Production AP — לדשבורד">
           <BrandLockup />
@@ -59,7 +61,7 @@ function Shell({ canLogout }: { canLogout: boolean }) {
         <div className="topbar-side">
           {!isCloud() && <InstallApp />}
           <Link to="/learning" className="btn-link small" title="ספר הידע והכללים שהמערכת למדה">
-            🧠 המוח
+            <Icon n="brain" holo /> המוח
           </Link>
           <TimerWidget />
           {health.error ? (

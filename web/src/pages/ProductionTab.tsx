@@ -4,6 +4,7 @@ import { ConfirmButton, Empty, ErrorBox, InlineError, Loading, Tag } from '../co
 import { api, useAction, useApi } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
 import type { TabProps } from './ProjectPage';
+import { Icon } from '../components/Icon';
 
 type Stage = 'images' | 'animation' | 'audio' | 'editing' | 'delivery';
 
@@ -86,7 +87,7 @@ export function ProductionTab({ detail, reload }: TabProps) {
         </div>
         {o.generator === 'higgsfield' ? (
           <div className="notice">
-            תמונות וקליפים בפרויקט הזה נוצרים ב-Higgsfield: בקש מ-Claude "תריץ תמונות לפרויקט" (Unlimited דרך הדפדפן, או קרדיטים דרך MCP — באישורך), או העלה בעצמך עם "⬆ העלה" בכל שוט.
+            תמונות וקליפים בפרויקט הזה נוצרים ב-Higgsfield: בקש מ-Claude "תריץ תמונות לפרויקט" (Unlimited דרך הדפדפן, או קרדיטים דרך MCP — באישורך), או העלה בעצמך עם "העלה" בכל שוט.
           </div>
         ) : (
           !o.kieConfigured && <div className="notice warn">KIE לא מחובר — לחץ על "מפתחות" בסרגל העליון כדי שהמערכת תוכל ליצור תמונות, וידאו וסאונד.</div>
@@ -171,12 +172,12 @@ function StageCard(props: {
             ) : null}
           </h2>
           <p className="small muted">{t.what}</p>
-          {v.blockedReason && !approved && <p className="small muted">⏳ {v.blockedReason}</p>}
+          {v.blockedReason && !approved && <p className="small muted"><Icon n="hourglass" /> {v.blockedReason}</p>}
         </div>
         <div className="row gap-s wrap">
           {v.stage !== 'delivery' && v.canStart && !approved && missing > 0 && !generating && !(props.external && (v.stage === 'images' || v.stage === 'animation')) && (
             <button className="btn btn-primary" disabled={props.busy} onClick={props.onStart}>
-              ▶ {created ? `צור את החסרים (${missing})` : `הפעל — ${total} פריטים`}
+              <Icon n="play" /> {created ? `צור את החסרים (${missing})` : `הפעל — ${total} פריטים`}
               {v.pendingEstimate.usd > 0 ? ` · ~${usd(v.pendingEstimate.usd)}` : ''}
             </button>
           )}
@@ -189,7 +190,7 @@ function StageCard(props: {
           {v.stage === 'delivery' && !approved && props.finalMedia?.status === 'approved' && (
             <>
               <a className="btn" href={`${fileUrl(props.finalMedia)}?download=1`}>
-                ⬇ הורד את הסרטון
+                <Icon n="download" /> הורד את הסרטון
               </a>
               <button className="btn btn-primary" disabled={props.busy} onClick={props.onApprove}>
                 ✓ הלקוח אישר — סגור פרויקט
@@ -260,7 +261,7 @@ const ACCEPT: Record<MediaKind, string> = { frame: 'image/*', clip: 'video/*', f
 function UploadButton({ kind, onFile }: { kind: MediaKind; onFile: (f: File) => void }) {
   return (
     <label className="btn btn-sm btn-ghost" title="העלאת קובץ שנוצר מחוץ למערכת (למשל ב-Higgsfield)">
-      ⬆ העלה
+      <Icon n="upload" /> העלה
       <input
         type="file"
         hidden
@@ -340,7 +341,7 @@ function MediaCard({
       {showPrompt && <pre className="prompt-box" dir="ltr">{m.prompt}</pre>}
       {m.kind === 'final' && hasFile && (
         <a className="btn btn-sm" href={`${fileUrl(m)}?download=1`}>
-          ⬇ הורד
+          <Icon n="download" /> הורד
         </a>
       )}
       {!locked && m.status !== 'generating' && m.status !== 'rejected' && (

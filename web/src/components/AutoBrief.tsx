@@ -6,6 +6,7 @@ import { BRIEF_FIELD_LABELS, type Brief } from '@apos/shared';
 import { createContext, useContext, useRef, useState } from 'react';
 import { api, useAction } from '../lib/api';
 import { InlineError } from './ui';
+import { Icon } from './Icon';
 
 /** תוויות השדות שה-AI מילא — כדי ש-Field יציג ✨ */
 export const AiFilledContext = createContext<Set<string>>(new Set());
@@ -75,7 +76,7 @@ export function AutoBrief({
     <section className="card stack auto-brief">
       <div className="row between wrap gap-s">
         <div>
-          <h2>✨ מלא את האפיון אוטומטית</h2>
+          <h2><Icon n="sparkle" holo /> מלא את האפיון אוטומטית</h2>
           <div className="small muted">מסיכום שיחה, וואטסאפ, קבצים מתיקיית החומרים ואתר הלקוח. ממלא רק שדות ריקים; אתה רק מאשר.</div>
         </div>
         <button className="btn btn-sm btn-ghost" onClick={() => setOpen((x) => !x)}>
@@ -89,7 +90,7 @@ export function AutoBrief({
           <div className="row gap-s wrap">
             <input className="grow" dir="ltr" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://אתר-הלקוח" />
             <button className="btn btn-ghost" type="button" onClick={() => fileRef.current?.click()} title="Word, טקסט או Markdown — עד 10 קבצים">
-              📎 קבצים{files.length ? ` (${files.length})` : ''}
+              <Icon n="clip" /> קבצים{files.length ? ` (${files.length})` : ''}
             </button>
             <input
               ref={fileRef}
@@ -110,7 +111,7 @@ export function AutoBrief({
               לדרוס גם שדות שכבר מילאתי
             </label>
             <button className="btn btn-primary" disabled={act.busy || (!text.trim() && !url.trim() && !files.length)} onClick={run}>
-              {act.busy ? 'קורא וממלא…' : '✨ מלא את האפיון'}
+              {act.busy ? 'קורא וממלא…' : <><Icon n="sparkle" holo /> מלא את האפיון</>}
             </button>
           </div>
         </>

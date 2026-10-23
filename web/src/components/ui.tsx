@@ -1,6 +1,7 @@
 import { STATUS_LABELS, type Status } from '@apos/shared';
 import { useAiFilled } from './AutoBrief';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Icon } from './Icon';
 
 export function StatusBadge({ status, label }: { status: Status | string; label?: string }) {
   const text = label ?? STATUS_LABELS[status as Status]?.he ?? status;
@@ -123,7 +124,7 @@ export function Field({
         {label}
         {required && <span className="req">*</span>}
         {missing && <span className="missing-dot">חסר</span>}
-        {ai && <span className="ai-dot" title="מולא אוטומטית מהמקורות — עריכה שלך מסירה את הסימון">✨ AI</span>}
+        {ai && <span className="ai-dot" title="מולא אוטומטית מהמקורות — עריכה שלך מסירה את הסימון"><Icon n="sparkle" holo /> AI</span>}
       </span>
       {children}
       {hint && <span className="field-hint">{hint}</span>}

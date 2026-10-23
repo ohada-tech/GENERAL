@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { api, useAction, useApi } from '../lib/api';
 import { fmtDateTime, fmtRelative } from '../lib/format';
 import { InlineError, Modal, Tag } from './ui';
+import { Icon } from './Icon';
 
 interface Link {
   token: string;
@@ -92,7 +93,7 @@ export function ShareDialog({ version, lang, onClose }: { version: ScriptVersion
           <div className="share-status">
             {live.viewCount > 0 ? (
               <Tag tone="ok">
-                👁 הלקוח פתח {live.viewCount === 1 ? 'פעם אחת' : `${live.viewCount} פעמים`} · לאחרונה {fmtRelative(live.lastViewedAt)}
+                <Icon n="eye" /> הלקוח פתח {live.viewCount === 1 ? 'פעם אחת' : `${live.viewCount} פעמים`} · לאחרונה {fmtRelative(live.lastViewedAt)}
               </Tag>
             ) : (
               <Tag tone="warn">עוד לא נפתח</Tag>

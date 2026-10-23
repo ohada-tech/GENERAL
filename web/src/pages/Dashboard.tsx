@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Empty, ErrorBox, Field, InlineError, Loading, Modal, rowLink, StatusBadge, Tag } from '../components/ui';
 import { api, assetUrl, useAction, useApi } from '../lib/api';
 import { daysUntil, fmtDate, fmtRelative } from '../lib/format';
+import { Icon } from '../components/Icon';
 
 /* מסך "היום": מה מחכה לך למעלה, ואז הפרויקטים ככרטיסים עם תמונה ופס שלבים */
 
@@ -69,10 +70,10 @@ function ShareLine({ share, waiting }: { share: NonNullable<ProjectSummary['last
   return (
     <div className={`t-share ${nudge ? 't-share-nudge' : ''}`}>
       <span>
-        📤 v{share.label} נשלח {days === 0 ? 'היום' : days === 1 ? 'אתמול' : `לפני ${days} ימים`}
+        <Icon n="send" /> v{share.label} נשלח {days === 0 ? 'היום' : days === 1 ? 'אתמול' : `לפני ${days} ימים`}
       </span>
       <span>{share.views > 0 ? '· נפתח ✓' : '· עוד לא נפתח'}</span>
-      {nudge && <span className="t-share-hint">⏰ זמן להזכיר ללקוח</span>}
+      {nudge && <span className="t-share-hint"><Icon n="alarm" /> זמן להזכיר ללקוח</span>}
     </div>
   );
 }
@@ -337,7 +338,7 @@ function ImportButton({ onDone }: { onDone: () => Promise<void> | void }) {
   return (
     <span className="row gap-s">
       <label className="btn" title="ייבוא פרויקטים קיימים מקובץ — בלי להפעיל AI ובלי עלות">
-        ⬆ ייבוא פרויקטים
+        <Icon n="upload" /> ייבוא פרויקטים
         <input type="file" accept="application/json,.json" hidden onChange={onFile} disabled={act.busy} />
       </label>
       {msg && <Tag tone="ok">{msg}</Tag>}
