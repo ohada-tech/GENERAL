@@ -15,7 +15,7 @@ import { previewScript, proposeConcepts } from '../services/concepts.js';
 import { judgeScript } from '../services/creative.js';
 import { bridge, setBridgeMode } from '../services/bridge.js';
 import { textProviderFor } from '../jobs/handlers.js';
-import { needsOwner } from '../services/attention.js';
+import { needsOwner, resolveAttention } from '../services/attention.js';
 import { pushAll, subscribe, unsubscribe, vapidKeys } from '../services/push.js';
 import { scriptDocx } from '../services/script-docx.js';
 import { scriptHtml } from '../services/script-html.js';
@@ -98,6 +98,9 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/api/push/subscribe', async (req) => subscribe(ctx, (req.body ?? {}) as never));
   app.post('/api/push/unsubscribe', async (req) => unsubscribe(ctx, String(((req.body ?? {}) as { endpoint?: string }).endpoint ?? '')));
   app.post('/api/push/test', async () => pushAll(ctx, { title: 'AI Production AP', body: 'ההתראות פועלות ✓', link: '/', tag: 'push-test' }));
+
+  // סגירת הודעות "מחכה לך" שטופלו (מסשן של Claude, או "סמן הכל כטופל")
+  app.post('/api/attention/resolve', async (req) => resolveAttention(ctx, (req.body ?? {}) as { projectId?: string; match?: string; all?: boolean }));
 
   // סשן של Claude (או כל כלי אחר) תקוע ומחכה לאוהד — התראה קופצת מיד
   app.post('/api/attention', async (req, reply) => {

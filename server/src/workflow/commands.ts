@@ -1,3 +1,4 @@
+import { resolveAttention } from '../services/attention.js';
 /**
  * פקודות (Commands): כל פעולה של המשתמש עוברת כאן.
  * כל פקודה בודקת את נקודות האישור (Gates) לפני שהיא משנה מצב, ורושמת Event.
@@ -253,6 +254,8 @@ export function markDelivered(ctx: Ctx, projectId: string, input: { note?: strin
   const at = ctx.now().toISOString();
   return tx(ctx.db, () => {
     ctx.db.prepare('UPDATE projects SET delivered_at = ?, delivered_note = ?, updated_at = ? WHERE id = ?').run(at, note, at, projectId);
+    // נמסר — אין יותר מה לחכות לו בפרויקט הזה
+    resolveAttention(ctx, { projectId });
     emit(ctx, { projectId, type: 'project.progress', actor: by, message: `✅ נמסר ללקוח והסרטון אושר${note ? `: ${note}` : ''}`, payload: { by, delivered: true } });
     return { ...p, deliveredAt: at, deliveredNote: note };
   });
@@ -407,6 +410,8 @@ export function approveScriptInternal(ctx: Ctx, versionId: string, note = '') {
  * והגרסה הסופית מאושרת פנימית — משם ממשיכים כרגיל לאישור לקוח ולסטורי בורד.
  */
 export function chooseFinalScript(ctx: Ctx, versionId: string) {
+  const chosen = getScript(ctx.db, versionId);
+  if (chosen) resolveAttention(ctx, { projectId: chosen.projectId, titlePrefix: '⏳ ChatGPT QA' });
   const v = getScript(ctx.db, versionId);
   if (!v) throw new NotFoundError('גרסת תסריט');
   const latest = listScripts(ctx.db, v.projectId)[0];

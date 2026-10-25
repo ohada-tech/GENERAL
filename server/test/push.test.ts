@@ -64,3 +64,22 @@ describe('Push alerts when something waits for Ohad', () => {
     expect((await app.inject({ method: 'POST', url: '/api/push/subscribe', payload: { endpoint: 'http://x' } })).statusCode).toBe(400);
   });
 });
+
+describe('"מחכה לך" מסונכרן עם העבודה', () => {
+  it('הודעה חדשה על אותו פרויקט מחליפה את הקודמת; נמסר סוגר הכל; סגירה לפי מילים', async () => {
+    const ctx = makeCtx();
+    setPushSender(async () => undefined);
+    const p = cmd.createProject(ctx, { name: 'Car rental', clientName: 'Rent' });
+    const app = await buildApp(ctx);
+    const open = async () => (await app.inject({ url: '/api/attention' })).json().filter((n: any) => !n.readAt);
+    await app.inject({ method: 'POST', url: '/api/attention', payload: { projectId: p.id, text: 'שלב 1: תתחבר להיגספילד' } });
+    await app.inject({ method: 'POST', url: '/api/attention', payload: { projectId: p.id, text: 'שלב 2: לאשר קריינות' } });
+    await app.inject({ method: 'POST', url: '/api/attention', payload: { text: 'שאלה כללית בלי פרויקט' } });
+    expect((await open()).map((n: any) => n.body).sort()).toEqual(['שאלה כללית בלי פרויקט', 'שלב 2: לאשר קריינות'].sort());
+    const r = (await app.inject({ method: 'POST', url: '/api/attention/resolve', payload: { match: 'שאלה כללית' } })).json();
+    expect(r.resolved).toBe(1);
+    cmd.markDelivered(ctx, p.id, {});
+    expect(await open()).toEqual([]);
+    expect((await app.inject({ method: 'POST', url: '/api/attention/resolve', payload: {} })).statusCode).toBe(400);
+  });
+});

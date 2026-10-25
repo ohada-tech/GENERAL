@@ -24,6 +24,11 @@ export function UrgentInbox() {
     if (/^https?:\/\//.test(link)) window.open(link, '_blank', 'noopener');
     else if (link && link !== '/') navigate(link);
   };
+  const markAll = async () => {
+    if (!window.confirm(`לסמן את כל ${pending.length} ההודעות כטופלו?`)) return;
+    await api.post('/api/attention/resolve', { all: true }).catch(() => undefined);
+    void reload();
+  };
   const markDone = async (n: Notification) => {
     await api.post(`/api/attention/${n.id}/done`).catch(() => undefined);
     void reload();
@@ -41,6 +46,11 @@ export function UrgentInbox() {
           <div className="bell-head">
             <strong><Icon n="hourglass" /> מחכה לך</strong>
             <span className="muted small">עבודה שעומדת עד שתגיב</span>
+            {pending.length > 1 && (
+              <button className="btn btn-sm btn-ghost" onClick={markAll}>
+                <Icon n="check" /> סמן הכל כטופל
+              </button>
+            )}
           </div>
           {pending.length === 0 ? (
             <div className="muted pad">אין כרגע שום דבר שמחכה לך ✓</div>

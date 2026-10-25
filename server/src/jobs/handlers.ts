@@ -18,7 +18,7 @@ import { improveScript, type JsonCapableProvider } from '../providers/collab.js'
 import type { FeedbackReview } from '../services/client-feedback.js';
 import { runFeedbackReview, saveReview } from '../services/feedback-review.js';
 import { runCreativePipeline } from '../services/creative.js';
-import { needsOwner } from '../services/attention.js';
+import { needsOwner, resolveAttention } from '../services/attention.js';
 import { QA_STAGES, type QaReport } from '@apos/shared';
 
 const AREAS_FOR: Record<'script' | 'storyboard', LessonArea[]> = {
@@ -155,6 +155,8 @@ function qaNote(qa?: QaReport) {
   return qa.passed ? ` · QA ${qa.total}/100 ✓` : ` · QA ${qa.total}/100 — לא עבר אחרי ${qa.rounds} סבבים (${QA_STAGES[qa.failStage as keyof typeof QA_STAGES] ?? qa.failStage})`;
 }
 function flagIfStuck(ctx: Ctx, projectId: string, label: string, qa?: QaReport) {
+  // גרסה חדשה מחליפה את דוחות ה-QA הקודמים של הפרויקט ב"מחכה לך"
+  resolveAttention(ctx, { projectId, titlePrefix: '⏳ ChatGPT QA' });
   if (!qa?.needsOwner) return;
   const left = [...qa.critical, ...qa.unsupportedClaims.map((c) => `טענה לא מבוססת: ${c}`), ...qa.fixes].slice(0, 3).join(' · ');
   needsOwner(ctx, {
