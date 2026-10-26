@@ -7,13 +7,14 @@ import { shotFieldsSchema, versionLabel, type Job, type JobType, type ScriptCont
 import { GateError, type Ctx } from '../context.js';
 import { json, uid } from '../db/db.js';
 import { getProject, getScript, nextScriptVersion } from '../db/repo.js';
-import type { GenResult, ScriptDraft, TextProvider } from '../providers/types.js';
+import type { GenResult, ProjectContext, RevisionKind, ScriptDraft, TextProvider } from '../providers/types.js';
 import { ProviderError } from '../providers/types.js';
 import { emit } from '../workflow/events.js';
 import { MEDIA_HANDLERS } from './media.js';
 import { applyDistilled, DISTILL_SCHEMA, distillPrompts, lessonsFor, type LessonArea } from '../services/learning.js';
 import { playbookFor } from '../services/knowledge.js';
-import { lockToTargets, scopeLabel, targetScenes } from '../workflow/revision-scope.js';
+import { lockToTargets, revisionKind, scopeLabel, targetScenes } from '../workflow/revision-scope.js';
+import { newCopyViolations } from '../services/creative-checks.js';
 import { improveScript, type JsonCapableProvider } from '../providers/collab.js';
 import type { FeedbackReview } from '../services/client-feedback.js';
 import { runFeedbackReview, saveReview } from '../services/feedback-review.js';
@@ -191,18 +192,72 @@ const scriptGenerate: JobHandler<ScriptRun> = {
   },
 };
 
-const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string; targets?: number[]; improveBy?: 'openai' | 'claude'; rewrite?: boolean }> = {
+const scopeRule = (targets: number[]) =>
+  `SCOPE (mandatory): change ONLY scene${targets.length > 1 ? 's' : ''} ${targets.map((i) => i + 1).join(', ')} (1-based). Every other scene, the title and the logline must stay exactly as they are.`;
+
+/**
+ * שער כללי הקופי לפני שמירת גרסה מתיקון: אם התיקון הכניס ביטוי ברושור / פנייה חוזרת / פתיחה חוזרת / חריגה מהתקציב —
+ * מחזירים לכותב פעם אחת עם ההפרות. מה שנשאר אחרי זה נשמר, אבל מסומן בהערת הגרסה (לא נבלע בשקט).
+ */
+async function copyGate(
+  pc: ProjectContext,
+  base: ScriptContent,
+  draft: GenResult<ScriptDraft>,
+  targets: number[],
+  fix: (current: ScriptContent, note: string) => Promise<GenResult<ScriptDraft>>,
+): Promise<{ draft: GenResult<ScriptDraft>; left: string[] }> {
+  const found = newCopyViolations(base, draft.data, pc.brief);
+  if (!found.length) return { draft, left: [] };
+  const current: ScriptContent = { ...draft.data, scenes: draft.data.scenes.map((s, i) => ({ id: `s${i}`, ...s })) };
+  const note = [
+    'Your revision broke the COPY RULES. Fix ONLY these problems and keep everything else exactly as it is:',
+    ...found.map((f) => `- ${f}`),
+    targets.length ? scopeRule(targets) : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+  let again: GenResult<ScriptDraft>;
+  try {
+    again = await fix(current, note);
+  } catch {
+    return { draft, left: found };
+  }
+  if (targets.length) again.data = lockToTargets(base, again.data, targets);
+  const left = newCopyViolations(base, again.data, pc.brief);
+  // הסבב השני לא תמיד עדיף: שומרים את מה שיש בו פחות הפרות
+  if (left.length > found.length) return { draft, left: found };
+  return { draft: { ...again, usage: sumUsage(draft.usage, again.usage) }, left };
+}
+
+const copyNote = (issues?: string[]) => (issues?.length ? ` · ⚠️ כללי קופי: ${issues.slice(0, 2).join(' · ')}` : '');
+const sumUsage = (a?: GenResult<unknown>['usage'], b?: GenResult<unknown>['usage']) =>
+  a || b ? { inputTokens: (a?.inputTokens ?? 0) + (b?.inputTokens ?? 0), outputTokens: (a?.outputTokens ?? 0) + (b?.outputTokens ?? 0) } : undefined;
+
+const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string; targets?: number[]; improveBy?: 'openai' | 'claude'; rewrite?: boolean; copyIssues?: string[] }> = {
   async run(ctx, job) {
     const baseId = String(job.payload.baseVersionId ?? '');
     const feedback = String(job.payload.feedback ?? '');
     const base = getScript(ctx.db, baseId);
     if (!base) throw new GateError('גרסת הבסיס לא נמצאה');
     const pc = projectContext(ctx, job.projectId, 'script');
-    if (job.payload.mode === 'rewrite') {
+    // ייבוא הערות לקוח מגיע עם סצנות מחושבות מראש (ריק = הערה כללית, בלי נעילה)
+    const preset = Array.isArray(job.payload.targets) ? (job.payload.targets as number[]) : null;
+    const asked = job.payload.mode === 'rewrite';
+    // "תכתוב מחדש" שנכתב בתיבת התיקון = כתיבה מחדש, לא תיקון על גבי השלד הישן
+    const kind: RevisionKind | null = asked
+      ? 'rewrite'
+      : job.payload.improveBy
+        ? null
+        : preset // הערות לקוח מיובאות לא מפעילות כתיבה מחדש מעצמן
+          ? preset.length ? 'surgical' : 'global'
+          : revisionKind(feedback, targetScenes(base.content, feedback));
+    if (kind === 'rewrite') {
       const route = creativeRoute(ctx, job.projectId);
-      if (!route) throw new ProviderError('כתיבה מחדש דורשת ChatGPT מחובר (לא במצב הדגמה)', false, 'not_configured');
-      const r = await runCreativePipeline(ctx, job.projectId, { ...route, rewriteNotes: feedback });
-      return { draft: r.draft, isDemo: false, baseId, feedback, targets: [], rewrite: true, steps: r.steps };
+      if (route) {
+        const r = await runCreativePipeline(ctx, job.projectId, { ...route, rewriteNotes: feedback });
+        return { draft: r.draft, isDemo: false, baseId, feedback, targets: [], rewrite: true, steps: r.steps };
+      }
+      if (asked) throw new ProviderError('כתיבה מחדש דורשת ChatGPT מחובר (לא במצב הדגמה)', false, 'not_configured');
     }
     const improveBy = job.payload.improveBy as 'openai' | 'claude' | undefined;
     if (improveBy) {
@@ -214,20 +269,21 @@ const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string; t
       const withDoc = docText
         ? `${feedback || 'שפר את התסריט לפי המסמך המצורף.'}\n\nמסמך מצורף (${String(job.payload.docName ?? 'מסמך')}) — חומר רקע להנחיה:\n${docText}`
         : feedback;
-      const draft = await improveScript(reviewer, pc, base.content, withDoc);
+      let draft = await improveScript(reviewer, pc, base.content, withDoc);
       if (targets.length) draft.data = lockToTargets(base.content, draft.data, targets);
-      return { draft, isDemo: false, baseId, feedback, targets, improveBy };
+      const gated = await copyGate(pc, base.content, draft, targets, (d, note) => improveScript(reviewer, pc, d, note));
+      return { draft: gated.draft, isDemo: false, baseId, feedback, targets, improveBy, copyIssues: gated.left };
     }
     const { provider, model } = textProviderFor(ctx, job.projectId);
     // הערה שמצטטת שורות / מציינת סצנות = תיקון ממוקד: רק הן משתנות, וזה נאכף בקוד ולא רק בפרומפט
-    // ייבוא הערות לקוח מגיע עם סצנות מחושבות מראש (ריק = הערה כללית, בלי נעילה)
-    const targets = Array.isArray(job.payload.targets) ? (job.payload.targets as number[]) : targetScenes(base.content, feedback);
-    const scoped = targets.length
-      ? `${feedback}\n\nSCOPE (mandatory): change ONLY scene${targets.length > 1 ? 's' : ''} ${targets.map((i) => i + 1).join(', ')} (1-based). Every other scene, the title and the logline must stay exactly as they are.`
-      : feedback;
-    const draft = await provider.reviseScript(pc, base.content, scoped, { model });
+    const targets = preset ?? targetScenes(base.content, feedback);
+    const scoped = targets.length ? `${feedback}\n\n${scopeRule(targets)}` : feedback;
+    // הערה כללית לא נשלחת כ-SURGICAL EDIT (אחרת נשמר השלד הישן); כתיבה מחדש בלי ChatGPT — הנחיה לכתוב מחדש
+    const draft = await provider.reviseScript({ ...pc, revision: kind ?? 'surgical' }, base.content, scoped, { model });
     if (targets.length) draft.data = lockToTargets(base.content, draft.data, targets);
-    return { draft, isDemo: provider.isDemo, baseId, feedback, targets };
+    if (provider.isDemo) return { draft, isDemo: true, baseId, feedback, targets };
+    const gated = await copyGate(pc, base.content, draft, targets, (d, note) => provider.reviseScript({ ...pc, revision: 'surgical' }, d, note, { model }));
+    return { draft: gated.draft, isDemo: false, baseId, feedback, targets, rewrite: kind === 'rewrite', copyIssues: gated.left };
   },
   persist(ctx, job, r) {
     const base = getScript(ctx.db, r.baseId);
@@ -237,11 +293,11 @@ const scriptRevise: JobHandler<ScriptRun & { baseId: string; feedback: string; t
     const out = insertScriptVersion(ctx, job.projectId, r.draft, {
       source: 'ai_revision',
       parentId: r.baseId,
-      changeNote: fromClient
+      changeNote: (fromClient
         ? `תיקון לפי הערות הלקוח (${Number(job.payload.feedbackCount) || ''} הערות) ל-v${base?.label ?? '?'}${scope ? ` (${scope})` : ''}`
         : r.rewrite
           ? `כתיבה מחדש במקום v${base?.label ?? '?'}${qaNote(r.draft.data.qa)}`
-          : `${who ? `שיפור ${who}` : 'תיקון'} ל-v${base?.label ?? '?'}${scope ? ` (${scope})` : ''}`,
+          : `${who ? `שיפור ${who}` : 'תיקון'} ל-v${base?.label ?? '?'}${scope ? ` (${scope})` : ''}`) + copyNote(r.copyIssues),
       isDemo: r.isDemo,
     });
     flagIfStuck(ctx, job.projectId, out.label, r.draft.data.qa);
