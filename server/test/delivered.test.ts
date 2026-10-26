@@ -29,3 +29,19 @@ describe('"נמסר ללקוח" — הפקה שנעשתה מחוץ למערכת'
     expect(back.deliveredAt).toBeNull();
   });
 });
+
+describe('מחיקת פרויקט', () => {
+  it('נמחק רק כשהוא ריק; פרויקט עם תסריט נשאר', async () => {
+    const ctx = makeCtx();
+    const app = await buildApp(ctx);
+    const empty = cmd.createProject(ctx, { name: 'kc', clientName: '' });
+    expect((await app.inject({ method: 'DELETE', url: `/api/projects/${empty.id}` })).statusCode).toBe(200);
+    expect(getProject(ctx.db, empty.id)).toBeNull();
+    const busy = projectWithBrief(ctx);
+    cmd.completeBrief(ctx, busy.id);
+    await drain(ctx);
+    const r = await app.inject({ method: 'DELETE', url: `/api/projects/${busy.id}` });
+    expect(r.statusCode).toBe(409);
+    expect(getProject(ctx.db, busy.id)).toBeTruthy();
+  });
+});

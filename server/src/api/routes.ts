@@ -124,6 +124,8 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     return cmd.markDelivered(ctx, (req.params as any).id, b);
   });
   app.delete('/api/projects/:id/delivered', async (req) => cmd.unmarkDelivered(ctx, (req.params as any).id));
+  // מחיקת פרויקט ריק בלבד (נפתח בטעות)
+  app.delete('/api/projects/:id', async (req) => cmd.deleteEmptyProject(ctx, (req.params as any).id));
   app.post('/api/scripts/:vid/rewrite', async (req) =>
     cmd.requestScriptRewrite(ctx, (req.params as any).vid, String(((req.body ?? {}) as { note?: string }).note ?? '')),
   );

@@ -261,6 +261,24 @@ export function markDelivered(ctx: Ctx, projectId: string, input: { note?: strin
   });
 }
 
+/**
+ * מחיקת פרויקט — רק כשהוא ריק (נפתח בטעות): בלי גרסאות תסריט (גם לא מחוקות), סטורי בורד, מדיה או קבצים.
+ * פרויקט שיש בו עבודה לא נמחק אף פעם מכאן.
+ */
+export function deleteEmptyProject(ctx: Ctx, projectId: string) {
+  const p = mustProject(ctx, projectId);
+  const count = (table: string) => (ctx.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE project_id = ?`).get(projectId) as { n: number }).n;
+  const busy = [
+    ['script_versions', 'גרסאות תסריט'],
+    ['storyboards', 'סטורי בורד'],
+    ['media', 'מדיה'],
+    ['assets', 'קבצים'],
+  ].filter(([t]) => count(t) > 0);
+  if (busy.length) throw new GateError(`אפשר למחוק רק פרויקט ריק — ב"${p.name}" יש ${busy.map(([, l]) => l).join(', ')}`, 409);
+  ctx.db.prepare('DELETE FROM projects WHERE id = ?').run(projectId);
+  return { ok: true, deleted: p.name };
+}
+
 export function unmarkDelivered(ctx: Ctx, projectId: string) {
   mustProject(ctx, projectId);
   const at = ctx.now().toISOString();

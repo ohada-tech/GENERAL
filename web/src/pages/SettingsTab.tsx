@@ -1,6 +1,8 @@
 import { IMAGE_MODELS, KIE_USD_PER_CREDIT, VIDEO_MODELS, VOICES, type ProjectSettings } from '@apos/shared';
 import { useEffect, useRef, useState } from 'react';
-import { Field, InlineError, Tag } from '../components/ui';
+import { useNavigate } from 'react-router-dom';
+import { Icon } from '../components/Icon';
+import { ConfirmButton, Field, InlineError, Tag } from '../components/ui';
 import { api, isCloud, useAction, useApi } from '../lib/api';
 import type { TabProps } from './ProjectPage';
 
@@ -227,7 +229,36 @@ export function SettingsTab({ detail, reload, health }: TabProps) {
           שמור שם ולקוח
         </button>
       </div>
+      {!isCloud() && <DeleteProject id={project.id} name={project.name} />}
     </form>
+  );
+}
+
+/** מחיקת פרויקט שנפתח בטעות — השרת מאשר רק פרויקט ריק */
+function DeleteProject({ id, name }: { id: string; name: string }) {
+  const del = useAction();
+  const navigate = useNavigate();
+  return (
+    <section className="card stack danger-zone">
+      <div className="row between wrap gap-s">
+        <div>
+          <strong>מחיקת הפרויקט</strong>
+          <div className="small muted">רק לפרויקט ריק שנפתח בטעות — בלי תסריטים, סטורי בורד או קבצים. פרויקט עם עבודה לא יימחק.</div>
+        </div>
+        <ConfirmButton
+          className="btn btn-danger-ghost"
+          confirmLabel={`למחוק את "${name}"? לחץ שוב`}
+          disabled={del.busy}
+          onConfirm={async () => {
+            const r = await del.run(() => api.del(`/api/projects/${id}`));
+            if (r) navigate('/');
+          }}
+        >
+          <Icon n="trash" /> מחק פרויקט
+        </ConfirmButton>
+      </div>
+      <InlineError error={del.error} onClose={del.clearError} />
+    </section>
   );
 }
 
