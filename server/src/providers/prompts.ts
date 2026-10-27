@@ -19,7 +19,7 @@ import {
   STORY_ROLES,
   wordsPerSecond,
 } from '@apos/shared';
-import type { ProjectContext } from './types.js';
+import type { ProjectContext, RevisionKind } from './types.js';
 
 export function briefToText(ctx: ProjectContext): string {
   const b: Brief = ctx.brief;
@@ -412,6 +412,19 @@ export function scriptUserPrompt(ctx: ProjectContext): string {
   return `BRIEF:\n${briefToText(ctx)}\n\nWrite the script now.`;
 }
 
+/**
+ * תיקון נקודתי ≠ הערה כללית ≠ כתיבה מחדש. בלי ההפרדה, בקשת סגנון כללית קיבלה "SURGICAL EDIT"
+ * והתסריט שמר את השלד והקצב הישנים.
+ */
+const REVISE_INSTRUCTION: Record<RevisionKind, string> = {
+  surgical:
+    'Produce a revised full script. SURGICAL EDIT: change ONLY what the feedback explicitly targets (if it names specific lines, scenes or words, touch only those). Every other scene, line, word, timing and visual must stay exactly as in the current script, character for character. Do not "improve" anything that was not asked.',
+  global:
+    'Produce a revised full script. This is a GENERAL NOTE about the whole script, not a fix to one spot: apply it everywhere it is relevant. Rephrase lines, change the rhythm, merge, split or cut scenes when the note calls for it — a line the note concerns must actually change, not keep its old wording or sentence pattern. Keep the chosen idea, the facts and the parts the note clearly does not concern. Follow the COPY RULES in every line you write.',
+  rewrite:
+    'The owner asked for a REWRITE. Write a NEW script from the brief and the chosen direction, guided by the feedback. The current script is shown only so you know what was rejected: do not reuse its wording, its scene order, its rhythm or its structure. Follow the COPY RULES.',
+};
+
 export function reviseUserPrompt(ctx: ProjectContext, base: ScriptContent, feedback: string): string {
   const current = JSON.stringify(
     {
@@ -426,7 +439,7 @@ export function reviseUserPrompt(ctx: ProjectContext, base: ScriptContent, feedb
     `BRIEF:\n${briefToText(ctx)}`,
     `CURRENT SCRIPT (JSON):\n${current}`,
     `FEEDBACK TO APPLY:\n${feedback}`,
-    'Produce a revised full script. SURGICAL EDIT: change ONLY what the feedback explicitly targets (if it names specific lines, scenes or words, touch only those). Every other scene, line, word, timing and visual must stay exactly as in the current script, character for character. Do not "improve" anything that was not asked.',
+    REVISE_INSTRUCTION[ctx.revision ?? 'surgical'],
   ].join('\n\n');
 }
 
