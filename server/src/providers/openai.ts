@@ -179,7 +179,7 @@ export class OpenAITextProvider implements TextProvider {
       } catch {
         throw new ProviderError('הפלט מהמנוי של ChatGPT אינו JSON תקין', true, 'invalid_json');
       }
-    return { data, model: 'ChatGPT מנוי (Codex)', usage: undefined };
+    return { data, model: bridge.label(), usage: undefined };
   }
 
   private async completeApi<T>(

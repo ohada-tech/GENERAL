@@ -1,6 +1,7 @@
 /**
  * גשר למנוי ChatGPT: כשה-API של OpenAI לא זמין (אין קרדיט / אין מפתח), בקשות של ChatGPT עוברות לתור,
- * ועובד מקומי במחשב של אוהד (~/.apos/codex-bridge.cjs) מריץ אותן דרך Codex שמחובר לחשבון ChatGPT.
+ * ועובד מקומי במחשב של אוהד מריץ אותן על חשבון ChatGPT: ~/.apos/chrome-bridge.cjs (הצ'אט הרגיל ב-Chrome)
+ * או ~/.apos/codex-bridge.cjs (Codex). שם העובד נגמר ב-"-chrome" או "-codex".
  * עובד רק כשהמחשב דלוק והעובד רץ; בלעדיו — השגיאה המקורית של ה-API.
  * מצבים: off (רק API) · fallback (ברירת מחדל: API, ואם נכשל — המנוי) · always (רק המנוי).
  */
@@ -40,6 +41,11 @@ class Bridge {
   private pending = new Map<string, Pending>();
   private waiters: Array<() => void> = [];
 
+  /** איזה מנוע עונה עכשיו — לתיוג הגרסאות ולהודעות */
+  label() {
+    return this.worker.endsWith('-chrome') ? "ChatGPT בצ'אט (Chrome)" : 'ChatGPT מנוי (Codex)';
+  }
+
   online(now = Date.now()) {
     return now - this.lastSeen < ONLINE_MS;
   }
@@ -55,7 +61,7 @@ class Bridge {
     return new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(req.id);
-        reject(new ProviderError('המנוי של ChatGPT (Codex) לא ענה בזמן — האם המחשב דלוק והגשר רץ?', true, 'bridge_timeout'));
+        reject(new ProviderError(`${this.label()} לא ענה בזמן — האם המחשב דלוק והגשר רץ?`, true, 'bridge_timeout'));
       }, ANSWER_MS);
       this.pending.set(req.id, {
         req,
@@ -104,13 +110,13 @@ class Bridge {
     const p = this.pending.get(id);
     if (!p) return false;
     this.pending.delete(id);
-    if (result.error) p.reject(new ProviderError(`המנוי של ChatGPT (Codex) נכשל: ${result.error.slice(0, 300)}`, true, 'bridge_error'));
+    if (result.error) p.reject(new ProviderError(`${this.label()} נכשל: ${result.error.slice(0, 300)}`, true, 'bridge_error'));
     else p.resolve(String(result.text ?? ''));
     return true;
   }
 
   status() {
-    return { mode: this.mode, online: this.online(), worker: this.worker, lastSeen: this.lastSeen ? new Date(this.lastSeen).toISOString() : null, pending: this.pending.size };
+    return { mode: this.mode, online: this.online(), worker: this.worker, engine: this.label(), lastSeen: this.lastSeen ? new Date(this.lastSeen).toISOString() : null, pending: this.pending.size };
   }
 }
 
