@@ -147,6 +147,10 @@ export function scriptSystemPrompt(ctx: ProjectContext): string {
 
 /* ---------- כתיבה בשני שלבים: קודם טקסט חופשי (כמו בצ'אט), אחר כך חלוקה לסצנות מילה במילה ---------- */
 
+/** סצנה בתסריט ≠ שוט. כללי אורך שוט (למשל "כל שוט עד 3 שניות") שייכים לסטורי בורד ולעריכה — סצנה נחתכת לכמה שוטים */
+export const SHOT_VS_SCENE =
+  'A script SCENE is not a SHOT. Shot-length rules in the brief (e.g. "every shot up to 3 seconds") apply to the storyboard and the edit, where one scene is cut into several shots. A scene may run longer than the shot limit — never shorten narration, merge or split scenes, or fail a script because a scene is longer than a shot.';
+
 export function creativeSystemPrompt(ctx: ProjectContext): string {
   return [
     'You are one of the best commercial copywriters and creative directors in the market, writing a short video ad for social media.',
@@ -168,6 +172,7 @@ export function creativeSystemPrompt(ctx: ProjectContext): string {
     'על המסך: <short on-screen text, or —>',
     'רואים: <one or two sentences: the key image only, no shot list>',
     'שניות: <seconds, realistic for the narration>',
+    SHOT_VS_SCENE,
   ]
     .filter(Boolean)
     .join('\n');
@@ -393,6 +398,7 @@ export function qaSystemPrompt(ctx: ProjectContext): string {
     'failStage — where the failure comes from, so the system goes back to the right step instead of rewording: "product" (the product or audience is misunderstood), "concept" (the idea itself is weak or generic — rewording will not fix it), "selection" (one of the other directions would clearly be stronger), "writing" (the idea is good, the execution is weak), "none" (passes).',
     `fixes: up to 5 concrete instructions for the next attempt, aimed at the root cause. Write evidence, critical, unsupportedClaims and fixes in ${lang}.`,
     'The CODE CHECKS list is measured, not opinion: treat each item as true.',
+    SHOT_VS_SCENE,
   ].join('\n');
 }
 
