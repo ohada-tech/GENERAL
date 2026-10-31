@@ -30,10 +30,16 @@ function pctx() {
 
 describe('קיצור אחרי הכתיבה', () => {
   it('קריינות ארוכה מהתקציב — הכותב מקצר עד שהיא נכנסת', async () => {
-    const { w, calls } = fake([script(40), script(25), script(10)]);
+    const { w, calls } = fake([script(40), script(25), script(17)]);
     const r = await writeScriptTwoStep(w, pctx());
     expect(calls).toEqual(['script', 'script_trim', 'script_trim']);
-    expect(r.data.scenes[0].narration.split(' ')).toHaveLength(10);
+    expect(r.data.scenes[0].narration.split(' ')).toHaveLength(17);
+  });
+
+  it('קיצור שחתך יותר מדי (רשימת פיצ׳רים) — לא מתקבל', async () => {
+    const { w } = fake([script(40), script(5), script(4)]);
+    const r = await writeScriptTwoStep(w, pctx());
+    expect(r.data.scenes[0].narration.split(' ')).toHaveLength(40);
   });
 
   it('בתוך התקציב — בלי קריאת קיצור', async () => {

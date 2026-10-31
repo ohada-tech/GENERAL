@@ -211,7 +211,7 @@ export function trimSystemPrompt(): string {
 }
 
 export function trimUserPrompt(script: object, words: number, budget: number): string {
-  return `SCRIPT (JSON):\n${JSON.stringify(script)}\n\nThe narration is ${words} words. The hard maximum is ${budget} words in total — cut at least ${words - budget}. Count before you answer. Return the JSON.`;
+  return `SCRIPT (JSON):\n${JSON.stringify(script)}\n\nThe narration is ${words} words. Target ${Math.round(budget * 0.85)}–${budget} words in total — cut about ${words - budget}, not more: a script far below the target sounds like a feature list. Keep full spoken sentences. Count before you answer. Return the JSON.`;
 }
 
 export function structureUserPrompt(text: string): string {

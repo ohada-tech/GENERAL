@@ -34,7 +34,8 @@ export async function writeScriptTwoStep(p: TwoStepWriter, ctx: ProjectContext, 
       const t = await p.json<ScriptDraft>('script_trim', SCRIPT_JSON_SCHEMA, trimSystemPrompt(), trimUserPrompt(data, wordsOf(data), budget), model);
       const trimmed = validateScript(t.data);
       // מקבלים רק קיצור אמיתי שלא איבד סצנות
-      if (wordsOf(trimmed) < wordsOf(data) && trimmed.scenes.length >= data.scenes.length - 1) data = trimmed;
+      // קיצור אמיתי, בלי לאבד סצנות ובלי לרדת לרשימת פיצ'רים (פחות מ-75% מהתקציב)
+      if (wordsOf(trimmed) < wordsOf(data) && wordsOf(trimmed) >= budget * 0.75 && trimmed.scenes.length >= data.scenes.length - 1) data = trimmed;
     } catch {
       break;
     }
