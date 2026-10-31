@@ -148,8 +148,16 @@ export async function judgeScript(ctx: Ctx, projectId: string, draft: ScriptDraf
     unsupportedClaims: string[];
     failStage: string;
     fixes: string[];
-  }>('script_qa', QA_JSON_SCHEMA, qaSystemPrompt(pc), qaUserPrompt(pc, draft, [...checks.critical, ...checks.issues], others), modelOf(ctx, projectId));
+  }>('script_qa', QA_JSON_SCHEMA, qaSystemPrompt(pc), qaUserPrompt(pc, draft, [...checks.critical.map((c) => `[blocking] ${c}`), ...checks.issues.map((c) => `[note] ${c}`)], others), modelOf(ctx, projectId));
   return gate(r.data ?? ({} as never), checks, `ChatGPT (${r.model})`);
+}
+
+const BUDGET_RE = /תקציב (ה)?(מילים|קריינות)|\d+\s*(\/|מול)\s*\d+\s*מילים|\d+\s*מילים מול|קריינות ארוכה מדי|word budget|word count/i;
+
+/** הוראת קיצור מדויקת לסבב הבא — כותבים נוטים "לקצר" ולהשאיר את אותו אורך */
+export function lengthNote(words: number, budget: number): string {
+  if (!budget || words <= budget) return '';
+  return `LENGTH (measured): the narration is ${words} words; the hard maximum is ${budget}. Cut at least ${words - budget} words: delete whole phrases (lists of audiences, repeated benefits, filler), keep the hook line and the call to action word for word. Count the narration words before you answer.`;
 }
 
 /** שער המעבר מחושב בקוד, לא לפי מה שהשופט "מרגיש": 85+, 70% בכל קריטריון, בלי כשל קריטי ובלי טענות לא מבוססות */
@@ -171,7 +179,10 @@ export function gate(
     total += counted;
     if (counted < max * QA_PASS_EACH) eachOk = false;
   }
-  const critical = [...(d.critical ?? []).map(String).filter(Boolean), ...checks.critical];
+  // אורך הקריינות נמדד בקוד: חריגה של עד 10% היא הערה. אם הקוד לא סימן אותה כקריטית, גם השופט לא יכול להפיל עליה
+  const codeBudgetCritical = checks.critical.some((c) => BUDGET_RE.test(c));
+  const judgeCritical = (d.critical ?? []).map(String).filter(Boolean).filter((c) => codeBudgetCritical || !BUDGET_RE.test(c));
+  const critical = [...judgeCritical, ...checks.critical];
   const unsupported = (d.unsupportedClaims ?? []).map(String).filter(Boolean);
   const passed = total >= QA_PASS_TOTAL && eachOk && critical.length === 0 && unsupported.length === 0;
   let failStage = passed ? 'none' : String(d.failStage ?? 'writing');
@@ -268,7 +279,8 @@ export async function runCreativePipeline(
         steps.push(`כיוונים חדשים → ${c.chosen.title}`);
       }
     }
-    notes = [opts.rewriteNotes?.trim() ? `Owner's note: ${opts.rewriteNotes.trim()}` : '', failureNotes(qa)].filter(Boolean).join('\n\n');
+    const len = scriptChecks(written.data, pc.brief);
+    notes = [opts.rewriteNotes?.trim() ? `Owner's note: ${opts.rewriteNotes.trim()}` : '', failureNotes(qa), lengthNote(len.words, len.budget)].filter(Boolean).join('\n\n');
   }
 
   const qa: QaReport = { ...best!.qa, rounds: Math.min(round, MAX_FIX_ROUNDS) + 1, needsOwner: !best!.qa.passed };

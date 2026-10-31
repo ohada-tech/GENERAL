@@ -397,7 +397,7 @@ export function qaSystemPrompt(ctx: ProjectContext): string {
     'unsupportedClaims: every product claim in the script that is NOT in the verified facts (quote it).',
     'failStage — where the failure comes from, so the system goes back to the right step instead of rewording: "product" (the product or audience is misunderstood), "concept" (the idea itself is weak or generic — rewording will not fix it), "selection" (one of the other directions would clearly be stronger), "writing" (the idea is good, the execution is weak), "none" (passes).',
     `fixes: up to 5 concrete instructions for the next attempt, aimed at the root cause. Write evidence, critical, unsupportedClaims and fixes in ${lang}.`,
-    'The CODE CHECKS list is measured, not opinion: treat each item as true.',
+    'The CODE CHECKS list is measured, not opinion: treat each item as true. Items marked [blocking] are critical failures. Items marked [note] are minor (e.g. narration slightly over the word budget): they may lower a score a little, but never list them under critical and never fail the script on them alone.',
     SHOT_VS_SCENE,
   ].join('\n');
 }
