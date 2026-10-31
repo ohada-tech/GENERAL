@@ -13,6 +13,8 @@ import { HANDLERS, type JobHandler } from './handlers.js';
 import { checkForgottenTimer } from '../services/time.js';
 
 const WORKER = 'worker';
+/** כמה זמן משימה מחכה לגשר של ChatGPT לפני שהיא נכשלת */
+const BRIDGE_WAIT_MS = 24 * 3600_000;
 
 export function isRetryable(err: unknown): boolean {
   if (err instanceof ProviderError) return err.retryable;
@@ -71,6 +73,21 @@ export function failJob(ctx: Ctx, job: Job, err: unknown, handlers: Record<JobTy
     const cur = getJob(ctx.db, job.id);
     if (!cur || cur.status !== 'running') return; // בוטלה בינתיים
     closeAttempt(ctx, cur, false, message);
+    // הגשר של ChatGPT כבוי: מחכים לו בלי לשרוף ניסיונות ובלי "נכשלה" (עד יממה)
+    const created = new Date(cur.createdAt).getTime();
+    if (err instanceof ProviderError && err.code === 'bridge_offline' && ctx.now().getTime() - created < BRIDGE_WAIT_MS) {
+      const runAfter = new Date(ctx.now().getTime() + 60_000).toISOString();
+      ctx.db
+        .prepare("UPDATE jobs SET status = 'queued', attempts = MAX(attempts - 1, 0), run_after = ?, last_error = ?, heartbeat_at = NULL WHERE id = ?")
+        .run(runAfter, message, cur.id);
+      // ניסיון המתנה לא נרשם כניסיון, וההודעה נכתבת פעם אחת למשימה
+      ctx.db.prepare('DELETE FROM job_attempts WHERE job_id = ? AND attempt = ?').run(cur.id, cur.attempts);
+      const told = ctx.db.prepare("SELECT 1 FROM events WHERE type = 'job.retry_scheduled' AND json_extract(payload, '$.jobId') = ? AND json_extract(payload, '$.error') = ? LIMIT 1").get(cur.id, message);
+      if (!told) {
+        emit(ctx, { projectId: cur.projectId, type: 'job.retry_scheduled', actor: WORKER, message: `${JOB_LABELS[cur.type]}: ${message}`, payload: { jobId: cur.id, jobType: cur.type, error: message, runAfter } });
+      }
+      return;
+    }
     if (retryable && cur.attempts < cur.maxAttempts) {
       const delay = backoffSeconds(ctx, cur.attempts);
       const runAfter = new Date(ctx.now().getTime() + delay * 1000).toISOString();

@@ -35,7 +35,23 @@ describe('גשר למנוי ChatGPT (Codex)', () => {
     expect(req.schema).toEqual({ type: 'object' });
   });
 
-  it('הגשר לא מחובר — השגיאה המקורית של ה-API, בלי לחכות', async () => {
+  it('אין קרדיט והגשר לא מחובר — ממתינים לגשר (bridge_offline), לא "נגמר הקרדיט"', async () => {
+    bridge.lastSeen = Date.now() - 10 * 60_000; // היה מחובר, עכשיו כבוי
+    const p = new OpenAITextProvider(cfg, noCredits);
+    await expect(p.json('t', { type: 'object' }, 's', 'u')).rejects.toMatchObject({ code: 'bridge_offline', retryable: true });
+  });
+
+  it('מצב "always" והגשר כבוי — לא קוראים ל-API בכלל', async () => {
+    let apiCalls = 0;
+    const counting = (async (...a: Parameters<typeof fetch>) => (apiCalls++, noCredits(...a))) as typeof fetch;
+    bridge.mode = 'always';
+    const p = new OpenAITextProvider(cfg, counting);
+    await expect(p.text('s', 'u')).rejects.toMatchObject({ code: 'bridge_offline' });
+    expect(apiCalls).toBe(0);
+  });
+
+  it('מצב "off" — השגיאה המקורית של ה-API', async () => {
+    bridge.mode = 'off';
     const p = new OpenAITextProvider(cfg, noCredits);
     await expect(p.json('t', { type: 'object' }, 's', 'u')).rejects.toThrow(/credits/);
   });

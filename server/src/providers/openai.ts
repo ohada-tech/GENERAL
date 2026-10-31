@@ -13,7 +13,7 @@ import {
   storyboardUserPrompt,
 } from './prompts.js';
 import { writeScriptTwoStep, type TextResult } from './writer.js';
-import { bridge } from '../services/bridge.js';
+import { bridge, bridgeOffline } from '../services/bridge.js';
 import { ProviderError, type GenResult, type ProjectContext, type ScriptDraft, type TextProvider } from './types.js';
 
 export interface OpenAIConfig {
@@ -158,10 +158,15 @@ export class OpenAITextProvider implements TextProvider {
     modelOverride?: string,
   ): Promise<{ data: T; model: string; usage?: GenResult<T>['usage'] }> {
     if (bridge.usable(false) || (!this.cfg.apiKey && bridge.usable(true))) return this.viaBridge<T>(name, schema, messages);
+    // הכתיבה אמורה לעבור במנוי והגשר כבוי (המחשב כבוי) — מחכים לו, לא נופלים ל-API בלי קרדיט ולא מציגים חסם
+    // (גשר שכבר היה מחובר פעם — במצב fallback; במצב always — תמיד)
+    const waitForBridge = bridge.mode === 'always' || (bridge.mode === 'fallback' && bridge.lastSeen > 0);
+    if (bridge.mode === 'always' || (!this.cfg.apiKey && waitForBridge)) throw bridgeOffline();
     try {
       return await this.completeApi<T>(name, schema, messages, modelOverride);
     } catch (e) {
       if (e instanceof ProviderError && BRIDGE_FALLBACK.has(e.code) && bridge.usable(true)) return this.viaBridge<T>(name, schema, messages);
+      if (e instanceof ProviderError && BRIDGE_FALLBACK.has(e.code) && waitForBridge && e.code !== 'network') throw bridgeOffline();
       throw e;
     }
   }

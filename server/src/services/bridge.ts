@@ -123,6 +123,11 @@ class Bridge {
 /** יחיד לכל השרת — הספק של OpenAI והנתיבים חולקים אותו */
 export const bridge = new Bridge();
 
+/** הגשר לא מחובר: המשימה מחכה בתור ולא נכשלת (ראו failJob) */
+export function bridgeOffline() {
+  return new ProviderError("ממתין ל-ChatGPT בצ'אט (Chrome) — המחשב כבוי או שהגשר לא רץ. ימשיך לבד כשיחזור.", true, 'bridge_offline');
+}
+
 export function loadBridgeMode(ctx: Ctx) {
   const v = (ctx.db.prepare("SELECT value FROM meta WHERE key = 'bridge_mode'").get() as { value: string } | undefined)?.value;
   if (v && (BRIDGE_MODES as string[]).includes(v)) bridge.mode = v as BridgeMode;
