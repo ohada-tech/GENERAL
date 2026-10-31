@@ -200,6 +200,20 @@ export function structureSystemPrompt(): string {
   ].join('\n');
 }
 
+/** קיצור: הכותב חוזר לתסריט שלו וחותך עד התקציב — אותו רעיון, אותן סצנות, פחות מילים */
+export function trimSystemPrompt(): string {
+  return [
+    'You are the copywriter who wrote this ad. It is too long for its length, and the voice-over cannot be sped up.',
+    'Return the SAME script as JSON, with the narration cut to the word limit. Keep the idea, the scenes, their order and the voice.',
+    'How to cut: delete whole phrases that repeat a benefit, list audiences or explain what the picture already shows; merge two short sentences into one. Do not paraphrase into longer words, and do not cut the product name.',
+    'Keep the hook line (scene 1) and the call to action (last scene) word for word. onScreenText and visualAction stay as they are. Update estDurationSec to fit the shorter narration.',
+  ].join('\n');
+}
+
+export function trimUserPrompt(script: object, words: number, budget: number): string {
+  return `SCRIPT (JSON):\n${JSON.stringify(script)}\n\nThe narration is ${words} words. The hard maximum is ${budget} words in total — cut at least ${words - budget}. Count before you answer. Return the JSON.`;
+}
+
 export function structureUserPrompt(text: string): string {
   return `SCRIPT (plain text):\n${text}\n\nReturn the JSON.`;
 }
