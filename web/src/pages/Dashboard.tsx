@@ -259,6 +259,7 @@ export function Dashboard() {
                         הבא: <b>{p.state.nextAction.label}</b>
                       </Link>
                     )}
+                    <DoneToggle p={p} done={done} onDone={reload} />
                     {(p.state.pipelineState !== 'active' || p.state.blockers.length > 0) && (
                       <div className="row gap-s small">
                         {p.state.pipelineState !== 'active' && <Tag tone="warn">{p.state.pipelineState === 'paused' ? 'מושהה' : 'עצור'}</Tag>}
@@ -274,6 +275,33 @@ export function Dashboard() {
       </section>
 
       {creating && <NewProjectModal onClose={() => setCreating(false)} />}
+    </div>
+  );
+}
+
+/** סגירה מהירה מהכרטיס: הסרטון נמסר והלקוח אישר — הפרויקט עובר ל"נמסרו". ביטול מחזיר להפקה */
+function DoneToggle({ p, done, onDone }: { p: ProjectSummary; done: boolean; onDone: () => Promise<void> | void }) {
+  const act = useAction();
+  const toggle = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (done) {
+      if (!window.confirm(`להחזיר את "${p.name}" להפקה?`)) return;
+      await act.run(() => api.del(`/api/projects/${p.id}/delivered`));
+    } else {
+      if (!window.confirm(`לסמן את "${p.name}" כנסגר ואושר על ידי הלקוח?`)) return;
+      await act.run(() => api.post(`/api/projects/${p.id}/delivered`, { note: 'נסגר ואושר' }));
+    }
+    await onDone();
+  };
+  // פרויקט שהושלם בתוך המערכת (שלב מסירה) — אין מה לבטל מכאן
+  if (done && !p.state.deliveredAt) return null;
+  return (
+    <div className="row end" onClick={(e) => e.stopPropagation()}>
+      <button className="btn btn-sm btn-ghost" disabled={act.busy} onClick={toggle} title={done ? 'החזרה להפקה' : 'הסרטון נמסר והלקוח אישר — הפרויקט יעבור ל"נמסרו"'}>
+        {done ? '↺ החזר להפקה' : <><Icon n="checkCircle" /> נסגר ואושר</>}
+      </button>
+      <InlineError error={act.error} onClose={act.clearError} />
     </div>
   );
 }

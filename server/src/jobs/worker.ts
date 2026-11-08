@@ -246,7 +246,7 @@ export function startWorker(ctx: Ctx, isCompleted: (projectId: string) => boolea
         if (Date.now() - lastMaintenance > 60_000) {
           lastMaintenance = Date.now();
           recoverStuckJobs(ctx);
-          detectStalledProjects(ctx, isCompleted);
+          // אוהד: חסמי "אין התקדמות מאז…" הוסרו — לא מזהים פרויקטים "תקועים" אוטומטית
           checkForgottenTimer(ctx);
         }
         let claimed = false;

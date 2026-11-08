@@ -347,4 +347,8 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE projects ADD COLUMN delivered_at TEXT;
   ALTER TABLE projects ADD COLUMN delivered_note TEXT NOT NULL DEFAULT '';
   `,
+  /* v16 — אוהד ביקש להסיר את חסמי "אין התקדמות מאז…": סוגרים את כל הקיימים ואת ההתראות שלהם */ `
+  UPDATE blockers SET resolved_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE source = 'stalled' AND resolved_at IS NULL;
+  UPDATE notifications SET read_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE dedupe_key LIKE 'project.stalled:%' AND read_at IS NULL;
+  `,
 ];
