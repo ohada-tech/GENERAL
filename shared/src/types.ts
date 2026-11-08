@@ -242,6 +242,8 @@ export interface ProjectSummary {
   lastUpdate?: { text: string; by: string; at: string } | null;
   /** הקישור האחרון שנשלח ללקוח: מתי, ואם/מתי הלקוח פתח */
   lastShare?: { label: string; sentAt: string; viewedAt: string | null; views: number } | null;
+  /** עלות: קרדיטים בהיגספילד, טוקנים של Claude Code וחלק מהמגבלה השבועית. null = עוד לא נמדד */
+  usage?: import('./usage.js').ProjectUsage | null;
 }
 
 export interface DashboardData {
@@ -249,4 +251,6 @@ export interface DashboardData {
   unreadNotifications: number;
   /** זמן עבודה מתועד מתחילת השבוע (יום א') */
   weekTrackedSec: number;
+  /** מגבלות השימוש של חשבון Claude (5 שעות / שבועי), כפי שנמדדו לאחרונה */
+  planUsage?: import('./usage.js').PlanUsage | null;
 }

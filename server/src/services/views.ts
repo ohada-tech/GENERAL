@@ -16,6 +16,7 @@ import { trackedTotals } from './time.js';
 import { lastProgressUpdate } from './progress.js';
 import { lastShareFor } from './share.js';
 import { productionOverview } from '../workflow/production.js';
+import { planUsage, usageFor } from './usage.js';
 
 export function projectState(ctx: Ctx, project: Project) {
   const storyboard = currentStoryboard(ctx.db, project.id);
@@ -59,9 +60,10 @@ export function dashboard(ctx: Ctx): DashboardData {
     cover: projectCover(ctx, p.id),
     lastUpdate: lastProgressUpdate(ctx, p.id),
     lastShare: lastShareFor(ctx, p.id),
+    usage: usageFor(ctx, p.id),
   }));
   const unread = ctx.db.prepare('SELECT COUNT(*) AS n FROM notifications WHERE read_at IS NULL').get() as { n: number };
-  return { projects, unreadNotifications: Number(unread.n), weekTrackedSec: time.weekSec };
+  return { projects, unreadNotifications: Number(unread.n), weekTrackedSec: time.weekSec, planUsage: planUsage(ctx) };
 }
 
 /** תמונת שער: הפריים הראשון בסטורי בורד (מאושר קודם), ואם אין — תמונה שהועלתה לשוט */

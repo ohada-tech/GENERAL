@@ -1042,3 +1042,7 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 :root[data-theme='light'] { --ic-h1: #0e9f9f; --ic-h2: #4f63d2; --ic-h3: #8b4fe8; }
 @media (prefers-color-scheme: light) { :root:not([data-theme]) { --ic-h1: #0e9f9f; --ic-h2: #4f63d2; --ic-h3: #8b4fe8; } }
 :root[data-theme='light'] .ic-holo { filter: none; }
+/* עלות פרויקט: קרדיטים, טוקנים ו-% מהמגבלה */
+.usage-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.usage-line span { display: inline-flex; align-items: center; gap: 4px; }
+.usage-line.small { font-size: 12px; }

@@ -24,6 +24,7 @@ import { StoryboardTab } from './StoryboardTab';
 import { TimeTab } from './TimeTab';
 import { ProductionTab } from './ProductionTab';
 import { Icon } from '../components/Icon';
+import { UsageLine } from '../components/UsageLine';
 
 export interface ProjectDetail {
   project: Project;
@@ -31,6 +32,7 @@ export interface ProjectDetail {
   approvals: Approval[];
   assets: Asset[];
   cover?: { mediaId?: string; assetId?: string } | null;
+  usage?: import('@apos/shared').ProjectUsage | null;
 }
 
 export interface TabProps {
@@ -154,6 +156,7 @@ export function ProjectPage({ health }: { health: Health | null }) {
               <span>{project.clientName || 'ללא לקוח'}</span>
               {project.brief.dueDate && <span>יעד {fmtDate(project.brief.dueDate)}</span>}
               <span>עודכן {fmtRelative(project.updatedAt)}</span>
+              <UsageLine usage={data.usage} compact />
               {project.deliveredAt && <span className="delivered-tag" title={project.deliveredNote || undefined}><Icon n="checkCircle" /> נמסר ללקוח · {fmtDate(project.deliveredAt)}</span>}
             </span>
           }

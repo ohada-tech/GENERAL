@@ -5,6 +5,7 @@ import { Empty, ErrorBox, Field, InlineError, Loading, Modal, rowLink, StatusBad
 import { api, assetUrl, useAction, useApi } from '../lib/api';
 import { daysUntil, fmtDate, fmtRelative } from '../lib/format';
 import { Icon } from '../components/Icon';
+import { PlanLine, UsageLine } from '../components/UsageLine';
 
 /* מסך "היום": מה מחכה לך למעלה, ואז הפרויקטים ככרטיסים עם תמונה ופס שלבים */
 
@@ -131,6 +132,7 @@ export function Dashboard() {
             {myActions.length ? `${myActions.length} דברים מחכים לך` : 'אין כרגע משהו שמחכה לך'}
             {blockers.length ? ` · ${blockers.length} חסמים` : ''}
           </p>
+          <PlanLine plan={data?.planUsage} />
         </div>
         <div className="t-hello-side">
           <dl className="t-pulse">
@@ -259,6 +261,7 @@ export function Dashboard() {
                         הבא: <b>{p.state.nextAction.label}</b>
                       </Link>
                     )}
+                    <UsageLine usage={p.usage} compact />
                     <DoneToggle p={p} done={done} onDone={reload} />
                     {(p.state.pipelineState !== 'active' || p.state.blockers.length > 0) && (
                       <div className="row gap-s small">

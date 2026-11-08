@@ -351,4 +351,17 @@ export const MIGRATIONS: string[] = [
   UPDATE blockers SET resolved_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE source = 'stalled' AND resolved_at IS NULL;
   UPDATE notifications SET read_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE dedupe_key LIKE 'project.stalled:%' AND read_at IS NULL;
   `,
+  /* v17 — עלות לכל פרויקט: קרדיטים בהיגספילד וטוקנים של Claude Code (מסונכרן מהמחשב של אוהד) */ `
+  CREATE TABLE project_usage (
+    project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+    hf_credits REAL NOT NULL DEFAULT 0,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+    week_weight REAL NOT NULL DEFAULT 0,
+    sessions INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+  );
+  `,
 ];
