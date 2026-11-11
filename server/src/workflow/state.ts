@@ -86,7 +86,8 @@ export function computeProjectState(input: StateInput): ProjectState {
         ? 'רץ כעת…'
         : j.attempts > 0
           ? `ממתין לניסיון חוזר (${j.attempts}/${j.maxAttempts}): ${j.lastError ?? ''}`
-          : 'בתור להרצה';
+          : // ממתין בלי לשרוף ניסיונות (למשל הגשר של ChatGPT כבוי) — מראים למה, לא "בתור" סתמי
+            (j.lastError ?? 'בתור להרצה');
 
   /* 01 Brief */
   {
