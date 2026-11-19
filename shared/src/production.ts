@@ -161,6 +161,18 @@ export const TTS_V2 = { apiModel: 'elevenlabs/text-to-speech-multilingual-v2', c
 export const MUSIC = { model: 'V5', credits: 10 };
 
 export const imageModel = (id: string) => IMAGE_MODELS.find((m) => m.id === id) ?? IMAGE_MODELS[0];
+
+/**
+ * עלות בהיגספילד (קרדיטים; קרדיט = $0.04) — נמדד ב-`higgsfield generate cost` ב-19.11.2026.
+ * תמונה ב-2K; קליפ לפי 5 שניות ב-720p (Seedance 2.0 ב-1080p: 60).
+ */
+export const HF_USD_PER_CREDIT = 0.04;
+export const HF_IMAGE_CREDITS: Record<string, number> = { 'nano-banana-2': 2, 'nano-banana-pro': 2, 'seedream-5-lite': 1 };
+export const HF_VIDEO_CREDITS_PER_5S: Record<string, number> = { 'kling-3.0': 8.75, 'seedance-2': 22.5, 'seedance-2-mini': 5 };
+export const hfImageCredits = (modelId: string) => HF_IMAGE_CREDITS[modelId] ?? 2;
+export const hfVideoCredits = (modelId: string, seconds: number) => Math.round((HF_VIDEO_CREDITS_PER_5S[modelId] ?? 8.75) * Math.max(1, seconds / 5) * 100) / 100;
+/** "54 קרדיטים ($2.16)" */
+export const hfCostLabel = (credits: number) => `${Math.round(credits * 10) / 10} קרדיטים ($${(credits * HF_USD_PER_CREDIT).toFixed(2)})`;
 export const videoModel = (id: string) => VIDEO_MODELS.find((m) => m.id === id) ?? VIDEO_MODELS[0];
 
 /** מודל וידאו לשוט: לפי ההמלצה שבסטורי בורד, אחרת ברירת המחדל של הפרויקט. */

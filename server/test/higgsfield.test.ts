@@ -54,6 +54,20 @@ describe('Higgsfield mode (Claude / manual uploads)', () => {
     expect(() => prod.addExternalMedia(ctx, p.id, { kind: 'clip', shotId: shots[0].id, data: png, mime: 'image/png', filename: 'x.png' })).toThrow(/לא מתאים/);
   });
 
+  it('מסלול היגספילד: אנלימיטד כברירת מחדל, עלות בקרדיטים לכל שלב, והמסלול עובר ל-Claude', async () => {
+    const ctx = makeCtx();
+    const { p, shots } = await readyProject(ctx);
+    cmd.approveStoryboard(ctx, p.id);
+    expect(prod.externalRequests(ctx, p.id).project.hfRoute).toBe('unlimited');
+    const images = prod.productionOverview(ctx, p.id).stages.find((s) => s.stage === 'images')!;
+    expect(images.hfCredits).toBe(shots.length * 2); // Nano Banana 2K = 2 קרדיטים
+    expect(images.fullEstimate.usd).toBe(0); // שום חיוב ב-KIE
+    expect(prod.productionOverview(ctx, p.id).stages.find((s) => s.stage === 'animation')!.hfCredits).toBeGreaterThan(0);
+    cmd.updateProject(ctx, p.id, { settings: { hfRoute: 'credits' } });
+    expect(prod.externalRequests(ctx, p.id).project.hfRoute).toBe('credits');
+    expect(prod.productionOverview(ctx, p.id).hfRoute).toBe('credits');
+  });
+
   it('a revocable Claude access token works instead of the password', async () => {
     const ctx = makeCtx();
     ctx.config.auth.password = 'pw-1';

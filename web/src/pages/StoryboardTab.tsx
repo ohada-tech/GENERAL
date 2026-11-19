@@ -1,6 +1,7 @@
 import {
   imageModel,
   KIE_USD_PER_CREDIT,
+  hfImageCredits,
   ANIMATION_MODEL_OPTIONS,
   IMAGE_MODEL_OPTIONS,
   REFERENCE_CATEGORIES,
@@ -19,6 +20,7 @@ import { api, assetUrl, isCloud, useAction, useApi } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
 import type { TabProps } from './ProjectPage';
 import { Icon } from '../components/Icon';
+import { HfRouteToggle, hfRouteCost } from '../components/HfRoute';
 
 interface StoryboardData {
   versions: Storyboard[];
@@ -131,9 +133,12 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
               >
                 ✓ אשר סטורי בורד
                 {project.settings.autoAdvance && shots.length > 0
-                  ? ` ← יתחיל ${shots.length} תמונות (~$${(shots.length * imageModel(project.settings.imageModel).credits * KIE_USD_PER_CREDIT).toFixed(2)})`
+                  ? project.settings.generator === 'higgsfield'
+                    ? ` ← ${shots.length} תמונות בהיגספילד · ${hfRouteCost(project.settings.hfRoute, shots.length * hfImageCredits(project.settings.imageModel))}`
+                    : ` ← יתחיל ${shots.length} תמונות (~$${(shots.length * imageModel(project.settings.imageModel).credits * KIE_USD_PER_CREDIT).toFixed(2)})`
                   : ''}
               </button>
+              {project.settings.generator === 'higgsfield' && <HfRouteToggle project={project} onChanged={refresh} />}
             </>
           )}
           {sb.status === 'approved' && (

@@ -4,7 +4,7 @@ import { recordFeedback, type LessonArea } from '../services/learning.js';
  * אישור השלב הקודם (כשמופעל "המשך אוטומטי") או לחיצה על "הפעל". לפני כל הפעלה
  * מחושבת עלות משוערת ונבדקת מול תקרת התקציב של הפרויקט.
  */
-import {
+import { hfImageCredits, hfVideoCredits,
   aspectFor,
   clipDuration,
   creditsToUsd,
@@ -84,11 +84,21 @@ function narrationText(ctx: Ctx, projectId: string) {
 /** אילו פריטים ייווצרו בשלב, ובכמה קרדיטים (לפני שמשלמים). */
 export function planStage(ctx: Ctx, project: Project, stage: ProductionStage) {
   const shots = approvedShots(ctx, project.id);
-  const items: Array<{ kind: MediaKind; shotId: string | null; credits: number; label: string }> = [];
+  const items: Array<{ kind: MediaKind; shotId: string | null; credits: number; label: string; hfCredits?: number }> = [];
   const external = project.settings.generator === 'higgsfield';
   if (external && (stage === 'images' || stage === 'animation')) {
+    // credits = KIE (אין); hfCredits = כמה זה היה עולה בקרדיטים בהיגספילד (באנלימיטד: 0 בפועל)
     for (const s of shots)
-      items.push({ kind: stage === 'images' ? 'frame' : 'clip', shotId: s.id, credits: 0, label: stage === 'images' ? 'תמונה · Higgsfield' : 'קליפ · Higgsfield' });
+      items.push({
+        kind: stage === 'images' ? 'frame' : 'clip',
+        shotId: s.id,
+        credits: 0,
+        label: stage === 'images' ? 'תמונה · Higgsfield' : 'קליפ · Higgsfield',
+        hfCredits:
+          stage === 'images'
+            ? hfImageCredits(project.settings.imageModel)
+            : hfVideoCredits(videoModelForShot(s.animationModel, project.settings.videoModel).id, s.durationSec || 5),
+      });
     return items;
   }
   if (stage === 'images') {
@@ -462,6 +472,7 @@ export function productionOverview(ctx: Ctx, projectId: string) {
       blockedReason,
       pendingEstimate: estimate(toCreate),
       fullEstimate: estimate(plan),
+      hfCredits: Math.round(plan.reduce((a, it) => a + (it.hfCredits ?? 0), 0) * 100) / 100,
     };
   });
   const spent = spentCredits(ctx, projectId);
@@ -473,6 +484,7 @@ export function productionOverview(ctx: Ctx, projectId: string) {
     budgetUsd: project.settings.budgetUsd,
     kieConfigured: ctx.providers.media.isConfigured(),
     generator: project.settings.generator,
+    hfRoute: project.settings.hfRoute,
     aspect: aspectFor(project.brief.aspectRatio),
     autoAdvance: project.settings.autoAdvance,
   };
@@ -613,7 +625,8 @@ export function externalRequests(ctx: Ctx, projectId: string) {
       })
       .filter(Boolean);
   return {
-    project: { id: project.id, name: project.name, generator: project.settings.generator },
+    // המסלול שאוהד בחר במערכת: unlimited = רק Unlimited בדפדפן; credits = CLI בקרדיטים (מסלול B)
+    project: { id: project.id, name: project.name, generator: project.settings.generator, hfRoute: project.settings.hfRoute },
     aspect: aspect.image,
     characters: project.brief.characters,
     visualStyle: project.brief.visualStyle,

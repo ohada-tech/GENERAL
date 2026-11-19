@@ -18,6 +18,8 @@ export const projectSettingsSchema = z.object({
   defaultAnimationModel: z.string().default('Kling 3.0'),
   /** מי מייצר תמונות וקליפים: kie = אוטומטי דרך KIE; higgsfield = Claude מריץ ב-Higgsfield (Unlimited או קרדיטים) או העלאה ידנית */
   generator: z.enum(['kie', 'higgsfield']).default('kie'),
+  /** מסלול בהיגספילד: unlimited = חינם בדפדפן ואיטי (A); credits = מהיר בקרדיטים דרך ה-CLI (B) */
+  hfRoute: z.enum(['unlimited', 'credits']).default('unlimited'),
   /** הפקה (05–09) דרך KIE */
   imageModel: z.string().default('nano-banana-2'),
   videoModel: z.string().default('kling-3.0'),

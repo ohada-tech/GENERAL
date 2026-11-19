@@ -5,6 +5,7 @@ import { api, useAction, useApi } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
 import type { TabProps } from './ProjectPage';
 import { Icon } from '../components/Icon';
+import { HfRouteToggle, hfRouteCost } from '../components/HfRoute';
 
 type Stage = 'images' | 'animation' | 'audio' | 'editing' | 'delivery';
 
@@ -16,6 +17,8 @@ interface StageView {
   blockedReason: string | null;
   pendingEstimate: CostEstimate;
   fullEstimate: CostEstimate;
+  /** בהיגספילד: כמה השלב עולה בקרדיטים (באנלימיטד 0 בפועל) */
+  hfCredits?: number;
 }
 
 interface Overview {
@@ -25,6 +28,7 @@ interface Overview {
   budgetUsd: number;
   kieConfigured: boolean;
   generator: 'kie' | 'higgsfield';
+  hfRoute: 'unlimited' | 'credits';
   aspect: { image: string; video: string; out: { w: number; h: number } };
   autoAdvance: boolean;
 }
@@ -87,7 +91,8 @@ export function ProductionTab({ detail, reload }: TabProps) {
         </div>
         {o.generator === 'higgsfield' ? (
           <div className="notice">
-            תמונות וקליפים בפרויקט הזה נוצרים ב-Higgsfield: בקש מ-Claude "תריץ תמונות לפרויקט" (Unlimited דרך הדפדפן, או קרדיטים דרך MCP — באישורך), או העלה בעצמך עם "העלה" בכל שוט.
+            תמונות וקליפים בפרויקט הזה נוצרים ב-Higgsfield: בקש מ-Claude "תריץ תמונות לפרויקט", או העלה בעצמך עם "העלה" בכל שוט. Claude מריץ לפי המסלול שבחרת:
+            <HfRouteToggle project={project} onChanged={reload} />
           </div>
         ) : (
           !o.kieConfigured && <div className="notice warn">KIE לא מחובר — לחץ על "מפתחות" בסרגל העליון כדי שהמערכת תוכל ליצור תמונות, וידאו וסאונד.</div>
@@ -115,6 +120,7 @@ export function ProductionTab({ detail, reload }: TabProps) {
             run(() => api.upload(`/api/projects/${project.id}/media/upload?kind=${kind}${shotId ? `&shotId=${shotId}` : ''}&source=${o.generator === 'higgsfield' ? 'higgsfield-unlimited' : 'manual'}`, file))
           }
           external={o.generator === 'higgsfield'}
+          hfRoute={o.hfRoute}
         />
       ))}
     </div>
@@ -137,6 +143,7 @@ function StageCard(props: {
   onItem: (path: string, body?: unknown) => void;
   onUpload: (kind: MediaKind, shotId: string | null, file: File) => void;
   external: boolean;
+  hfRoute: 'unlimited' | 'credits';
 }) {
   const { view: v, next } = props;
   const t = TITLE[v.stage];
@@ -150,10 +157,11 @@ function StageCard(props: {
   const allReady = total > 0 && ready === total;
   const missing = total - created + failed;
 
-  const nextHint =
-    props.autoAdvance && next && next.stage !== 'delivery' && next.fullEstimate.lines.length
-      ? ` ← יתחיל ${TITLE[next.stage].title}${next.fullEstimate.usd > 0 ? ` (~${usd(next.fullEstimate.usd)})` : ''}`
-      : '';
+  const nextHint = !(props.autoAdvance && next && next.stage !== 'delivery' && next.fullEstimate.lines.length)
+    ? ''
+    : props.external && next.hfCredits
+      ? ` ← ${TITLE[next.stage].title} בהיגספילד · ${hfRouteCost(props.hfRoute, next.hfCredits)}`
+      : ` ← יתחיל ${TITLE[next.stage].title}${next.fullEstimate.usd > 0 ? ` (~${usd(next.fullEstimate.usd)})` : ''}`;
 
   return (
     <section className={`card prod-stage ${approved ? 'prod-done' : ''}`}>
