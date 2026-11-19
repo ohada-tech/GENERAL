@@ -68,7 +68,11 @@ export function createProject(ctx: Ctx, input: { name: string; clientName: strin
   return tx(ctx.db, () => {
     const id = uid();
     const t = ts(ctx);
-    const settings = projectSettingsSchema.parse(input.settings ?? {});
+    // בלי KIE מחובר — פרויקט חדש מייצר בהיגספילד (Claude באנלימיטד / קרדיטים)
+    const settings = projectSettingsSchema.parse({
+      ...(ctx.providers.media?.isConfigured?.() ? {} : { generator: 'higgsfield' }),
+      ...(input.settings ?? {}),
+    });
     ctx.db
       .prepare(
         'INSERT INTO projects (id, name, client_name, brief, settings, pipeline_state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',

@@ -131,8 +131,9 @@ describe('Production autopilot (05–09)', () => {
 
   it('auto-advance reports a missing KIE key instead of failing the approval', async () => {
     const ctx = makeCtx();
-    ctx.kie.configured = false;
+    // פרויקט שהוגדר על KIE, והמפתח נותק אחר כך
     const { p } = await toApprovedStoryboard(ctx);
+    ctx.kie.configured = false;
     expect(() => cmd.approveStoryboard(ctx, p.id)).not.toThrow();
     expect(listMedia(ctx.db, p.id)).toHaveLength(0);
     const n = ctx.db.prepare("SELECT title FROM notifications WHERE title LIKE '%לא הופעל%'").all();

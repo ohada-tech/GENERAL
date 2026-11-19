@@ -1,4 +1,4 @@
-import type { CostEstimate, Media, MediaKind, Shot } from '@apos/shared';
+import { hfCostLabel, type CostEstimate, type Media, type MediaKind, type Shot } from '@apos/shared';
 import { useState } from 'react';
 import { ConfirmButton, Empty, ErrorBox, InlineError, Loading, Tag } from '../components/ui';
 import { api, useAction, useApi } from '../lib/api';
@@ -80,14 +80,21 @@ export function ProductionTab({ detail, reload }: TabProps) {
               פורמט: {o.aspect.image} · סרטון סופי {o.aspect.out.w}×{o.aspect.out.h}
             </p>
           </div>
-          <div className="budget">
-            <div className="small">
-              נוצל {usd(o.spentUsd)} מתוך תקרה של {usd(o.budgetUsd)}
+          {o.generator === 'higgsfield' ? (
+            // בהיגספילד אין תקרת KIE — מה שנוצל בפועל בקרדיטים (מסונכרן מהמחשב)
+            <div className="budget small" title="קרדיטים בהיגספילד שנוצלו בפרויקט (מתעדכן כל 15 דקות)">
+              היגספילד: {detail.usage ? `נוצלו ${hfCostLabel(detail.usage.hfCredits)}` : 'עוד לא נמדד'}
             </div>
-            <div className="progress small-progress">
-              <div className="progress-fill" style={{ width: `${pct}%` }} />
+          ) : (
+            <div className="budget">
+              <div className="small">
+                נוצל {usd(o.spentUsd)} מתוך תקרה של {usd(o.budgetUsd)}
+              </div>
+              <div className="progress small-progress">
+                <div className="progress-fill" style={{ width: `${pct}%` }} />
+              </div>
             </div>
-          </div>
+          )}
         </div>
         {o.generator === 'higgsfield' ? (
           <div className="notice">
