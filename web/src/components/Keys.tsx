@@ -16,6 +16,10 @@ export interface KeyStatus {
   verifiedAt: string | null;
   lastError: string | null;
   credits?: number | null;
+  /** רץ דרך המנוי במחשב (Chrome / Claude Code) */
+  via?: { label: string; online: boolean; always: boolean } | null;
+  /** ה-API החזיר "אין קרדיט" */
+  quotaError?: string | null;
 }
 
 export type Keys = Record<KeyService, KeyStatus>;
@@ -51,14 +55,17 @@ const META: Record<KeyService, { name: string; role: string; where: string; plac
 
 const ORDER: KeyService[] = ['openai', 'anthropic', 'elevenlabs', 'kie'];
 
-const ok = (s?: KeyStatus) => !!s?.configured && s.verified !== false;
+/** עובד באמת: דרך המנוי כשהגשר מחובר, או API עם מפתח תקין ובלי "אין קרדיט" */
+const apiOk = (s?: KeyStatus) => !!s?.configured && s.verified !== false && !s.quotaError;
+const ok = (s?: KeyStatus) => !!s && ((s.via?.online ?? false) || (!s.via?.always && apiOk(s)));
+const where = (s?: KeyStatus) => (s?.via && (s.via.always || !apiOk(s)) ? (s.via.online ? ' (מנוי)' : ' (המחשב כבוי)') : s?.quotaError ? ' (אין קרדיט)' : '');
 
 /** תג בסרגל העליון: מצב שלושת החיבורים במבט אחד */
 export function KeysTag({ keys, onClick }: { keys: Keys | undefined; onClick: () => void }) {
   if (!keys) return null;
   const shown = ORDER.filter((k) => keys[k] && (k !== 'kie' || keys[k].configured));
   const all = shown.every((k) => ok(keys[k]));
-  const text = shown.map((k) => `${META[k].name} ${ok(keys[k]) ? '✓' : '✗'}`).join(' · ');
+  const text = shown.map((k) => `${META[k].name}${where(keys[k])} ${ok(keys[k]) ? '✓' : '✗'}`).join(' · ');
   return (
     <button className="tag-btn" onClick={onClick} title="מפתחות API — נשמרים בשרת בלבד">
       <Tag tone={all ? 'auto' : 'warn'}>

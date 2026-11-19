@@ -4,6 +4,7 @@
  * מפתח שהוזן בממשק גובר על משתנה הסביבה. כל מפתח נבדק מול הספק לפני שהוא נשמר.
  */
 import fs from 'node:fs';
+import { bridges } from './bridge.js';
 import path from 'node:path';
 import type { Ctx } from '../context.js';
 import type { Config } from '../config.js';
@@ -33,6 +34,10 @@ export interface KeyStatus {
   lastError: string | null;
   /** יתרת קרדיטים (KIE) */
   credits?: number | null;
+  /** רץ דרך המנוי במחשב של אוהד (Chrome / Claude Code) */
+  via?: { label: string; online: boolean; always: boolean } | null;
+  /** ה-API החזיר "אין קרדיט" */
+  quotaError?: string | null;
 }
 export type OpenAIStatus = KeyStatus;
 
@@ -103,6 +108,9 @@ export function loadSecrets(config: Config) {
 
 export function keyStatus(config: Config, s: KeyService): KeyStatus {
   const sl = slot(config, s);
+  // ChatGPT ו-Claude יכולים לרוץ דרך המנוי במחשב של אוהד — הסרגל מראה מאיפה באמת, ואם נגמר הקרדיט ב-API
+  const b = s === 'openai' ? bridges.chatgpt : s === 'anthropic' ? bridges.claude : null;
+  const via = b && (b.mode === 'always' || b.lastSeen > 0) && b.mode !== 'off' ? { label: b.label(), online: b.online(), always: b.mode === 'always' } : null;
   return {
     service: s,
     configured: Boolean(sl.apiKey),
@@ -110,6 +118,7 @@ export function keyStatus(config: Config, s: KeyService): KeyStatus {
     last4: sl.apiKey ? sl.apiKey.slice(-4) : null,
     model: sl.model ?? '',
     ...check[s],
+    ...(b ? { via, quotaError: b.apiQuotaError } : {}),
   };
 }
 

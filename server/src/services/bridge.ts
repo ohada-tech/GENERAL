@@ -4,12 +4,15 @@
  * או ~/.apos/codex-bridge.cjs (Codex). שם העובד נגמר ב-"-chrome" או "-codex".
  * עובד רק כשהמחשב דלוק והעובד רץ; בלעדיו — השגיאה המקורית של ה-API.
  * מצבים: off (רק API) · fallback (ברירת מחדל: API, ואם נכשל — המנוי) · always (רק המנוי).
+ * שני מנועים, תור לכל אחד: chatgpt (העובד ב-Chrome / Codex) ו-claude (~/.apos/claude-bridge.cjs — Claude Code על מנוי Max).
  */
 import { randomUUID } from 'node:crypto';
 import type { Ctx } from '../context.js';
 import { ProviderError } from '../providers/types.js';
 
 export type BridgeMode = 'off' | 'fallback' | 'always';
+export type BridgeEngine = 'chatgpt' | 'claude';
+export const BRIDGE_ENGINES: BridgeEngine[] = ['chatgpt', 'claude'];
 export const BRIDGE_MODES: BridgeMode[] = ['off', 'fallback', 'always'];
 
 export interface BridgeRequest {
@@ -35,7 +38,10 @@ const ONLINE_MS = 90_000;
 const ANSWER_MS = 15 * 60_000;
 
 class Bridge {
+  constructor(readonly engine: BridgeEngine) {}
   mode: BridgeMode = 'fallback';
+  /** ה-API החזיר "אין קרדיט" (לתצוגה בסרגל העליון). מתאפס כשה-API עובד שוב */
+  apiQuotaError: string | null = null;
   lastSeen = 0;
   worker = '';
   private pending = new Map<string, Pending>();
@@ -43,6 +49,7 @@ class Bridge {
 
   /** איזה מנוע עונה עכשיו — לתיוג הגרסאות ולהודעות */
   label() {
+    if (this.engine === 'claude') return 'Claude Code (מנוי)';
     return this.worker.endsWith('-chrome') ? "ChatGPT בצ'אט (Chrome)" : 'ChatGPT מנוי (Codex)';
   }
 
@@ -116,26 +123,34 @@ class Bridge {
   }
 
   status() {
-    return { mode: this.mode, online: this.online(), worker: this.worker, engine: this.label(), lastSeen: this.lastSeen ? new Date(this.lastSeen).toISOString() : null, pending: this.pending.size };
+    return { mode: this.mode, online: this.online(), worker: this.worker, engine: this.label(), kind: this.engine, lastSeen: this.lastSeen ? new Date(this.lastSeen).toISOString() : null, pending: this.pending.size };
   }
 }
 
-/** יחיד לכל השרת — הספק של OpenAI והנתיבים חולקים אותו */
-export const bridge = new Bridge();
+/** גשר לכל מנוע — יחיד לכל השרת. `bridge` = ChatGPT (השם הישן) */
+export const bridges: Record<BridgeEngine, Bridge> = { chatgpt: new Bridge('chatgpt'), claude: new Bridge('claude') };
+export const bridge = bridges.chatgpt;
+export const claudeBridge = bridges.claude;
+
+export const engineOf = (v: unknown): BridgeEngine => (v === 'claude' ? 'claude' : 'chatgpt');
+const modeKey = (e: BridgeEngine) => (e === 'chatgpt' ? 'bridge_mode' : `bridge_mode_${e}`);
 
 /** הגשר לא מחובר: המשימה מחכה בתור ולא נכשלת (ראו failJob) */
-export function bridgeOffline() {
-  return new ProviderError("ממתין ל-ChatGPT בצ'אט (Chrome) — המחשב כבוי או שהגשר לא רץ. ימשיך לבד כשיחזור.", true, 'bridge_offline');
+export function bridgeOffline(engine: BridgeEngine = 'chatgpt') {
+  const who = engine === 'claude' ? 'Claude Code במחשב' : "ChatGPT בצ'אט (Chrome)";
+  return new ProviderError(`ממתין ל-${who} — המחשב כבוי או שהגשר לא רץ. ימשיך לבד כשיחזור.`, true, 'bridge_offline');
 }
 
 export function loadBridgeMode(ctx: Ctx) {
-  const v = (ctx.db.prepare("SELECT value FROM meta WHERE key = 'bridge_mode'").get() as { value: string } | undefined)?.value;
-  if (v && (BRIDGE_MODES as string[]).includes(v)) bridge.mode = v as BridgeMode;
+  for (const e of BRIDGE_ENGINES) {
+    const v = (ctx.db.prepare('SELECT value FROM meta WHERE key = ?').get(modeKey(e)) as { value: string } | undefined)?.value;
+    if (v && (BRIDGE_MODES as string[]).includes(v)) bridges[e].mode = v as BridgeMode;
+  }
 }
 
-export function setBridgeMode(ctx: Ctx, mode: string) {
+export function setBridgeMode(ctx: Ctx, mode: string, engine: BridgeEngine = 'chatgpt') {
   if (!(BRIDGE_MODES as string[]).includes(mode)) throw new ProviderError('מצב גשר לא מוכר', false, 'bad_request');
-  bridge.mode = mode as BridgeMode;
-  ctx.db.prepare("INSERT INTO meta (key, value) VALUES ('bridge_mode', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(mode);
-  return bridge.status();
+  bridges[engine].mode = mode as BridgeMode;
+  ctx.db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(modeKey(engine), mode);
+  return bridges[engine].status();
 }

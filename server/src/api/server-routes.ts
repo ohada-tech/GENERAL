@@ -13,7 +13,7 @@ import { extractDocText } from '../services/doc-text.js';
 import { autofillBrief } from '../services/auto-brief.js';
 import { previewScript, proposeConcepts } from '../services/concepts.js';
 import { judgeScript } from '../services/creative.js';
-import { bridge, setBridgeMode } from '../services/bridge.js';
+import { bridges, engineOf, setBridgeMode } from '../services/bridge.js';
 import { planUsage, setPlanUsage, syncUsage } from '../services/usage.js';
 import { textProviderFor } from '../jobs/handlers.js';
 import { needsOwner, resolveAttention } from '../services/attention.js';
@@ -75,15 +75,27 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
   app.get('/api/usage/plan', async () => planUsage(ctx));
 
   // גשר למנוי ChatGPT: העובד המקומי (Codex) מושך בקשות ומחזיר תשובות
-  app.get('/api/bridge/status', async () => bridge.status());
-  app.post('/api/bridge/mode', async (req) => setBridgeMode(ctx, String(((req.body ?? {}) as { mode?: string }).mode ?? '')));
+  // ?engine=claude — הגשר ל-Claude Code; בלי — ChatGPT (התשובה הישנה + claude בתוכה)
+  app.get('/api/bridge/status', async (req) => {
+    const e = (req.query as { engine?: string }).engine;
+    return e ? bridges[engineOf(e)].status() : { ...bridges.chatgpt.status(), claude: bridges.claude.status() };
+  });
+  app.post('/api/bridge/mode', async (req) => {
+    const b = (req.body ?? {}) as { mode?: string; engine?: string };
+    return setBridgeMode(ctx, String(b.mode ?? ''), engineOf(b.engine));
+  });
   app.get('/api/bridge/next', async (req, reply) => {
-    const q = req.query as { wait?: string; worker?: string };
-    const r = await bridge.next(String(q.worker ?? 'codex'), Math.min(Math.max(Number(q.wait) || 0, 0), 25) * 1000);
+    const q = req.query as { wait?: string; worker?: string; engine?: string };
+    const r = await bridges[engineOf(q.engine)].next(String(q.worker ?? 'codex'), Math.min(Math.max(Number(q.wait) || 0, 0), 25) * 1000);
     if (!r) return reply.code(204).send();
     return r;
   });
-  app.post('/api/bridge/:rid/result', async (req) => ({ ok: bridge.answer((req.params as { rid: string }).rid, (req.body ?? {}) as { text?: string; error?: string }) }));
+  // המזהה ייחודי — מחפשים בכל הגשרים
+  app.post('/api/bridge/:rid/result', async (req) => {
+    const rid = (req.params as { rid: string }).rid;
+    const body = (req.body ?? {}) as { text?: string; error?: string };
+    return { ok: Object.values(bridges).some((b) => b.answer(rid, body)) };
+  });
 
   // QA קריאייטיבי לגרסה קיימת — שיפוט בלבד, לא משנה את התסריט ולא נשמר
   app.post('/api/scripts/:vid/qa', async (req) => {

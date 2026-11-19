@@ -165,6 +165,7 @@ export class OpenAITextProvider implements TextProvider {
     try {
       return await this.completeApi<T>(name, schema, messages, modelOverride);
     } catch (e) {
+      if (e instanceof ProviderError && e.code === 'insufficient_quota') bridge.apiQuotaError = e.message;
       if (e instanceof ProviderError && BRIDGE_FALLBACK.has(e.code) && bridge.usable(true)) return this.viaBridge<T>(name, schema, messages);
       if (e instanceof ProviderError && BRIDGE_FALLBACK.has(e.code) && waitForBridge && e.code !== 'network') throw bridgeOffline();
       throw e;

@@ -1,6 +1,7 @@
 /**
  * ספק Claude (Anthropic API) — Messages API עם פלט מובנה (output_config.format: json_schema).
  * המפתח נשמר בשרת בלבד (ANTHROPIC_API_KEY או חיבור מהממשק).
+ * כשאין קרדיט / אין מפתח — אותה בקשה עוברת ל-Claude Code במחשב של אוהד (גשר claude, מנוי Max).
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { shotFieldsSchema, type ScriptContent, type ShotFields } from '@apos/shared';
@@ -16,6 +17,10 @@ import {
 } from './prompts.js';
 import { writeScriptTwoStep, type TextResult } from './writer.js';
 import { ProviderError, type GenResult, type ProjectContext, type ScriptDraft, type TextProvider } from './types.js';
+import { bridgeOffline, claudeBridge } from '../services/bridge.js';
+
+/** כשלים של ה-API שבגללם עוברים למנוי */
+const BRIDGE_FALLBACK = new Set(['missing_api_key', 'auth', 'insufficient_quota', 'rate_limit', 'server', 'network']);
 
 export interface AnthropicConfig {
   apiKey: string;
@@ -33,7 +38,7 @@ export class AnthropicTextProvider implements TextProvider {
   constructor(private readonly cfg: AnthropicConfig) {}
 
   isConfigured() {
-    return Boolean(this.cfg.apiKey);
+    return Boolean(this.cfg.apiKey) || claudeBridge.usable(true);
   }
 
   private client(apiKey = this.cfg.apiKey) {
@@ -110,6 +115,29 @@ export class AnthropicTextProvider implements TextProvider {
   }
 
   private async call(system: string, user: string, modelOverride: string | undefined, schema: object | null) {
+    const b = claudeBridge;
+    if (b.usable(false) || (!this.cfg.apiKey && b.usable(true))) return this.viaBridge(system, user, schema);
+    const waitForBridge = b.mode === 'always' || (b.mode === 'fallback' && b.lastSeen > 0);
+    if (b.mode === 'always' || (!this.cfg.apiKey && waitForBridge)) throw bridgeOffline('claude');
+    try {
+      const r = await this.callApi(system, user, modelOverride, schema);
+      b.apiQuotaError = null;
+      return r;
+    } catch (e) {
+      if (e instanceof ProviderError && e.code === 'insufficient_quota') b.apiQuotaError = e.message;
+      if (e instanceof ProviderError && BRIDGE_FALLBACK.has(e.code) && b.usable(true)) return this.viaBridge(system, user, schema);
+      if (e instanceof ProviderError && BRIDGE_FALLBACK.has(e.code) && waitForBridge && e.code !== 'network') throw bridgeOffline('claude');
+      throw e;
+    }
+  }
+
+  private async viaBridge(system: string, user: string, schema: object | null) {
+    const text = (await claudeBridge.call('claude', system, user, schema)).trim();
+    if (!text) throw new ProviderError('תשובה ריקה מ-Claude Code', true, 'empty_output');
+    return { text: schema ? text.replace(/^```(?:json)?\s*|\s*```$/g, '') : text, model: claudeBridge.label(), usage: undefined };
+  }
+
+  private async callApi(system: string, user: string, modelOverride: string | undefined, schema: object | null) {
     if (!this.cfg.apiKey) {
       throw new ProviderError('Claude לא מחובר. לחץ על "מפתחות" בסרגל העליון והדבק מפתח Anthropic API.', false, 'missing_api_key');
     }
@@ -130,6 +158,9 @@ export class AnthropicTextProvider implements TextProvider {
       if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError)
         throw new ProviderError(`Anthropic דחה את המפתח: ${e.message}`, false, 'auth');
       if (e instanceof Anthropic.NotFoundError) throw new ProviderError(`המודל "${model}" לא זמין לחשבון`, false, 'model_not_found');
+      // אין קרדיט מגיע כ-400 — מסווגים כדי לעבור למנוי
+      if (e instanceof Anthropic.BadRequestError && /credit balance/i.test(e.message))
+        throw new ProviderError(`אין קרדיט ב-API של Anthropic: ${e.message}`, false, 'insufficient_quota');
       if (e instanceof Anthropic.BadRequestError) throw new ProviderError(`בקשה נדחתה ע"י Anthropic: ${e.message}`, false, 'bad_request');
       if (e instanceof Anthropic.RateLimitError) throw new ProviderError(`הגבלת קצב Anthropic: ${e.message}`, true, 'rate_limit');
       if (e instanceof Anthropic.InternalServerError) throw new ProviderError(`שגיאת שרת Anthropic: ${e.message}`, true, 'server');
