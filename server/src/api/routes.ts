@@ -199,6 +199,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/api/shots/:sid/move', async (req) =>
     cmd.moveShot(ctx, (req.params as any).sid, ((req.body ?? {}) as Body).direction === 'up' ? 'up' : 'down'),
   );
+  app.post('/api/projects/:id/shots/approve-all', async (req) => cmd.approveAllShots(ctx, (req.params as any).id));
   app.post('/api/shots/:sid/approve', async (req) => cmd.setShotApproval(ctx, (req.params as any).sid, 'approved'));
   app.post('/api/shots/:sid/request-revision', async (req) =>
     cmd.setShotApproval(ctx, (req.params as any).sid, 'needs_revision', ((req.body ?? {}) as Body).note ?? ''),

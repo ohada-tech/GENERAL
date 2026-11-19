@@ -708,6 +708,16 @@ export function setShotApproval(ctx: Ctx, shotId: string, decision: 'approved' |
   });
 }
 
+/** אישור כל השוטים שעוד לא אושרו בסטורי בורד הנוכחי בלחיצה אחת */
+export function approveAllShots(ctx: Ctx, projectId: string) {
+  const sb = currentStoryboard(ctx.db, projectId);
+  if (!sb) throw new GateError('אין סטורי בורד');
+  if (sb.status !== 'draft') throw new GateError('הסטורי בורד כבר אושר — פתח אותו מחדש לעריכה', 409);
+  const pending = listShots(ctx.db, sb.id).filter((s) => s.approval !== 'approved');
+  for (const s of pending) setShotApproval(ctx, s.id, 'approved');
+  return { approved: pending.length };
+}
+
 export function approveStoryboard(ctx: Ctx, projectId: string, note = '') {
   const sb = currentStoryboard(ctx.db, projectId);
   if (!sb) throw new GateError('אין סטורי בורד לאישור');

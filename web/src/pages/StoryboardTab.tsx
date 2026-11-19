@@ -125,6 +125,20 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
               <button className="btn" onClick={() => post(`/api/projects/${project.id}/shots`, {})} disabled={act.busy}>
                 + שוט
               </button>
+              {approvedCount < shots.length && (
+                <button
+                  className="btn"
+                  disabled={act.busy}
+                  onClick={() => {
+                    const fix = shots.filter((s) => s.approval === 'needs_revision').length;
+                    if (!window.confirm(`לאשר את כל ${shots.length - approvedCount} השוטים שעוד לא אושרו?${fix ? ` (${fix} מסומנים "נדרש תיקון" — גם הם יאושרו)` : ''}`)) return;
+                    void post(`/api/projects/${project.id}/shots/approve-all`, {});
+                  }}
+                  title="מאשר בבת אחת את כל השוטים, ואז אפשר לאשר את הסטורי בורד ולהתקדם לתמונות"
+                >
+                  <Icon n="check" /> אשר את כל השוטים ({shots.length - approvedCount})
+                </button>
+              )}
               <button
                 className="btn btn-primary"
                 onClick={() => post(`/api/projects/${project.id}/storyboard/approve`, {})}

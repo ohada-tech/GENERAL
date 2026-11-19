@@ -22,6 +22,25 @@ async function readyProject(ctx: ReturnType<typeof makeCtx>) {
 }
 
 describe('Higgsfield mode (Claude / manual uploads)', () => {
+  it('אישור כל השוטים בלחיצה אחת, ואז אפשר לאשר את הסטורי בורד', async () => {
+    const ctx = makeCtx();
+    const p = projectWithBrief(ctx);
+    cmd.completeBrief(ctx, p.id);
+    await drain(ctx);
+    const v = listScripts(ctx.db, p.id)[0];
+    cmd.approveScriptInternal(ctx, v.id);
+    cmd.recordClientApproval(ctx, v.id, { approvedBy: 'לקוח' });
+    await drain(ctx);
+    const shots = listShots(ctx.db, currentStoryboard(ctx.db, p.id)!.id);
+    cmd.setShotApproval(ctx, shots[0].id, 'approved');
+    const app = await buildApp(ctx);
+    const r = (await app.inject({ method: 'POST', url: `/api/projects/${p.id}/shots/approve-all` })).json();
+    expect(r.approved).toBe(shots.length - 1);
+    expect(listShots(ctx.db, currentStoryboard(ctx.db, p.id)!.id).every((s) => s.approval === 'approved')).toBe(true);
+    cmd.approveStoryboard(ctx, p.id);
+    expect((await app.inject({ method: 'POST', url: `/api/projects/${p.id}/shots/approve-all` })).statusCode).toBe(409);
+  });
+
   it('never calls KIE for frames, lists what is waiting, and accepts uploads per shot', async () => {
     const ctx = makeCtx();
     const { p, shots } = await readyProject(ctx);
