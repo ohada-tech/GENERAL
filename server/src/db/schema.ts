@@ -377,4 +377,21 @@ export const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_revision_rounds_project ON revision_rounds(project_id, number);
   `,
+  /* v19 — הרצה בהיגספילד בלחיצת כפתור (העובד המקומי מריץ את ה-CLI) */ `
+  CREATE TABLE hf_runs (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    stage TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    status TEXT NOT NULL,
+    total INTEGER NOT NULL DEFAULT 0,
+    done INTEGER NOT NULL DEFAULT 0,
+    credits REAL NOT NULL DEFAULT 0,
+    error TEXT NOT NULL DEFAULT '',
+    requested_at TEXT NOT NULL,
+    started_at TEXT,
+    finished_at TEXT
+  );
+  CREATE INDEX idx_hf_runs_status ON hf_runs(status, requested_at);
+  `,
 ];

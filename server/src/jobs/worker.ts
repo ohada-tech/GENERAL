@@ -11,6 +11,7 @@ import { ProviderError } from '../providers/types.js';
 import { emit } from '../workflow/events.js';
 import { HANDLERS, type JobHandler } from './handlers.js';
 import { checkForgottenTimer } from '../services/time.js';
+import { requeueStuckHfRuns } from '../services/hf-runs.js';
 
 const WORKER = 'worker';
 /** כמה זמן משימה מחכה לגשר של ChatGPT לפני שהיא נכשלת */
@@ -248,6 +249,7 @@ export function startWorker(ctx: Ctx, isCompleted: (projectId: string) => boolea
           recoverStuckJobs(ctx);
           // אוהד: חסמי "אין התקדמות מאז…" הוסרו — לא מזהים פרויקטים "תקועים" אוטומטית
           checkForgottenTimer(ctx);
+          requeueStuckHfRuns(ctx);
         }
         let claimed = false;
         while (inFlight.size < Math.max(1, ctx.config.jobs.concurrency)) {

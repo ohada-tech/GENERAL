@@ -1,4 +1,5 @@
 import { recordFeedback, type LessonArea } from '../services/learning.js';
+import { lastHfRun } from '../services/hf-runs.js';
 /**
  * הפקה אוטומטית (שלבים 05–09): כל שלב מתחיל רק מאישור מפורש של המשתמש —
  * אישור השלב הקודם (כשמופעל "המשך אוטומטי") או לחיצה על "הפעל". לפני כל הפעלה
@@ -473,6 +474,7 @@ export function productionOverview(ctx: Ctx, projectId: string) {
       pendingEstimate: estimate(toCreate),
       fullEstimate: estimate(plan),
       hfCredits: Math.round(plan.reduce((a, it) => a + (it.hfCredits ?? 0), 0) * 100) / 100,
+      hfRun: stage === 'images' || stage === 'animation' ? lastHfRun(ctx, projectId, stage) : null,
     };
   });
   const spent = spentCredits(ctx, projectId);

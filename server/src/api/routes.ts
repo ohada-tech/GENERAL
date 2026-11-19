@@ -25,6 +25,7 @@ import { describeProviders } from '../providers/registry.js';
 import { dashboard, projectCover, projectState } from '../services/views.js';
 import { usageFor } from '../services/usage.js';
 import * as rev from '../services/revisions.js';
+import * as hf from '../services/hf-runs.js';
 import * as secrets from '../services/secrets.js';
 import * as learning from '../services/learning.js';
 import * as knowledge from '../services/knowledge.js';
@@ -363,6 +364,21 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     prod.reopenStage(ctx, (req.params as any).id, mustStage((req.params as any).stage)),
   );
   app.get('/api/projects/:id/production/requests', async (req) => prod.externalRequests(ctx, (req.params as any).id));
+  // הרצה בהיגספילד בלחיצה (מסלול קרדיטים): pilot = שוט אחד, all = כל מה שמחכה
+  app.post('/api/projects/:id/production/:stage/hf-run', async (req, reply) => {
+    const stage = (req.params as any).stage;
+    if (stage !== 'images' && stage !== 'animation') throw new GateError('אפשר להריץ בהיגספילד רק תמונות או הנפשה', 400);
+    const scope = ((req.body ?? {}) as Body).scope === 'pilot' ? 'pilot' : 'all';
+    reply.code(201);
+    return hf.requestHfRun(ctx, (req.params as any).id, stage, scope);
+  });
+  // העובד המקומי (~/.apos/hf-worker.cjs)
+  app.get('/api/hf/next', async (_req, reply) => {
+    const r = hf.nextHfRun(ctx);
+    if (!r) return reply.code(204).send();
+    return r;
+  });
+  app.post('/api/hf/runs/:rid', async (req) => hf.reportHfRun(ctx, (req.params as any).rid, (req.body ?? {}) as { done?: number; status?: string; error?: string }));
   // העלאת תוצר שנוצר מחוץ למערכת (Higgsfield / ידני) — קובץ
   app.post('/api/projects/:id/media/upload', async (req, reply) => {
     const q = req.query as Record<string, string>;

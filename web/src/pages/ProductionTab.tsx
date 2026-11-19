@@ -19,6 +19,8 @@ interface StageView {
   fullEstimate: CostEstimate;
   /** בהיגספילד: כמה השלב עולה בקרדיטים (באנלימיטד 0 בפועל) */
   hfCredits?: number;
+  /** ההרצה האחרונה בהיגספילד בלחיצה (העובד במחשב) */
+  hfRun?: { id: string; scope: 'pilot' | 'all'; status: 'queued' | 'running' | 'done' | 'failed'; total: number; done: number; credits: number; error: string } | null;
 }
 
 interface Overview {
@@ -128,9 +130,48 @@ export function ProductionTab({ detail, reload }: TabProps) {
           }
           external={o.generator === 'higgsfield'}
           hfRoute={o.hfRoute}
+          onHfRun={(scope) => run(() => api.post(`/api/projects/${project.id}/production/${st}/hf-run`, { scope }))}
         />
       ))}
     </div>
+  );
+}
+
+/** הרצה בהיגספילד בלחיצה: פיילוט (שוט אחד) ואז הכל. במסלול אנלימיטד — הסבר איך להריץ */
+function HfRunControls(props: { view: StageView; route: 'unlimited' | 'credits'; busy: boolean; missing: number; approved: boolean; onRun: (scope: 'pilot' | 'all') => void }) {
+  const { view: v, route } = props;
+  const r = v.hfRun;
+  if (r && (r.status === 'queued' || r.status === 'running'))
+    return (
+      <Tag tone="info">
+        <Icon n="hourglass" /> {r.status === 'queued' ? 'ממתין למחשב…' : `רץ בהיגספילד… ${r.done}/${r.total}`}
+      </Tag>
+    );
+  if (props.approved || !v.canStart || props.missing <= 0) return r?.status === 'failed' ? <Tag tone="danger">ההרצה נכשלה: {r.error.slice(0, 80)}</Tag> : null;
+  if (route !== 'credits') return <span className="small muted">להרצה בלחיצה — לעבור ל"קרדיטים" למעלה</span>;
+  const per = v.items.length ? (v.hfCredits ?? 0) / v.items.length : 0;
+  const all = per * props.missing;
+  const label = (c: number) => `~${Math.round(c * 10) / 10} קרדיטים (${(c * 0.04).toFixed(2)})`;
+  const pilotDone = !!r && r.scope === 'pilot' && r.status === 'done';
+  return (
+    <>
+      {r?.status === 'failed' && <Tag tone="danger">ההרצה הקודמת נכשלה: {r.error.slice(0, 80)}</Tag>}
+      <button
+        className={`btn ${pilotDone ? '' : 'btn-primary'}`}
+        disabled={props.busy}
+        onClick={() => window.confirm(`להריץ פיילוט בהיגספילד — שוט אחד, ${label(per)}?`) && props.onRun('pilot')}
+        title="שוט אחד קודם, בודקים, ורק אז הכל"
+      >
+        <Icon n="play" /> פיילוט: שוט אחד · {label(per)}
+      </button>
+      <button
+        className={`btn ${pilotDone ? 'btn-primary' : ''}`}
+        disabled={props.busy}
+        onClick={() => window.confirm(`להריץ בהיגספילד את כל ${props.missing} השוטים שמחכים — ${label(all)}?`) && props.onRun('all')}
+      >
+        <Icon n="play" /> הרץ הכל ({props.missing}) · {label(all)}
+      </button>
+    </>
   );
 }
 
@@ -151,6 +192,7 @@ function StageCard(props: {
   onUpload: (kind: MediaKind, shotId: string | null, file: File) => void;
   external: boolean;
   hfRoute: 'unlimited' | 'credits';
+  onHfRun: (scope: 'pilot' | 'all') => void;
 }) {
   const { view: v, next } = props;
   const t = TITLE[v.stage];
@@ -190,6 +232,9 @@ function StageCard(props: {
           {v.blockedReason && !approved && <p className="small muted"><Icon n="hourglass" /> {v.blockedReason}</p>}
         </div>
         <div className="row gap-s wrap">
+          {props.external && (v.stage === 'images' || v.stage === 'animation') && (
+            <HfRunControls view={v} route={props.hfRoute} busy={props.busy} missing={missing} approved={approved} onRun={props.onHfRun} />
+          )}
           {v.stage !== 'delivery' && v.canStart && !approved && missing > 0 && !generating && !(props.external && (v.stage === 'images' || v.stage === 'animation')) && (
             <button className="btn btn-primary" disabled={props.busy} onClick={props.onStart}>
               <Icon n="play" /> {created ? `צור את החסרים (${missing})` : `הפעל — ${total} פריטים`}

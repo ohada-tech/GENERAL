@@ -87,6 +87,28 @@ describe('Higgsfield mode (Claude / manual uploads)', () => {
     expect(prod.productionOverview(ctx, p.id).hfRoute).toBe('credits');
   });
 
+  it('הרצה בהיגספילד בלחיצה: רק במסלול קרדיטים, פיילוט = שוט אחד, העובד מקבל מה להריץ ומדווח', async () => {
+    const ctx = makeCtx();
+    const { p, shots } = await readyProject(ctx);
+    cmd.approveStoryboard(ctx, p.id);
+    const app = await buildApp(ctx);
+    const run = (scope: string) => app.inject({ method: 'POST', url: `/api/projects/${p.id}/production/images/hf-run`, payload: { scope } });
+    expect((await run('pilot')).statusCode).toBe(409); // אנלימיטד — לא מכאן
+    cmd.updateProject(ctx, p.id, { settings: { hfRoute: 'credits', imageModel: 'nano-banana-pro' } });
+    const r = (await run('pilot')).json();
+    expect(r).toMatchObject({ status: 'queued', total: 1, credits: 2, scope: 'pilot' });
+    expect((await run('all')).statusCode).toBe(409); // כבר רצה הרצה בשלב
+    const next = (await app.inject({ url: '/api/hf/next' })).json();
+    expect(next.items).toHaveLength(1);
+    expect(next.items[0]).toMatchObject({ kind: 'frame', job: 'nano_banana_pro', params: { resolution: '2k' } });
+    expect((await app.inject({ url: '/api/hf/next' })).statusCode).toBe(204);
+    await app.inject({ method: 'POST', url: `/api/hf/runs/${r.id}`, payload: { done: 1, status: 'done' } });
+    const ov = prod.productionOverview(ctx, p.id).stages.find((s) => s.stage === 'images')!;
+    expect(ov.hfRun).toMatchObject({ status: 'done', done: 1 });
+    const all = (await run('all')).json();
+    expect(all.total, JSON.stringify(all)).toBe(shots.length);
+  });
+
   it('a revocable Claude access token works instead of the password', async () => {
     const ctx = makeCtx();
     ctx.config.auth.password = 'pw-1';
