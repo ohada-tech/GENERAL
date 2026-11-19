@@ -1046,3 +1046,5 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .usage-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .usage-line span { display: inline-flex; align-items: center; gap: 4px; }
 .usage-line.small { font-size: 12px; }
+.rev-items { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.revisions textarea { width: 100%; }

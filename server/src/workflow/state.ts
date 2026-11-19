@@ -32,6 +32,8 @@ export interface StateInput {
   lastActivityAt: string | null;
   /** מצב שלבי ההפקה 05–09 (אופציונלי בבדיקות) */
   production?: ProductionSummary;
+  /** סבב תיקונים פתוח אחרי מסירה */
+  openRevision?: { number: number; total: number; done: number } | null;
 }
 
 export interface ProductionStageSummary {
@@ -323,7 +325,8 @@ export function computeProjectState(input: StateInput): ProjectState {
   }
 
   // נמסר ללקוח (גם מחוץ למערכת): כל השלבים הושלמו, ואין פעולות פתוחות
-  if (project.deliveredAt) {
+  const rev = input.openRevision ?? null;
+  if (project.deliveredAt || rev) {
     for (const d of STAGES) {
       const st = stages[d.key];
       if (st.status !== 'completed') {
@@ -334,6 +337,14 @@ export function computeProjectState(input: StateInput): ProjectState {
       st.milestones = st.milestones.map((m) => ({ ...m, done: true }));
     }
     actions.length = 0;
+    // סבב תיקונים פתוח: הכל כבר נעשה, חוץ מהמסירה המתוקנת
+    if (rev) {
+      const d = stages.delivery;
+      d.status = 'in_progress';
+      d.detail = `סבב תיקונים ${rev.number}: ${rev.done}/${rev.total} הערות טופלו`;
+      d.milestones = d.milestones.map((m) => ({ ...m, done: false }));
+      actions.push({ kind: 'fix', stage: 'delivery', label: `סבב תיקונים ${rev.number}: ${rev.total - rev.done} הערות פתוחות`, tab: 'overview' });
+    }
   }
 
   const ordered = STAGES.map((d) => stages[d.key]);

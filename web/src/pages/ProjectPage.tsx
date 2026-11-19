@@ -25,6 +25,7 @@ import { TimeTab } from './TimeTab';
 import { ProductionTab } from './ProductionTab';
 import { Icon } from '../components/Icon';
 import { UsageLine } from '../components/UsageLine';
+import { RevisionsCard, type RevisionRound } from '../components/Revisions';
 
 export interface ProjectDetail {
   project: Project;
@@ -33,6 +34,7 @@ export interface ProjectDetail {
   assets: Asset[];
   cover?: { mediaId?: string; assetId?: string } | null;
   usage?: import('@apos/shared').ProjectUsage | null;
+  revisions?: RevisionRound[];
 }
 
 export interface TabProps {
@@ -240,6 +242,7 @@ function OverviewTab({ detail, reload }: TabProps) {
 
   return (
     <div className="overview">
+      <RevisionsCard project={project} rounds={detail.revisions ?? []} onChanged={reload} />
       <section className="card">
         <h2>שלבי ההפקה</h2>
         <table className="stage-table">

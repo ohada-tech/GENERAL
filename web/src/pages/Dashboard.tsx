@@ -261,6 +261,11 @@ export function Dashboard() {
                         הבא: <b>{p.state.nextAction.label}</b>
                       </Link>
                     )}
+                    {p.revisions?.open && (
+                      <Tag tone={p.revisions.open.number > p.revisions.included ? 'warn' : 'info'}>
+                        🔁 סבב תיקונים {p.revisions.open.number} · {p.revisions.open.done}/{p.revisions.open.total}
+                      </Tag>
+                    )}
                     <UsageLine usage={p.usage} compact />
                     <DoneToggle p={p} done={done} onDone={reload} />
                     {(p.state.pipelineState !== 'active' || p.state.blockers.length > 0) && (

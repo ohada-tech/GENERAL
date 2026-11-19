@@ -364,4 +364,17 @@ export const MIGRATIONS: string[] = [
     updated_at TEXT NOT NULL
   );
   `,
+  /* v18 — סבבי תיקונים אחרי מסירה ללקוח */ `
+  CREATE TABLE revision_rounds (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    number INTEGER NOT NULL,
+    items TEXT NOT NULL DEFAULT '[]',
+    source TEXT NOT NULL DEFAULT '',
+    opened_at TEXT NOT NULL,
+    closed_at TEXT,
+    close_note TEXT NOT NULL DEFAULT ''
+  );
+  CREATE INDEX idx_revision_rounds_project ON revision_rounds(project_id, number);
+  `,
 ];

@@ -1,4 +1,5 @@
 import { resolveAttention } from '../services/attention.js';
+import { closeOpenRevision } from '../services/revisions.js';
 /**
  * פקודות (Commands): כל פעולה של המשתמש עוברת כאן.
  * כל פקודה בודקת את נקודות האישור (Gates) לפני שהיא משנה מצב, ורושמת Event.
@@ -254,6 +255,8 @@ export function markDelivered(ctx: Ctx, projectId: string, input: { note?: strin
   const at = ctx.now().toISOString();
   return tx(ctx.db, () => {
     ctx.db.prepare('UPDATE projects SET delivered_at = ?, delivered_note = ?, updated_at = ? WHERE id = ?').run(at, note, at, projectId);
+    // מסירה בזמן סבב תיקונים פתוח = הסבב נמסר
+    closeOpenRevision(ctx, projectId, note);
     // נמסר — אין יותר מה לחכות לו בפרויקט הזה
     resolveAttention(ctx, { projectId });
     emit(ctx, { projectId, type: 'project.progress', actor: by, message: `✅ נמסר ללקוח והסרטון אושר${note ? `: ${note}` : ''}`, payload: { by, delivered: true } });

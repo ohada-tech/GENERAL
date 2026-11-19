@@ -34,6 +34,8 @@ export const projectSettingsSchema = z.object({
   autoAdvance: z.boolean().default(true),
   /** תקרת עלות יצירה לפרויקט בדולרים — יצירה שתעבור אותה נחסמת */
   budgetUsd: z.number().nonnegative().default(25),
+  /** כמה סבבי תיקונים אחרי מסירה כלולים במחיר — מעבר לזה מסומן כחריגה */
+  includedRevisionRounds: z.number().int().min(0).max(20).default(2),
   /** מיתוג הקבצים שיוצאים ללקוח: genesis = לוגו Genesis בגדול והשם שלך בקטן; studio = הסטודיו שלך */
   brand: z.enum(['genesis', 'studio']).default('genesis'),
 });
@@ -244,6 +246,8 @@ export interface ProjectSummary {
   lastUpdate?: { text: string; by: string; at: string } | null;
   /** הקישור האחרון שנשלח ללקוח: מתי, ואם/מתי הלקוח פתח */
   lastShare?: { label: string; sentAt: string; viewedAt: string | null; views: number } | null;
+  /** סבבי תיקונים אחרי מסירה: כמה היו, כמה כלולים, והסבב הפתוח */
+  revisions?: { count: number; included: number; open: { id: string; number: number; total: number; done: number } | null } | null;
   /** עלות: קרדיטים בהיגספילד, טוקנים של Claude Code וחלק מהמגבלה השבועית. null = עוד לא נמדד */
   usage?: import('./usage.js').ProjectUsage | null;
 }

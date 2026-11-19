@@ -24,6 +24,7 @@ import {
 import { describeProviders } from '../providers/registry.js';
 import { dashboard, projectCover, projectState } from '../services/views.js';
 import { usageFor } from '../services/usage.js';
+import * as rev from '../services/revisions.js';
 import * as secrets from '../services/secrets.js';
 import * as learning from '../services/learning.js';
 import * as knowledge from '../services/knowledge.js';
@@ -71,6 +72,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
       assets: listAssets(ctx.db, id),
       cover: projectCover(ctx, id),
       usage: usageFor(ctx, id),
+      revisions: rev.listRevisions(ctx, id),
     };
   });
 
@@ -126,6 +128,18 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     return cmd.markDelivered(ctx, (req.params as any).id, b);
   });
   app.delete('/api/projects/:id/delivered', async (req) => cmd.unmarkDelivered(ctx, (req.params as any).id));
+  // סבבי תיקונים אחרי מסירה
+  app.get('/api/projects/:id/revisions', async (req) => rev.listRevisions(ctx, (req.params as any).id));
+  app.post('/api/projects/:id/revisions', async (req, reply) => {
+    const b = (req.body ?? {}) as { notes?: string; source?: string };
+    reply.code(201);
+    return rev.openRevision(ctx, (req.params as any).id, b);
+  });
+  app.post('/api/revisions/:rid/items', async (req) => rev.addRevisionItems(ctx, (req.params as any).rid, String(((req.body ?? {}) as { notes?: string }).notes ?? '')));
+  app.post('/api/revisions/:rid/items/:i', async (req) =>
+    rev.setRevisionItem(ctx, (req.params as any).rid, Number((req.params as any).i), Boolean(((req.body ?? {}) as { done?: boolean }).done)),
+  );
+  app.post('/api/revisions/:rid/close', async (req) => rev.closeRevision(ctx, (req.params as any).rid, String(((req.body ?? {}) as { note?: string }).note ?? '')));
   // מחיקת פרויקט ריק בלבד (נפתח בטעות)
   app.delete('/api/projects/:id', async (req) => cmd.deleteEmptyProject(ctx, (req.params as any).id));
   app.post('/api/scripts/:vid/rewrite', async (req) =>
