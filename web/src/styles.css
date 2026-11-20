@@ -1048,3 +1048,7 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .usage-line.small { font-size: 12px; }
 .rev-items { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .revisions textarea { width: 100%; }
+/* משימות ל-Claude מכפתור */
+.agent-task { border: 1px solid var(--border, rgba(127,127,127,.25)); border-radius: 12px; padding: 8px 12px; display: grid; gap: 6px; }
+.agent-result { white-space: pre-wrap; }
+.qa-badge { margin: 2px 0; }

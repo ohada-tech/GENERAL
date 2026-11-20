@@ -26,6 +26,7 @@ import { dashboard, projectCover, projectState } from '../services/views.js';
 import { usageFor } from '../services/usage.js';
 import * as rev from '../services/revisions.js';
 import * as hf from '../services/hf-runs.js';
+import * as agent from '../services/agent-tasks.js';
 import * as secrets from '../services/secrets.js';
 import * as learning from '../services/learning.js';
 import * as knowledge from '../services/knowledge.js';
@@ -431,6 +432,21 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     });
   });
   app.post('/api/media/:mid/approve', async (req) => prod.setItemApproval(ctx, (req.params as any).mid, true));
+  app.post('/api/media/:mid/qa', async (req) => prod.setMediaQa(ctx, (req.params as any).mid, (req.body ?? {}) as { verdict?: string; note?: string }));
+  // משימות ל-Claude מכפתור: הרצה באנלימיטד, בדיקת איכות
+  app.get('/api/projects/:id/agent', async (req) => agent.listTasks(ctx, (req.params as any).id));
+  app.post('/api/projects/:id/agent', async (req, reply) => {
+    reply.code(201);
+    return agent.requestAgentTask(ctx, (req.params as any).id, (req.body ?? {}) as { kind?: string; stage?: string; scope?: string; note?: string });
+  });
+  app.post('/api/agent/:tid/cancel', async (req) => agent.cancelTask(ctx, (req.params as any).tid));
+  app.get('/api/agent/next', async (_req, reply) => {
+    const t = agent.nextTask(ctx);
+    if (!t) return reply.code(204).send();
+    return t;
+  });
+  app.get('/api/agent/:tid', async (req) => agent.getTask(ctx, (req.params as any).tid));
+  app.post('/api/agent/:tid', async (req) => agent.reportTask(ctx, (req.params as any).tid, (req.body ?? {}) as { status?: string; log?: string; result?: string }));
   app.post('/api/media/:mid/unapprove', async (req) => prod.setItemApproval(ctx, (req.params as any).mid, false));
   app.post('/api/media/:mid/regenerate', async (req) =>
     prod.regenerateItem(ctx, (req.params as any).mid, String(((req.body ?? {}) as Body).feedback ?? '')),

@@ -6,6 +6,7 @@ import { fmtDateTime } from '../lib/format';
 import type { TabProps } from './ProjectPage';
 import { Icon } from '../components/Icon';
 import { HfRouteToggle, hfRouteCost } from '../components/HfRoute';
+import { AgentStageControls, QaBadge, useAgentTasks, type AgentTask } from '../components/AgentTasks';
 
 type Stage = 'images' | 'animation' | 'audio' | 'editing' | 'delivery';
 
@@ -56,6 +57,7 @@ const fileUrl = (m: Media) => `/api/media/${m.id}/file`;
 export function ProductionTab({ detail, reload }: TabProps) {
   const { project } = detail;
   const { data, error, loading, reload: reloadProd } = useApi<Overview>(`/api/projects/${project.id}/production`, { pollMs: 4000 });
+  const agent = useAgentTasks(project.id);
   const act = useAction();
   if (loading && !data) return <Loading />;
   if (error && !data) return <ErrorBox error={error} onRetry={reloadProd} />;
@@ -130,6 +132,9 @@ export function ProductionTab({ detail, reload }: TabProps) {
           }
           external={o.generator === 'higgsfield'}
           hfRoute={o.hfRoute}
+          projectId={project.id}
+          agentTasks={agent.data ?? []}
+          onAgentChanged={async () => { await agent.reload(); await refresh(); }}
           onHfRun={(scope) => run(() => api.post(`/api/projects/${project.id}/production/${st}/hf-run`, { scope }))}
         />
       ))}
@@ -148,7 +153,7 @@ function HfRunControls(props: { view: StageView; route: 'unlimited' | 'credits';
       </Tag>
     );
   if (props.approved || !v.canStart || props.missing <= 0) return r?.status === 'failed' ? <Tag tone="danger">ההרצה נכשלה: {r.error.slice(0, 80)}</Tag> : null;
-  if (route !== 'credits') return <span className="small muted">להרצה בלחיצה — לעבור ל"קרדיטים" למעלה</span>;
+  if (route !== 'credits') return null; // אנלימיטד — Claude מריץ בדפדפן (AgentStageControls)
   const per = v.items.length ? (v.hfCredits ?? 0) / v.items.length : 0;
   const all = per * props.missing;
   const label = (c: number) => `~${Math.round(c * 10) / 10} קרדיטים (${(c * 0.04).toFixed(2)})`;
@@ -193,6 +198,9 @@ function StageCard(props: {
   external: boolean;
   hfRoute: 'unlimited' | 'credits';
   onHfRun: (scope: 'pilot' | 'all') => void;
+  projectId: string;
+  agentTasks: AgentTask[];
+  onAgentChanged: () => Promise<void> | void;
 }) {
   const { view: v, next } = props;
   const t = TITLE[v.stage];
@@ -275,7 +283,19 @@ function StageCard(props: {
         </div>
       </div>
 
-      {v.pendingEstimate.lines.length > 0 && !created && v.canStart && (
+      {props.external && (v.stage === 'images' || v.stage === 'animation') && (
+        <AgentStageControls
+          projectId={props.projectId}
+          stage={v.stage}
+          tasks={props.agentTasks}
+          route={props.hfRoute}
+          canRun={v.canStart && !approved && missing > 0}
+          hasReady={medias.some((m) => m?.status === 'ready')}
+          onChanged={props.onAgentChanged}
+        />
+      )}
+
+      {!props.external && v.pendingEstimate.lines.length > 0 && !created && v.canStart && (
         <div className="small muted">
           עלות משוערת: {v.pendingEstimate.lines.map((l) => `${l.count}× ${l.label} (${l.credits} קרדיטים)`).join(' · ')} = ~{usd(v.pendingEstimate.usd)}
         </div>
@@ -367,6 +387,7 @@ function MediaCard({
         </strong>
         <Tag tone={tone}>{text}</Tag>
       </div>
+      <QaBadge qa={(m.params as { qa?: { verdict: 'pass' | 'fail'; note: string } } | undefined)?.qa} />
       <div className="media-view" style={m.kind === 'frame' || m.kind === 'clip' || m.kind === 'final' ? { aspectRatio: ratio } : undefined}>
         {m.status === 'generating' ? (
           <div className="media-wait">

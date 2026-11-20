@@ -368,6 +368,16 @@ export const KIND_HE: Record<MediaKind, string> = {
   final: 'סרטון סופי',
 };
 
+/** בדיקת איכות של Claude על פריט (עובר / נפסל + הערה). לא מאשר ולא דוחה — אוהד מחליט */
+export function setMediaQa(ctx: Ctx, mediaId: string, input: { verdict?: string; note?: string }) {
+  const m = getMedia(ctx.db, mediaId);
+  if (!m) throw new NotFoundError('פריט');
+  const verdict = input.verdict === 'pass' ? 'pass' : 'fail';
+  const params = { ...m.params, qa: { verdict, note: String(input.note ?? '').slice(0, 400), at: ts(ctx) } };
+  ctx.db.prepare('UPDATE media SET params = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(params), ts(ctx), m.id);
+  return getMedia(ctx.db, m.id)!;
+}
+
 export function setItemApproval(ctx: Ctx, mediaId: string, approved: boolean) {
   const m = getMedia(ctx.db, mediaId);
   if (!m) throw new NotFoundError('פריט');

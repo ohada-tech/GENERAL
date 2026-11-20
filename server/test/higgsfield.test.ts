@@ -109,6 +109,28 @@ describe('Higgsfield mode (Claude / manual uploads)', () => {
     expect(all.total, JSON.stringify(all)).toBe(shots.length);
   });
 
+  it('משימה ל-Claude מכפתור: אנלימיטד פיילוט ובדיקת איכות, העובד מקבל הוראות ומדווח', async () => {
+    const ctx = makeCtx();
+    const { p } = await readyProject(ctx);
+    cmd.approveStoryboard(ctx, p.id);
+    const app = await buildApp(ctx);
+    const t = (await app.inject({ method: 'POST', url: `/api/projects/${p.id}/agent`, payload: { kind: 'hf_unlimited', stage: 'images', scope: 'pilot' } })).json();
+    expect(t).toMatchObject({ status: 'queued', title: expect.stringContaining('פיילוט') });
+    expect((await app.inject({ method: 'POST', url: `/api/projects/${p.id}/agent`, payload: { kind: 'hf_unlimited', stage: 'images' } })).statusCode).toBe(409);
+    expect((await app.inject({ method: 'POST', url: `/api/projects/${p.id}/agent`, payload: { kind: 'hf_unlimited', stage: 'animation' } })).statusCode).toBe(409); // אין תמונות מאושרות
+    const next = (await app.inject({ url: '/api/agent/next' })).json();
+    expect(next.prompt).toContain('UNLIMITED ONLY');
+    expect(next.prompt).toContain('only the FIRST pending shot');
+    await app.inject({ method: 'POST', url: `/api/agent/${t.id}`, payload: { status: 'done', result: 'נוצרה תמונה אחת' } });
+    const list = (await app.inject({ url: `/api/projects/${p.id}/agent` })).json();
+    expect(list[0]).toMatchObject({ status: 'done', result: 'נוצרה תמונה אחת' });
+    const png = sampleMedia().png;
+    const m = prod.addExternalMedia(ctx, p.id, { kind: 'frame', shotId: listShots(ctx.db, currentStoryboard(ctx.db, p.id)!.id)[0].id, data: png, mime: 'image/png', filename: 'f.png', source: 'higgsfield-unlimited' });
+    const qa = (await app.inject({ method: 'POST', url: `/api/media/${m.id}/qa`, payload: { verdict: 'fail', note: 'יד עם שש אצבעות' } })).json();
+    expect(qa.params.qa).toMatchObject({ verdict: 'fail', note: 'יד עם שש אצבעות' });
+    expect(qa.status).not.toBe('approved');
+  });
+
   it('a revocable Claude access token works instead of the password', async () => {
     const ctx = makeCtx();
     ctx.config.auth.password = 'pw-1';

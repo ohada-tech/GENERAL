@@ -394,4 +394,22 @@ export const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_hf_runs_status ON hf_runs(status, requested_at);
   `,
+  /* v20 — משימות ל-Claude Code במחשב של אוהד, מכפתור במערכת */ `
+  CREATE TABLE agent_tasks (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    stage TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    title TEXT NOT NULL,
+    prompt TEXT NOT NULL,
+    status TEXT NOT NULL,
+    log TEXT NOT NULL DEFAULT '',
+    result TEXT NOT NULL DEFAULT '',
+    requested_at TEXT NOT NULL,
+    started_at TEXT,
+    finished_at TEXT
+  );
+  CREATE INDEX idx_agent_tasks_status ON agent_tasks(status, requested_at);
+  `,
 ];
