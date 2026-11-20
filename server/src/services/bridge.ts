@@ -117,7 +117,10 @@ class Bridge {
     const p = this.pending.get(id);
     if (!p) return false;
     this.pending.delete(id);
-    if (result.error) p.reject(new ProviderError(`${this.label()} נכשל: ${result.error.slice(0, 300)}`, true, 'bridge_error'));
+    if (result.error && /לא מחובר ל-ChatGPT|not logged in/i.test(result.error))
+      // לא תקלה: מחכים שאוהד יתחבר בחלון הגשר (ראו failJob) — בלי לשרוף ניסיונות
+      p.reject(new ProviderError("ChatGPT לא מחובר בחלון Chrome של הגשר — צריך להתחבר שם פעם אחת, והכתיבה תמשיך לבד.", true, 'bridge_login'));
+    else if (result.error) p.reject(new ProviderError(`${this.label()} נכשל: ${result.error.slice(0, 300)}`, true, 'bridge_error'));
     else p.resolve(String(result.text ?? ''));
     return true;
   }

@@ -62,12 +62,22 @@ const lessonsDistill: JobHandler<{ rows: Array<{ scope: string; area: string; te
   async run(ctx) {
     const { system, user, feedbackIds } = distillPrompts(ctx);
     if (!feedbackIds.length) return { rows: [], feedbackIds, model: '' };
-    const p = [ctx.providers.text.claude, ctx.providers.text.openai].find((x) => x?.isConfigured()) as
-      | { name?: string; json?: <T>(n: string, s: object, sys: string, user: string) => Promise<{ data: T; model?: string }> }
-      | undefined;
-    if (!p?.json) throw new ProviderError('אין מנוע כתיבה מחובר (Claude או ChatGPT) — לא ניתן ללמוד מההערות', false, 'not_configured');
-    const r = await p.json<{ lessons: Array<{ scope: string; area: string; text: string }> }>('lessons', DISTILL_SCHEMA, system, user);
-    return { rows: r.data.lessons ?? [], feedbackIds, model: r.model ?? '' };
+    type Jsonish = { name?: string; json?: <T>(n: string, s: object, sys: string, user: string) => Promise<{ data: T; model?: string }> };
+    const candidates = [ctx.providers.text.claude, ctx.providers.text.openai].filter((x) => x?.isConfigured()) as unknown as Jsonish[];
+    if (!candidates.some((x) => x.json)) throw new ProviderError('אין מנוע כתיבה מחובר (Claude או ChatGPT) — לא ניתן ללמוד מההערות', false, 'not_configured');
+    // מנוע בלי קרדיט / כבוי לא מפיל את הלמידה: עוברים לבא בתור, ואם אף אחד לא זמין — דוחים בשקט (ההערות נשארות לא מזוקקות, נכנסות לפרומפט כמו שהן, והסבב הבא ינסה שוב)
+    const SOFT = new Set(['insufficient_quota', 'missing_api_key', 'auth', 'bridge_offline', 'bridge_login', 'bridge_timeout', 'rate_limit']);
+    for (const p of candidates) {
+      if (!p.json) continue;
+      try {
+        const r = await p.json<{ lessons: Array<{ scope: string; area: string; text: string }> }>('lessons', DISTILL_SCHEMA, system, user);
+        return { rows: r.data.lessons ?? [], feedbackIds, model: r.model ?? '' };
+      } catch (e) {
+        if (e instanceof ProviderError && SOFT.has(e.code)) continue;
+        throw e;
+      }
+    }
+    return { rows: [], feedbackIds: [], model: '' };
   },
   persist(ctx, job, r) {
     if (!r.feedbackIds.length) return { lessons: 0 };

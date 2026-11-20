@@ -11,6 +11,7 @@ import { ProviderError } from '../providers/types.js';
 import { emit } from '../workflow/events.js';
 import { HANDLERS, type JobHandler } from './handlers.js';
 import { checkForgottenTimer } from '../services/time.js';
+import { needsOwner, resolveAttention } from '../services/attention.js';
 import { requeueStuckHfRuns } from '../services/hf-runs.js';
 
 const WORKER = 'worker';
@@ -76,7 +77,7 @@ export function failJob(ctx: Ctx, job: Job, err: unknown, handlers: Record<JobTy
     closeAttempt(ctx, cur, false, message);
     // הגשר של ChatGPT כבוי: מחכים לו בלי לשרוף ניסיונות ובלי "נכשלה" (עד יממה)
     const created = new Date(cur.createdAt).getTime();
-    if (err instanceof ProviderError && err.code === 'bridge_offline' && ctx.now().getTime() - created < BRIDGE_WAIT_MS) {
+    if (err instanceof ProviderError && (err.code === 'bridge_offline' || err.code === 'bridge_login') && ctx.now().getTime() - created < BRIDGE_WAIT_MS) {
       const runAfter = new Date(ctx.now().getTime() + 60_000).toISOString();
       ctx.db
         .prepare("UPDATE jobs SET status = 'queued', attempts = MAX(attempts - 1, 0), run_after = ?, last_error = ?, heartbeat_at = NULL WHERE id = ?")
@@ -84,6 +85,10 @@ export function failJob(ctx: Ctx, job: Job, err: unknown, handlers: Record<JobTy
       // ניסיון המתנה לא נרשם כניסיון, וההודעה נכתבת פעם אחת למשימה
       ctx.db.prepare('DELETE FROM job_attempts WHERE job_id = ? AND attempt = ?').run(cur.id, cur.attempts);
       const told = ctx.db.prepare("SELECT 1 FROM events WHERE type = 'job.retry_scheduled' AND json_extract(payload, '$.jobId') = ? AND json_extract(payload, '$.error') = ? LIMIT 1").get(cur.id, message);
+      if (!told && err.code === 'bridge_login') {
+        // רק אוהד יכול להתחבר: התראה אחת, שנסגרת לבד כשהכתיבה מצליחה (ראו execute)
+        needsOwner(ctx, { projectId: cur.projectId, by: 'המערכת', text: 'ChatGPT לא מחובר בחלון Chrome של הגשר. תתחבר שם, והתסריט ימשיך לבד.' });
+      }
       if (!told) {
         emit(ctx, { projectId: cur.projectId, type: 'job.retry_scheduled', actor: WORKER, message: `${JOB_LABELS[cur.type]}: ${message}`, payload: { jobId: cur.id, jobType: cur.type, error: message, runAfter } });
       }
@@ -148,6 +153,7 @@ async function execute(ctx: Ctx, job: Job, handlers: Record<JobType, JobHandler<
         .prepare("UPDATE jobs SET status = 'succeeded', finished_at = ?, result = ?, last_error = NULL WHERE id = ?")
         .run(ctx.now().toISOString(), json(out), cur.id);
       closeAttempt(ctx, cur, true, null);
+      if (cur.type === 'script.generate' || cur.type === 'script.revise') resolveAttention(ctx, { projectId: cur.projectId, match: 'ChatGPT לא מחובר' });
       emit(ctx, {
         projectId: cur.projectId,
         type: 'job.succeeded',
