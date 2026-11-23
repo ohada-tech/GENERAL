@@ -64,6 +64,16 @@ export function latestMedia(ctx: Ctx, projectId: string) {
     const cur = latest.get(key);
     if (!cur || m.version > cur.version) latest.set(key, m);
   }
+  // טייק שנבחר בהשוואה מוצג במקום החדש ביותר — עד שעולה טייק חדש אחריו
+  for (const m of all) {
+    const at = (m.params as { pickedAt?: string }).pickedAt;
+    if (!at) continue;
+    const key = `${m.kind}:${m.shotId ?? ''}`;
+    const newer = all.some((x) => `${x.kind}:${x.shotId ?? ''}` === key && x.createdAt > at);
+    const cur = latest.get(key)!;
+    const curAt = (cur.params as { pickedAt?: string }).pickedAt;
+    if (!newer && (!curAt || at > curAt || cur.id === m.id)) latest.set(key, m);
+  }
   return { all, latest };
 }
 
@@ -378,6 +388,34 @@ export function setMediaQa(ctx: Ctx, mediaId: string, input: { verdict?: string;
   return getMedia(ctx.db, m.id)!;
 }
 
+/** כל הטייקים של שוט (להשוואה) — מהחדש לישן, רק כאלה שיש להם קובץ */
+export function mediaVersions(ctx: Ctx, mediaId: string) {
+  const m = getMedia(ctx.db, mediaId);
+  if (!m) throw new NotFoundError('פריט');
+  return listMedia(ctx.db, m.projectId)
+    .filter((x) => x.kind === m.kind && (x.shotId ?? '') === (m.shotId ?? '') && x.assetId)
+    .sort((a, b) => b.version - a.version);
+}
+
+/** בחירת טייק בהשוואה: הוא מאושר ומוצג, האחרים נדחים */
+export function pickVersion(ctx: Ctx, mediaId: string) {
+  const m = getMedia(ctx.db, mediaId);
+  if (!m) throw new NotFoundError('פריט');
+  if (!m.assetId) throw new GateError('לטייק הזה אין קובץ');
+  const at = ts(ctx);
+  return tx(ctx.db, () => {
+    for (const x of mediaVersions(ctx, mediaId)) {
+      if (x.id === m.id) {
+        ctx.db.prepare("UPDATE media SET status = 'approved', params = ?, updated_at = ? WHERE id = ?").run(JSON.stringify({ ...x.params, pickedAt: at }), at, x.id);
+      } else if (x.status === 'ready' || x.status === 'approved') {
+        ctx.db.prepare("UPDATE media SET status = 'rejected', updated_at = ? WHERE id = ?").run(at, x.id);
+      }
+    }
+    emit(ctx, { projectId: m.projectId, type: 'media.approved', actor: ctx.config.ownerName, message: `נבחר טייק v${m.version}${m.shotId ? ` לשוט ${getShot(ctx.db, m.shotId)?.number ?? '?'}` : ''}`, payload: { mediaId: m.id } });
+    return getMedia(ctx.db, m.id)!;
+  });
+}
+
 export function setItemApproval(ctx: Ctx, mediaId: string, approved: boolean) {
   const m = getMedia(ctx.db, mediaId);
   if (!m) throw new NotFoundError('פריט');
@@ -527,6 +565,8 @@ export interface ExternalMediaInput {
   hfCredits?: number | null;
   sourceUrl?: string;
   note?: string;
+  /** טייק נוסף (וריאציה): לא דוחה את הטייקים הקודמים — בוחרים ביניהם בהשוואה */
+  variant?: boolean;
 }
 
 const EXT_MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', mp4: 'video/mp4', mov: 'video/quicktime', mp3: 'audio/mpeg', wav: 'audio/wav' };
@@ -554,7 +594,7 @@ export function addExternalMedia(ctx: Ctx, projectId: string, input: ExternalMed
   return tx(ctx.db, () => {
     const { latest } = latestMedia(ctx, projectId);
     const prev = latest.get(`${kind}:${shotId ?? ''}`);
-    if (prev && prev.status !== 'failed' && prev.status !== 'rejected') {
+    if (!input.variant && prev && prev.status !== 'failed' && prev.status !== 'rejected') {
       ctx.db.prepare("UPDATE media SET status = 'rejected', updated_at = ? WHERE id = ?").run(ts(ctx), prev.id);
     }
     const last = ctx.db
@@ -607,7 +647,8 @@ export function addExternalMedia(ctx: Ctx, projectId: string, input: ExternalMed
 }
 
 /** מה מחכה לייצור ב-Higgsfield: לכל שוט — הפרומפט, ההערה האחרונה, יחס תמונה, ולקליפ גם התמונה המאושרת. */
-export function externalRequests(ctx: Ctx, projectId: string) {
+/** shotIds — רק השוטים האלה, גם אם כבר יש להם תוצר (תיקון / וריאציות) */
+export function externalRequests(ctx: Ctx, projectId: string, opts: { shotIds?: string[] } = {}) {
   const project = mustProject(ctx, projectId);
   const { latest } = latestMedia(ctx, projectId);
   const shots = approvedShots(ctx, projectId);
@@ -617,7 +658,9 @@ export function externalRequests(ctx: Ctx, projectId: string) {
     shots
       .map((s) => {
         const cur = latest.get(`${kind}:${s.id}`);
-        if (cur && (cur.status === 'ready' || cur.status === 'approved' || cur.status === 'generating')) return null;
+        if (opts.shotIds) {
+          if (!opts.shotIds.includes(s.id) || cur?.status === 'generating') return null;
+        } else if (cur && (cur.status === 'ready' || cur.status === 'approved' || cur.status === 'generating')) return null;
         const frame = latest.get(`frame:${s.id}`);
         return {
           shotId: s.id,
@@ -628,7 +671,7 @@ export function externalRequests(ctx: Ctx, projectId: string) {
           narration: s.narration,
           character: s.character,
           wardrobe: s.wardrobe,
-          feedback: cur?.status === 'rejected' ? cur.note : '',
+          feedback: cur?.status === 'rejected' || opts.shotIds ? cur?.note ?? '' : '',
           previousVersion: cur?.version ?? 0,
           ...(kind === 'clip'
             ? { approvedFrame: frame?.status === 'approved' ? { mediaId: frame.id, fileUrl: `/api/media/${frame.id}/file` } : null }

@@ -1,6 +1,6 @@
 import { hfCostLabel, type CostEstimate, type Media, type MediaKind, type Shot } from '@apos/shared';
 import { useState } from 'react';
-import { ConfirmButton, Empty, ErrorBox, InlineError, Loading, Tag } from '../components/ui';
+import { ConfirmButton, Empty, ErrorBox, InlineError, Loading, Modal, Tag } from '../components/ui';
 import { api, useAction, useApi } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
 import type { TabProps } from './ProjectPage';
@@ -291,6 +291,7 @@ function StageCard(props: {
           route={props.hfRoute}
           canRun={v.canStart && !approved && missing > 0}
           hasReady={medias.some((m) => m?.status === 'ready')}
+          qaFailed={medias.filter((m) => m?.status === 'ready' && (m.params as { qa?: { verdict?: string } }).qa?.verdict === 'fail').length}
           onChanged={props.onAgentChanged}
         />
       )}
@@ -375,6 +376,10 @@ function MediaCard({
 }) {
   const [redo, setRedo] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [comparing, setComparing] = useState(false);
+  // תוצר מהיגספילד: תיקון שנשלח לריצה בעצמו, וריאציות והשוואת טייקים
+  const hfItem = m.provider === 'higgsfield' && (m.kind === 'frame' || m.kind === 'clip');
+  const qaNote = (m.params as { qa?: { verdict?: string; note?: string } }).qa?.verdict === 'fail' ? ((m.params as { qa?: { note?: string } }).qa?.note ?? '') : '';
   const [showPrompt, setShowPrompt] = useState(false);
   const [tone, text] = STATUS[m.status];
   const ratio = aspect.replace(':', ' / ');
@@ -437,9 +442,26 @@ function MediaCard({
               בטל אישור
             </button>
           )}
-          <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => setRedo(!redo)}>
-            ↻ {m.provider === 'higgsfield' || m.provider === 'manual' ? 'בקש גרסה חדשה' : 'צור מחדש'}
+          <button
+            className="btn btn-sm btn-ghost"
+            disabled={busy}
+            onClick={() => {
+              if (!redo && hfItem && qaNote && !feedback) setFeedback(qaNote);
+              setRedo(!redo);
+            }}
+          >
+            ↻ {hfItem ? 'תקן' : m.provider === 'manual' ? 'בקש גרסה חדשה' : 'צור מחדש'}
           </button>
+          {hfItem && (
+            <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => window.confirm('להריץ 3 טייקים נוספים לשוט הזה? הקיים נשאר, ובוחרים בהשוואה.') && onItem(`/api/media/${m.id}/variants`, { count: 3 })}>
+              ✦ 3 וריאציות
+            </button>
+          )}
+          {hfItem && m.version > 1 && (
+            <button className="btn btn-sm btn-ghost" onClick={() => setComparing(true)}>
+              ⇆ השווה טייקים
+            </button>
+          )}
           {onUpload && <UploadButton kind={m.kind} onFile={onUpload} />}
         </div>
       )}
@@ -449,7 +471,7 @@ function MediaCard({
           className="stack"
           onSubmit={(e) => {
             e.preventDefault();
-            onItem(`/api/media/${m.id}/regenerate`, { feedback });
+            onItem(hfItem ? `/api/media/${m.id}/fix` : `/api/media/${m.id}/regenerate`, { feedback });
             setRedo(false);
             setFeedback('');
           }}
@@ -460,15 +482,44 @@ function MediaCard({
             onChange={(e) => setFeedback(e.target.value)}
           />
           <div className="small muted">
-            {m.provider === 'higgsfield' || m.provider === 'manual'
+            {hfItem
+              ? 'רק מה שכתבת משתנה. השוט נשלח לריצה בהיגספילד לפי המסלול שבחרת — בלי צ׳אט.'
+              : m.provider === 'manual'
               ? 'ההערה נשמרת לשוט, והגרסה הבאה תיווצר ב-Higgsfield.'
               : `${m.kind === 'frame' || m.kind === 'clip' ? 'Claude ישכתב את הפרומפט לפי ההערה. ' : ''}יצירה מחדש עולה כמו היצירה המקורית.`}
           </div>
-          <button className="btn btn-sm btn-primary" disabled={busy}>
-            צור גרסה חדשה
+          <button className="btn btn-sm btn-primary" disabled={busy || (hfItem && !feedback.trim())}>
+            {hfItem ? 'תקן ושלח להרצה' : 'צור גרסה חדשה'}
           </button>
         </form>
       )}
+      {comparing && <CompareTakes media={m} aspect={aspect} onPick={(id) => { onItem(`/api/media/${id}/pick`); setComparing(false); }} onClose={() => setComparing(false)} />}
     </div>
+  );
+}
+
+/** כל הטייקים של שוט זה לצד זה — בוחרים אחד, הוא מאושר והשאר נדחים */
+function CompareTakes({ media, aspect, onPick, onClose }: { media: Media; aspect: string; onPick: (id: string) => void; onClose: () => void }) {
+  const { data } = useApi<Media[]>(`/api/media/${media.id}/versions`);
+  return (
+    <Modal title="השוואת טייקים" onClose={onClose} wide>
+      <div className="compare-grid">
+        {(data ?? []).map((v) => (
+          <div key={v.id} className={`media-card st-${v.status}`}>
+            <div className="row between gap-s">
+              <strong className="small">v{v.version}</strong>
+              <Tag tone={STATUS[v.status][0]}>{STATUS[v.status][1]}</Tag>
+            </div>
+            <QaBadge qa={(v.params as { qa?: { verdict: 'pass' | 'fail'; note: string } }).qa} />
+            <div className="media-view" style={{ aspectRatio: aspect.replace(':', ' / ') }}>
+              {v.kind === 'frame' ? <img src={fileUrl(v)} alt={`v${v.version}`} /> : <video src={fileUrl(v)} controls preload="metadata" playsInline loop />}
+            </div>
+            <button className="btn btn-sm btn-primary" onClick={() => onPick(v.id)}>
+              ✓ בחר את זה
+            </button>
+          </div>
+        ))}
+      </div>
+    </Modal>
   );
 }

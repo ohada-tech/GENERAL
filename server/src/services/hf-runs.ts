@@ -49,6 +49,8 @@ type Row = {
   requested_at: string;
   started_at: string | null;
   finished_at: string | null;
+  shot_ids?: string | null;
+  variants?: number;
 };
 const map = (r: Row): HfRun => ({
   id: r.id,
@@ -75,28 +77,29 @@ export function lastHfRun(ctx: Ctx, projectId: string, stage: HfStage): HfRun | 
 }
 
 /** מה ירוץ: הפריטים שמחכים בשלב, פיילוט = הראשון בלבד */
-function pendingItems(ctx: Ctx, projectId: string, stage: HfStage) {
-  const req = externalRequests(ctx, projectId);
+function pendingItems(ctx: Ctx, projectId: string, stage: HfStage, shotIds?: string[]) {
+  const req = externalRequests(ctx, projectId, shotIds ? { shotIds } : {});
   return (stage === 'images' ? req.images : req.animation) as Array<NonNullable<(typeof req.images)[number]> & { approvedFrame?: { fileUrl: string } | null; durationSec?: number }>;
 }
 
-export function requestHfRun(ctx: Ctx, projectId: string, stage: HfStage, scope: HfScope) {
+export function requestHfRun(ctx: Ctx, projectId: string, stage: HfStage, scope: HfScope, opts: { shotIds?: string[]; variants?: number } = {}) {
   const p = getProject(ctx.db, projectId);
   if (!p) throw new NotFoundError('פרויקט');
   if (p.settings.generator !== 'higgsfield') throw new GateError('הפרויקט לא מוגדר על היגספילד', 409);
   if (p.settings.hfRoute !== 'credits') throw new GateError('הרצה בלחיצה עובדת במסלול קרדיטים. באנלימיטד — Claude מריץ בדפדפן', 409);
   const active = ctx.db.prepare("SELECT 1 FROM hf_runs WHERE project_id = ? AND stage = ? AND status IN ('queued','running')").get(projectId, stage);
   if (active) throw new GateError('כבר יש הרצה פעילה בשלב הזה', 409);
-  let items = pendingItems(ctx, projectId, stage);
+  let items = pendingItems(ctx, projectId, stage, opts.shotIds);
   if (stage === 'animation') items = items.filter((i) => i.approvedFrame);
   if (!items.length) throw new GateError(stage === 'images' ? 'אין שוטים שמחכים לתמונה' : 'אין שוטים עם תמונה מאושרת שמחכים להנפשה', 409);
   if (scope === 'pilot') items = items.slice(0, 1);
-  const credits = Math.round(costOf(ctx, projectId, stage, items) * 100) / 100;
+  const variants = Math.max(1, Math.min(4, Math.round(opts.variants ?? 1)));
+  const credits = Math.round(costOf(ctx, projectId, stage, items) * variants * 100) / 100;
   const id = uid();
   const at = ctx.now().toISOString();
   ctx.db
-    .prepare("INSERT INTO hf_runs (id, project_id, stage, scope, status, total, done, credits, error, requested_at) VALUES (?, ?, ?, ?, 'queued', ?, 0, ?, '', ?)")
-    .run(id, projectId, stage, scope, items.length, credits, at);
+    .prepare("INSERT INTO hf_runs (id, project_id, stage, scope, status, total, done, credits, error, requested_at, shot_ids, variants) VALUES (?, ?, ?, ?, 'queued', ?, 0, ?, '', ?, ?, ?)")
+    .run(id, projectId, stage, scope, items.length * variants, credits, at, opts.shotIds ? JSON.stringify(opts.shotIds) : null, variants);
   emit(ctx, {
     projectId,
     type: 'project.progress',
@@ -124,9 +127,13 @@ export function nextHfRun(ctx: Ctx) {
   const run = map(r);
   const p = getProject(ctx.db, run.projectId)!;
   ctx.db.prepare("UPDATE hf_runs SET status = 'running', started_at = ? WHERE id = ?").run(ctx.now().toISOString(), run.id);
-  let items = pendingItems(ctx, run.projectId, run.stage);
+  const shotIds = r.shot_ids ? (JSON.parse(r.shot_ids) as string[]) : undefined;
+  const variants = Math.max(1, r.variants || 1);
+  let items = pendingItems(ctx, run.projectId, run.stage, shotIds);
   if (run.stage === 'animation') items = items.filter((i) => i.approvedFrame);
-  items = items.slice(0, run.total);
+  items = items.slice(0, Math.ceil(run.total / variants));
+  // וריאציות: אותו שוט כמה פעמים, כטייקים נוספים
+  items = items.flatMap((it) => Array.from({ length: variants }, () => it));
   const sb = currentStoryboard(ctx.db, run.projectId);
   const refs = sb ? listRefsForStoryboard(ctx.db, sb.id).filter((x) => x.status === 'approved' && x.imageUrl) : [];
   const shots = shotMap(ctx, run.projectId);
@@ -151,6 +158,7 @@ export function nextHfRun(ctx: Ctx) {
         credits: run.stage === 'images' ? hfImageCredits(p.settings.imageModel) : hfVideoCredits(vm.id, s?.d || 5),
         references: run.stage === 'images' ? refs.filter((x) => x.shotId === it.shotId).slice(0, 6).map((x) => x.imageUrl) : [],
         startImage: run.stage === 'animation' ? (it.approvedFrame?.fileUrl ?? null) : null,
+        variant: variants > 1 || !!shotIds,
       };
     }),
   };

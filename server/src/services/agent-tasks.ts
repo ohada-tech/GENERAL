@@ -67,7 +67,7 @@ function title(kind: AgentKind, stage: AgentStage, scope: 'pilot' | 'all') {
 }
 
 /** ההוראות ל-Claude Code. באנגלית לדיוק; התוצאה לאוהד — בעברית */
-function buildPrompt(ctx: Ctx, projectId: string, kind: AgentKind, stage: AgentStage, scope: 'pilot' | 'all', note: string) {
+function buildPrompt(ctx: Ctx, projectId: string, kind: AgentKind, stage: AgentStage, scope: 'pilot' | 'all', note: string, target: { shotIds?: string[]; variants?: number } = {}) {
   const p = getProject(ctx.db, projectId)!;
   const api = `API base: ${process.env.PUBLIC_URL || 'https://ai-production-ap.onrender.com'} — every request needs the header "Authorization: Bearer <token>", token = contents of ~/.apos-operator-token (strip whitespace; never print it).`;
   const common = [
@@ -85,7 +85,12 @@ function buildPrompt(ctx: Ctx, projectId: string, kind: AgentKind, stage: AgentS
       ...common,
       `TASK: generate ${STAGE_HE[stage]} in Higgsfield (higgsfield.ai) in Ohad's Chrome, UNLIMITED ONLY.`,
       what,
-      scope === 'pilot' ? 'PILOT: do only the FIRST pending shot, then stop.' : 'Do ALL pending shots, one after another (open Unlimited slots in parallel when Higgsfield allows).',
+      target.shotIds
+        ? `ONLY these shots (ids): ${target.shotIds.join(', ')} — call GET /api/projects/:id/production/requests?shotIds=${target.shotIds.join(',')} to get them even if they already have a take. "feedback" is what must be fixed — fix only that and keep everything else.`
+        : scope === 'pilot'
+          ? 'PILOT: do only the FIRST pending shot, then stop.'
+          : 'Do ALL pending shots, one after another (open Unlimited slots in parallel when Higgsfield allows).',
+      (target.variants ?? 1) > 1 ? `Make ${target.variants} different takes per shot and upload ALL of them with "variant": true (Ohad compares and picks).` : '',
       `Model: images — Nano Banana Pro at 2K unless the project says otherwise (project imageModel: ${p.settings.imageModel}); animation — the shot's animation model (Kling 3.0 default). Aspect ratio from the requests response.`,
       'HARD RULES: before every click on Generate, read the button — it must say "Unlimited". NEVER click a button that shows credits. If Unlimited is not available for this model, stop and report it. Use approved references attached to the shot when there are any.',
       'For each result: QA it at full resolution (anatomy, hands, faces/eyes, product text read letter by letter, matches the shot prompt). Upload every take you keep with POST /api/projects/:id/media/from-url {"url": <result url>, "kind": "' +
@@ -108,7 +113,7 @@ function buildPrompt(ctx: Ctx, projectId: string, kind: AgentKind, stage: AgentS
     .join('\n');
 }
 
-export function requestAgentTask(ctx: Ctx, projectId: string, input: { kind?: string; stage?: string; scope?: string; note?: string }) {
+export function requestAgentTask(ctx: Ctx, projectId: string, input: { kind?: string; stage?: string; scope?: string; note?: string; shotIds?: string[]; variants?: number }) {
   const p = getProject(ctx.db, projectId);
   if (!p) throw new NotFoundError('פרויקט');
   const kind = AGENT_KINDS.find((k) => k === input.kind);
@@ -117,17 +122,19 @@ export function requestAgentTask(ctx: Ctx, projectId: string, input: { kind?: st
   const scope = input.scope === 'pilot' ? 'pilot' : 'all';
   if (ctx.db.prepare("SELECT 1 FROM agent_tasks WHERE project_id = ? AND kind = ? AND stage = ? AND status IN ('queued','running')").get(projectId, kind, stage))
     throw new GateError('המשימה הזו כבר רצה', 409);
-  if (kind === 'hf_unlimited') {
+  if (kind === 'hf_unlimited' && !input.shotIds) {
     const req = externalRequests(ctx, projectId);
     const pending = stage === 'images' ? req.images : (req.animation as Array<{ approvedFrame?: unknown }>).filter((i) => i.approvedFrame);
     if (!pending.length) throw new GateError(stage === 'images' ? 'אין שוטים שמחכים לתמונה' : 'אין שוטים עם תמונה מאושרת שמחכים להנפשה', 409);
   }
   const id = uid();
   const at = ctx.now().toISOString();
-  const t = title(kind, stage, scope);
+  const t = input.shotIds
+    ? `היגספילד אנלימיטד · ${STAGE_HE[stage]} · ${(input.variants ?? 1) > 1 ? `${input.variants} וריאציות` : 'תיקון'} (${input.shotIds.length} שוטים)`
+    : title(kind, stage, scope);
   ctx.db
     .prepare("INSERT INTO agent_tasks (id, project_id, kind, stage, scope, title, prompt, status, log, result, requested_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', '', '', ?)")
-    .run(id, projectId, kind, stage, scope, t, buildPrompt(ctx, projectId, kind, stage, scope, String(input.note ?? '').slice(0, 500)), at);
+    .run(id, projectId, kind, stage, scope, t, buildPrompt(ctx, projectId, kind, stage, scope, String(input.note ?? '').slice(0, 500), { shotIds: input.shotIds, variants: input.variants }), at);
   emit(ctx, { projectId, type: 'project.progress', actor: 'אוהד', message: `▶ נשלח ל-Claude: ${t}`, payload: { agentTask: id } });
   return getTask(ctx, id);
 }

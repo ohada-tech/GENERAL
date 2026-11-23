@@ -1052,3 +1052,4 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .agent-task { border: 1px solid var(--border, rgba(127,127,127,.25)); border-radius: 12px; padding: 8px 12px; display: grid; gap: 6px; }
 .agent-result { white-space: pre-wrap; }
 .qa-badge { margin: 2px 0; }
+.compare-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }

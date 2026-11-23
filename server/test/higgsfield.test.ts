@@ -131,6 +131,52 @@ describe('Higgsfield mode (Claude / manual uploads)', () => {
     expect(qa.status).not.toBe('approved');
   });
 
+  it('תיקון נקודתי, תיקון לפי QA, וריאציות ובחירת טייק — בלחיצה', async () => {
+    const ctx = makeCtx();
+    const { p, shots } = await readyProject(ctx);
+    cmd.approveStoryboard(ctx, p.id);
+    cmd.updateProject(ctx, p.id, { settings: { hfRoute: 'credits' } });
+    const app = await buildApp(ctx);
+    const png = sampleMedia().png;
+    const up = (shotId: string, variant = false) => prod.addExternalMedia(ctx, p.id, { kind: 'frame', shotId, data: png, mime: 'image/png', filename: 'f.png', source: 'higgsfield-credits', variant });
+    const m1 = up(shots[0].id);
+    up(shots[1].id);
+
+    // תיקון נקודתי: ההערה נשמרת והשוט נשלח לריצה לבד
+    const fix = (await app.inject({ method: 'POST', url: `/api/media/${m1.id}/fix`, payload: { feedback: 'יד שמאל קטועה' } })).json();
+    expect(fix).toMatchObject({ route: 'credits', run: { total: 1, status: 'queued' } });
+    const next = (await app.inject({ url: '/api/hf/next' })).json();
+    expect(next.items).toHaveLength(1);
+    expect(next.items[0]).toMatchObject({ shotId: shots[0].id, feedback: 'יד שמאל קטועה' });
+    await app.inject({ method: 'POST', url: `/api/hf/runs/${fix.run.id}`, payload: { done: 1, status: 'done' } });
+
+    // וריאציות: 3 טייקים לאותו שוט, בלי לדחות את הקיים
+    const m2 = up(shots[0].id);
+    const v = (await app.inject({ method: 'POST', url: `/api/media/${m2.id}/variants`, payload: { count: 3 } })).json();
+    expect(v.run).toMatchObject({ total: 3 });
+    const vn = (await app.inject({ url: '/api/hf/next' })).json();
+    expect(vn.items).toHaveLength(3);
+    expect(vn.items.every((i: any) => i.variant)).toBe(true);
+    await app.inject({ method: 'POST', url: `/api/hf/runs/${v.run.id}`, payload: { done: 3, status: 'done' } });
+    up(shots[0].id, true);
+    up(shots[0].id, true);
+    const versions = (await app.inject({ url: `/api/media/${m2.id}/versions` })).json();
+    expect(versions.filter((x: any) => x.status === 'ready').length).toBe(3);
+
+    // בחירה בהשוואה: הטייק הנבחר מאושר ומוצג, האחרים נדחים
+    await app.inject({ method: 'POST', url: `/api/media/${m2.id}/pick` });
+    const latest = prod.latestMedia(ctx, p.id).latest.get(`frame:${shots[0].id}`)!;
+    expect(latest.id).toBe(m2.id);
+    expect(latest.status).toBe('approved');
+    expect((await app.inject({ url: `/api/media/${m2.id}/versions` })).json().filter((x: any) => x.status === 'ready')).toHaveLength(0);
+
+    // תיקון כל מה שנפסל ב-QA
+    const m3 = prod.latestMedia(ctx, p.id).latest.get(`frame:${shots[1].id}`)!;
+    await app.inject({ method: 'POST', url: `/api/media/${m3.id}/qa`, payload: { verdict: 'fail', note: 'המוצר קטן מדי' } });
+    const fq = (await app.inject({ method: 'POST', url: `/api/projects/${p.id}/production/images/fix-qa` })).json();
+    expect(fq).toMatchObject({ count: 1, route: 'credits' });
+  });
+
   it('a revocable Claude access token works instead of the password', async () => {
     const ctx = makeCtx();
     ctx.config.auth.password = 'pw-1';

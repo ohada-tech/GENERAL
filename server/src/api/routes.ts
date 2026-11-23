@@ -27,6 +27,7 @@ import { usageFor } from '../services/usage.js';
 import * as rev from '../services/revisions.js';
 import * as hf from '../services/hf-runs.js';
 import * as agent from '../services/agent-tasks.js';
+import * as act from '../services/actions.js';
 import * as secrets from '../services/secrets.js';
 import * as learning from '../services/learning.js';
 import * as knowledge from '../services/knowledge.js';
@@ -364,7 +365,10 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/api/projects/:id/production/:stage/reopen', async (req) =>
     prod.reopenStage(ctx, (req.params as any).id, mustStage((req.params as any).stage)),
   );
-  app.get('/api/projects/:id/production/requests', async (req) => prod.externalRequests(ctx, (req.params as any).id));
+  app.get('/api/projects/:id/production/requests', async (req) => {
+    const ids = String((req.query as { shotIds?: string }).shotIds ?? '').split(',').filter(Boolean);
+    return prod.externalRequests(ctx, (req.params as any).id, ids.length ? { shotIds: ids } : {});
+  });
   // הרצה בהיגספילד בלחיצה (מסלול קרדיטים): pilot = שוט אחד, all = כל מה שמחכה
   app.post('/api/projects/:id/production/:stage/hf-run', async (req, reply) => {
     const stage = (req.params as any).stage;
@@ -429,9 +433,16 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
       hfCredits: b.hfCredits ?? null,
       sourceUrl: url,
       note: b.note,
+      variant: !!b.variant,
     });
   });
   app.post('/api/media/:mid/approve', async (req) => prod.setItemApproval(ctx, (req.params as any).mid, true));
+  // השוואת טייקים, תיקון נקודתי ווריאציות — בלחיצה
+  app.get('/api/media/:mid/versions', async (req) => prod.mediaVersions(ctx, (req.params as any).mid));
+  app.post('/api/media/:mid/pick', async (req) => prod.pickVersion(ctx, (req.params as any).mid));
+  app.post('/api/media/:mid/fix', async (req) => act.fixItem(ctx, (req.params as any).mid, String(((req.body ?? {}) as Body).feedback ?? '')));
+  app.post('/api/media/:mid/variants', async (req) => act.variants(ctx, (req.params as any).mid, Number(((req.body ?? {}) as Body).count ?? 3)));
+  app.post('/api/projects/:id/production/:stage/fix-qa', async (req) => act.fixQaFailures(ctx, (req.params as any).id, (req.params as any).stage === 'animation' ? 'animation' : 'images'));
   app.post('/api/media/:mid/qa', async (req) => prod.setMediaQa(ctx, (req.params as any).mid, (req.body ?? {}) as { verdict?: string; note?: string }));
   // משימות ל-Claude מכפתור: הרצה באנלימיטד, בדיקת איכות
   app.get('/api/projects/:id/agent', async (req) => agent.listTasks(ctx, (req.params as any).id));

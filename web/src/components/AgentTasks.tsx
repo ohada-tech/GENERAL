@@ -40,6 +40,8 @@ export function AgentStageControls(props: {
   route: 'unlimited' | 'credits';
   canRun: boolean;
   hasReady: boolean;
+  /** כמה טייקים נפסלו בבדיקת האיכות ועוד לא תוקנו */
+  qaFailed?: number;
   onChanged: () => Promise<void> | void;
 }) {
   const act = useAction();
@@ -64,6 +66,19 @@ export function AgentStageControls(props: {
               <Icon n="play" /> הכל באנלימיטד
             </button>
           </>
+        )}
+        {!!props.qaFailed && !active && (
+          <button
+            className="btn btn-primary"
+            disabled={act.busy}
+            onClick={async () => {
+              if (!window.confirm(`לתקן את ${props.qaFailed} הטייקים שנפסלו בבדיקת האיכות? כל אחד נשלח לריצה עם ההערה שלו.`)) return;
+              await act.run(() => api.post(`/api/projects/${props.projectId}/production/${props.stage}/fix-qa`));
+              await props.onChanged();
+            }}
+          >
+            ↻ תקן את כל מה שנפסל ({props.qaFailed})
+          </button>
         )}
         {props.hasReady && !active && (
           <button className="btn" disabled={act.busy} onClick={() => send('qa', 'all', `Claude יבדוק את כל ה${what} שמחכים לאישור (אנטומיה, פנים, מוצר, עקביות) ויסמן עובר / נפסל. להתחיל?`)}>

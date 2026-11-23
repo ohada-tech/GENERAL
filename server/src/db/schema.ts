@@ -412,4 +412,8 @@ export const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_agent_tasks_status ON agent_tasks(status, requested_at);
   `,
+  /* v21 — הרצה בהיגספילד לשוטים נבחרים ובכמה טייקים (תיקון / וריאציות) */ `
+  ALTER TABLE hf_runs ADD COLUMN shot_ids TEXT;
+  ALTER TABLE hf_runs ADD COLUMN variants INTEGER NOT NULL DEFAULT 1;
+  `,
 ];
