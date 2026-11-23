@@ -53,7 +53,11 @@ export interface ProjectContext {
   playbook?: string;
   /** "כתוב מחדש": למה הניסיון הקודם נדחה (QA או אוהד) — בלי הנוסח הקודם */
   rewriteNotes?: string;
+  /** סוג התיקון: ממוקד (ברירת מחדל), הערה כללית על כל התסריט, או כתיבה מחדש */
+  revision?: RevisionKind;
 }
+
+export type RevisionKind = 'surgical' | 'global' | 'rewrite';
 
 export interface TextGenOptions {
   model?: string;

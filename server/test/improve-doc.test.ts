@@ -31,7 +31,7 @@ describe('Improve any version, with an attached document', () => {
       isConfigured: () => true,
       json: async (_n: string, _s: object, _sys: string, user: string) => {
         sent = user;
-        return { data: { reviewNotes: ['שופר'], script: { ...v1.content, scenes: v1.content.scenes.map(({ id: _id, ...s }) => ({ ...s, narration: 'משופר' })) } }, model: 'fake' };
+        return { data: { reviewNotes: ['שופר'], script: { ...v1.content, scenes: v1.content.scenes.map(({ id: _id, ...s }, i) => ({ ...s, narration: `${'אבגדהוזחטי'[i]}משופר` })) } }, model: 'fake' };
       },
     };
     // הטקסט במסמך מצטט שורה מהתסריט — זה לא אמור לנעול רק את הסצנה הזו
@@ -45,6 +45,6 @@ describe('Improve any version, with an attached document', () => {
     expect(newest.parentId).toBe(v1.id);
     expect(sent).toContain('תחזק את הפתיחה');
     expect(sent).toContain('מסמך מצורף (brief.docx)');
-    expect(newest.content.scenes.every((s) => s.narration === 'משופר')).toBe(true);
+    expect(newest.content.scenes.every((s) => s.narration.endsWith('משופר'))).toBe(true);
   });
 });

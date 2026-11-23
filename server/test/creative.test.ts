@@ -302,6 +302,23 @@ describe('"כתוב מחדש" מול גרסה שאושרה', () => {
   });
 });
 
+describe('"תכתוב מחדש" בתיבת התיקון', () => {
+  it('עובר לתהליך הכתיבה המלא (טקסט חופשי + QA), לא לתיקון על גבי השלד הישן', async () => {
+    const { ctx, gpt, p } = setup('booking');
+    cmd.completeBrief(ctx, p.id);
+    await drain(ctx);
+    const [v1] = listScripts(ctx.db, p.id);
+    const before = creativeCalls(gpt).length;
+    cmd.requestScriptRevision(ctx, v1.id, 'תכתוב מחדש, זה מרגיש חזרתי');
+    await drain(ctx);
+    const v2 = listScripts(ctx.db, p.id).find((v) => v.parentId === v1.id)!;
+    expect(v2.changeNote).toContain('כתיבה מחדש');
+    expect(v2.content.qa).toBeTruthy();
+    expect(creativeCalls(gpt).length).toBeGreaterThan(before);
+    expect(creativeCalls(gpt).at(-1)!.user).toContain('תכתוב מחדש, זה מרגיש חזרתי');
+  });
+});
+
 describe('סטורי בורד: Claude בלבד', () => {
   it('ChatGPT לא נקרא בכלל; כש-Claude לא מחובר — חסימה עם הסבר, לא מעבר שקט ל-ChatGPT', async () => {
     const { listJobs, listStoryboards } = await import('../src/db/repo.js');

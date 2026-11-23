@@ -3,7 +3,7 @@
  * הקוד אוכף את זה אחרי שהמודל מחזיר תשובה — כל סצנה אחרת, הכותרת והלוגליין חוזרים מילה במילה מהגרסה הקודמת.
  */
 import type { ScriptContent } from '@apos/shared';
-import type { ScriptDraft } from '../providers/types.js';
+import type { RevisionKind, ScriptDraft } from '../providers/types.js';
 
 const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 const MIN = 8;
@@ -46,3 +46,23 @@ export function lockToTargets(base: ScriptContent, revised: ScriptDraft, targets
 
 export const scopeLabel = (targets: number[]) =>
   targets.length ? `${targets.length === 1 ? 'סצנה' : 'סצנות'} ${targets.map((i) => i + 1).join(', ')} בלבד` : '';
+
+/**
+ * בקשה לכתוב מחדש (לא לתקן נקודה): "תכתוב מחדש", "שכתוב מלא", "מההתחלה", "כיוון אחר", "rewrite".
+ * בקשה כזו עוברת לתהליך הכתיבה המלא (טקסט חופשי ← סצנות + QA) ולא לתיקון על גבי ה-JSON הישן.
+ */
+const REWRITE = [
+  /(?:כתוב|כתבי|כתבו|לכתוב|נכתוב)\s+(?:(?:את\s+)?(?:זה|אותו|התסריט|הכל|הכול)\s+)?מחדש/u,
+  /שכתוב\s+(?:מלא|מוחלט)|(?:^|\s)ת?שכתבי?\s+(?:את\s+)?(?:הכל|הכול|התסריט|כל\s+התסריט)/u,
+  /מאפס|(?:כתוב|תתחיל|להתחיל|נתחיל|תתחילו)\s+(?:הכל\s+|הכול\s+)?מ(?:ה)?התחלה/u,
+  /(?:כיוון|גישה|רעיון|תסריט)\s+(?:אחר|אחרת|חדש|חדשה)/u,
+  /\bre-?write\b|from\s+scratch|start\s+over/i,
+];
+
+export const isRewriteRequest = (feedback: string) => REWRITE.some((r) => r.test(feedback));
+
+/** ממוקד (ציטוט / מספר סצנה) · כתיבה מחדש · הערה כללית על כל התסריט */
+export function revisionKind(feedback: string, targets: number[]): RevisionKind {
+  if (targets.length) return 'surgical';
+  return isRewriteRequest(feedback) ? 'rewrite' : 'global';
+}

@@ -50,6 +50,14 @@ export function scriptChecks(script: Pick<ScriptDraft, 'scenes'>, brief: BriefLi
     issues.push(`${scenes.length} סצנות ל-${brief.durationSec} שניות — כנראה יותר מדי נושאים`);
   }
 
+  issues.push(...copyIssues(script, brief, words));
+  return { issues, critical, words, budget, narrationSec };
+}
+
+/** כללי הקופי שנמדדים בקוד: ביטויי ברושור, פנייה חוזרת, שורות רצופות שנפתחות באותה מילה */
+function copyIssues(script: Pick<ScriptDraft, 'scenes'>, brief: BriefLike, words: number): string[] {
+  const issues: string[] = [];
+  const scenes = script.scenes;
   if (isHebrew(brief)) {
     const all = scenes.map((s) => s.narration).join(' \n ');
     for (const b of BANNED_HE) if (all.includes(b)) issues.push(`ביטוי ברושור: "${b}"`);
@@ -61,7 +69,26 @@ export function scriptChecks(script: Pick<ScriptDraft, 'scenes'>, brief: BriefLi
   firsts.forEach((w, i) => {
     if (i && w && w.length > 1 && w === firsts[i - 1]) issues.push(`סצנות ${i}–${i + 1} נפתחות באותה מילה ("${w}")`);
   });
-  return { issues, critical, words, budget, narrationSec };
+  return issues;
+}
+
+/**
+ * שער הקופי לפני שמירת גרסה מתיקון: רק הפרות שהתיקון הכניס (מה שהיה כבר בגרסת הבסיס לא נזקף לו,
+ * כדי שתיקון ממוקד לא יידחף לגעת בשורות שלא ביקשו לשנות). חריגה מתקציב המילים נספרת רק אם התיקון האריך.
+ */
+export function newCopyViolations(base: Pick<ScriptDraft, 'scenes'>, revised: Pick<ScriptDraft, 'scenes'>, brief: BriefLike): string[] {
+  const count = (s: Pick<ScriptDraft, 'scenes'>) => s.scenes.reduce((a, x) => a + countWords(x.narration), 0);
+  const before = new Set(copyIssues(base, brief, count(base)));
+  const words = count(revised);
+  const out = copyIssues(revised, brief, words).filter((i) => !before.has(i) && !/^פנייה חוזרת/.test(i));
+  // פנייה חוזרת: נמדדת לפי כמות, אז משווים את הספירה ולא את הטקסט
+  const addr = (s: Pick<ScriptDraft, 'scenes'>) => (s.scenes.map((x) => x.narration).join(' \n ').match(ADDRESS) ?? []).length;
+  if (isHebrew(brief) && words && addr(revised) > Math.max(4, Math.round(words / 15)) && addr(revised) > addr(base)) {
+    out.push(`פנייה חוזרת: "אתם/שלכם/לכם" מופיע ${addr(revised)} פעמים ב-${words} מילים`);
+  }
+  const budget = wordBudget(brief);
+  if (budget && words > budget * 1.1 && words > count(base)) out.push(`קריינות ארוכה מדי: ${words} מילים (תקציב: ${budget})`);
+  return out;
 }
 
 /** זמן מציאותי: סצנה לא יכולה להיות קצרה ממה שלוקח להגיד את הקריינות שלה */
