@@ -209,7 +209,10 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
                     <span className="small muted">{s.durationSec}ש׳</span>
                   </div>
                   <div className="small">{[s.shotType, s.cameraAngle].filter(Boolean).join(' · ') || <span className="muted">ללא סוג שוט</span>}</div>
-                  <div className="small muted clamp-2">{s.action || s.narration}</div>
+                  {s.action && <div className="small muted clamp-2">{s.action}</div>}
+                  <div className={`shot-vo small${s.narration?.trim() ? '' : ' muted'}`} title="קריינות לשוט הזה">
+                    <span aria-hidden>🎙</span> {s.narration?.trim() || 'ללא קריינות בשוט הזה'}
+                  </div>
                   <div className="row between">
                     <StatusBadge status={approvalTone(s.approval)} label={SHOT_APPROVAL_LABELS[s.approval]} />
                     <span className="small muted" title="רפרנסים מאושרים / סה״כ">
