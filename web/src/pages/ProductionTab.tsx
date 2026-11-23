@@ -161,21 +161,13 @@ function HfRunControls(props: { view: StageView; route: 'unlimited' | 'credits';
   return (
     <>
       {r?.status === 'failed' && <Tag tone="danger">ההרצה הקודמת נכשלה: {r.error.slice(0, 80)}</Tag>}
-      <button
-        className={`btn ${pilotDone ? '' : 'btn-primary'}`}
-        disabled={props.busy}
-        onClick={() => window.confirm(`להריץ פיילוט בהיגספילד — שוט אחד, ${label(per)}?`) && props.onRun('pilot')}
-        title="שוט אחד קודם, בודקים, ורק אז הכל"
-      >
+      {/* קרדיטים: אישור בלחיצה שנייה על אותו כפתור — בלי חלון קופץ */}
+      <ConfirmButton className={`btn ${pilotDone ? '' : 'btn-primary'}`} disabled={props.busy} onConfirm={() => props.onRun('pilot')} confirmLabel={`לחץ שוב להרצה · ${label(per)}`}>
         <Icon n="play" /> פיילוט: שוט אחד · {label(per)}
-      </button>
-      <button
-        className={`btn ${pilotDone ? 'btn-primary' : ''}`}
-        disabled={props.busy}
-        onClick={() => window.confirm(`להריץ בהיגספילד את כל ${props.missing} השוטים שמחכים — ${label(all)}?`) && props.onRun('all')}
-      >
+      </ConfirmButton>
+      <ConfirmButton className={`btn ${pilotDone ? 'btn-primary' : ''}`} disabled={props.busy} onConfirm={() => props.onRun('all')} confirmLabel={`לחץ שוב להרצה · ${label(all)}`}>
         <Icon n="play" /> הרץ הכל ({props.missing}) · {label(all)}
-      </button>
+      </ConfirmButton>
     </>
   );
 }
@@ -453,9 +445,9 @@ function MediaCard({
             ↻ {hfItem ? 'תקן' : m.provider === 'manual' ? 'בקש גרסה חדשה' : 'צור מחדש'}
           </button>
           {hfItem && (
-            <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => window.confirm('להריץ 3 טייקים נוספים לשוט הזה? הקיים נשאר, ובוחרים בהשוואה.') && onItem(`/api/media/${m.id}/variants`, { count: 3 })}>
+            <ConfirmButton className="btn btn-sm btn-ghost" disabled={busy} onConfirm={() => onItem(`/api/media/${m.id}/variants`, { count: 3 })} confirmLabel="לחץ שוב · 3 טייקים">
               ✦ 3 וריאציות
-            </button>
+            </ConfirmButton>
           )}
           {hfItem && m.version > 1 && (
             <button className="btn btn-sm btn-ghost" onClick={() => setComparing(true)}>

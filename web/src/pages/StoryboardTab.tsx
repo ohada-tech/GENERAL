@@ -27,6 +27,8 @@ interface StoryboardData {
   storyboard: Storyboard | null;
   shots: Shot[];
   references: Reference[];
+  /** התמונה של כל שוט מההפקה (shotId → טייק) */
+  frames?: Record<string, { mediaId: string; status: string; version: number }>;
 }
 
 const approvalTone = (a: string) => (a === 'approved' ? 'completed' : a === 'needs_revision' ? 'needs_revision' : 'waiting_internal');
@@ -130,8 +132,6 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
                   className="btn"
                   disabled={act.busy}
                   onClick={() => {
-                    const fix = shots.filter((s) => s.approval === 'needs_revision').length;
-                    if (!window.confirm(`לאשר את כל ${shots.length - approvedCount} השוטים שעוד לא אושרו?${fix ? ` (${fix} מסומנים "נדרש תיקון" — גם הם יאושרו)` : ''}`)) return;
                     void post(`/api/projects/${project.id}/shots/approve-all`, {});
                   }}
                   title="מאשר בבת אחת את כל השוטים, ואז אפשר לאשר את הסטורי בורד ולהתקדם לתמונות"
@@ -194,7 +194,8 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
           {shots.map((s) => {
             const r = shotRefs(s.id);
             const approvedRef = r.find((x) => x.status === 'approved' && x.imageUrl);
-            const preview = s.previewAssetId ? assetUrl(s.previewAssetId) : approvedRef?.imageUrl;
+            const frame = data?.frames?.[s.id];
+            const preview = frame ? `/api/media/${frame.mediaId}/file` : s.previewAssetId ? assetUrl(s.previewAssetId) : approvedRef?.imageUrl;
             return (
               <button key={s.id} className={`shot-card ap-${s.approval}`} onClick={() => setOpenShot(s.id)}>
                 <div className={`shot-thumb ar-${project.brief.aspectRatio.replace(':', 'x') || '16x9'}`}>

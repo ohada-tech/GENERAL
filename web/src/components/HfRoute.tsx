@@ -10,7 +10,6 @@ export function HfRouteToggle({ project, onChanged }: { project: Project; onChan
   const route = project.settings.hfRoute;
   const set = async (hfRoute: 'unlimited' | 'credits') => {
     if (hfRoute === route) return;
-    if (hfRoute === 'credits' && !window.confirm('לעבור למסלול קרדיטים? ג׳נרציות בהיגספילד ירוצו מהר, בתשלום בקרדיטים.')) return;
     await act.run(() => api.patch(`/api/projects/${project.id}`, { settings: { hfRoute } }));
     await onChanged();
   };

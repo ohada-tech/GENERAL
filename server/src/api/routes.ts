@@ -181,6 +181,12 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
       storyboard,
       shots: storyboard ? listShots(ctx.db, storyboard.id) : [],
       references: storyboard ? listRefsForStoryboard(ctx.db, storyboard.id) : [],
+      // התמונה של כל שוט (הטייק המוצג בהפקה) — כדי שהסטורי בורד יראה תמונות ולא רק טקסט
+      frames: Object.fromEntries(
+        [...prod.latestMedia(ctx, id).latest.values()]
+          .filter((m) => m.kind === 'frame' && m.shotId && m.assetId)
+          .map((m) => [m.shotId!, { mediaId: m.id, status: m.status, version: m.version }]),
+      ),
     };
   });
   app.post('/api/projects/:id/storyboard/generate', async (req) =>

@@ -48,8 +48,8 @@ export function AgentStageControls(props: {
   const mine = props.tasks.filter((t) => t.stage === props.stage);
   const active = mine.find((t) => t.status === 'queued' || t.status === 'running');
   const last = mine[0];
-  const send = async (kind: 'hf_unlimited' | 'qa', scope: 'pilot' | 'all', confirmText: string) => {
-    if (!window.confirm(confirmText)) return;
+  // אנלימיטד ובדיקת איכות לא עולים כסף — רץ מיד בלחיצה, בלי חלון אישור
+  const send = async (kind: 'hf_unlimited' | 'qa', scope: 'pilot' | 'all', _what?: string) => {
     await act.run(() => api.post(`/api/projects/${props.projectId}/agent`, { kind, stage: props.stage, scope }));
     await props.onChanged();
   };
@@ -72,7 +72,6 @@ export function AgentStageControls(props: {
             className="btn btn-primary"
             disabled={act.busy}
             onClick={async () => {
-              if (!window.confirm(`לתקן את ${props.qaFailed} הטייקים שנפסלו בבדיקת האיכות? כל אחד נשלח לריצה עם ההערה שלו.`)) return;
               await act.run(() => api.post(`/api/projects/${props.projectId}/production/${props.stage}/fix-qa`));
               await props.onChanged();
             }}
