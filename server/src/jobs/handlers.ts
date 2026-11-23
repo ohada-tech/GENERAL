@@ -6,7 +6,8 @@
 import { shotFieldsSchema, versionLabel, type Job, type JobType, type ScriptContent, type ShotFields } from '@apos/shared';
 import { GateError, type Ctx } from '../context.js';
 import { json, uid } from '../db/db.js';
-import { getProject, getScript, nextScriptVersion } from '../db/repo.js';
+import { getProject, getScript, getShot, getStoryboard, listShots, nextScriptVersion } from '../db/repo.js';
+import { SHOT_REVISE_JSON_SCHEMA, shotReviseSystemPrompt, shotReviseUserPrompt } from '../providers/prompts.js';
 import type { GenResult, ScriptDraft, TextProvider } from '../providers/types.js';
 import { ProviderError } from '../providers/types.js';
 import { emit } from '../workflow/events.js';
@@ -374,10 +375,67 @@ const feedbackReview: JobHandler<{ importId: string; review: FeedbackReview }> =
   },
 };
 
+/** תיקון שוט בודד לפי ההערה של אוהד — Claude מעדכן את השדות הוויזואליים והפרומפטים; הקריינות נשארת */
+type ShotReviseRun = { shotId: string; note: string; fields: ShotFields; changed: string[]; by: string };
+const shotRevise: JobHandler<ShotReviseRun> = {
+  async run(ctx, job) {
+    const shotId = String(job.payload.shotId ?? '');
+    const note = String(job.payload.note ?? '').trim();
+    const shot = getShot(ctx.db, shotId);
+    if (!shot) throw new GateError('השוט נמחק');
+    if (!note) throw new GateError('אין הערה לתיקון');
+    const project = getProject(ctx.db, job.projectId)!;
+    const defaults = { imageModel: project.settings.defaultImageModel, animationModel: project.settings.defaultAnimationModel };
+    const { provider: projectProvider } = textProviderFor(ctx, job.projectId);
+    if (projectProvider.isDemo) {
+      // מצב הדגמה: בלי AI — ההערה נכנסת לדרישות השוט כדי שיראו שהזרימה עובדת
+      const fields = shotFieldsSchema.parse({ ...shot, consistencyNotes: [shot.consistencyNotes, `תיקון: ${note}`].filter(Boolean).join('\n') });
+      return { shotId, note, fields, changed: ['DEMO — ההערה נוספה לדרישות השוט'], by: 'demo' };
+    }
+    const claude = ctx.providers.text.claude as (TextProvider & Partial<JsonCapableProvider>) | undefined;
+    if (!claude?.isConfigured() || typeof claude.json !== 'function') {
+      throw new ProviderError('את תיקון השוטים עושה Claude — Claude לא מחובר. חבר אותו בחלון "מפתחות"', false, 'not_configured');
+    }
+    const shots = listShots(ctx.db, shot.storyboardId);
+    const r = await claude.json<{ shot: unknown; changed: string[] }>(
+      'shot_revise',
+      SHOT_REVISE_JSON_SCHEMA,
+      shotReviseSystemPrompt(defaults),
+      shotReviseUserPrompt(projectContext(ctx, job.projectId, 'storyboard'), shots, shot, note),
+    );
+    // הקריינות והשיוך לסצנה שייכים לתסריט — נאכף גם בקוד, לא רק בפרומפט
+    const fields = shotFieldsSchema.parse({ ...(r.data?.shot as object), narration: shot.narration, sceneIndex: shot.sceneIndex });
+    const changed = Array.isArray(r.data?.changed) ? r.data.changed.map(String).slice(0, 3) : [];
+    return { shotId, note, fields, changed, by: r.model };
+  },
+  persist(ctx, job, r) {
+    const shot = getShot(ctx.db, r.shotId);
+    if (!shot) return { shotId: r.shotId, skipped: 'deleted' };
+    const sb = getStoryboard(ctx.db, shot.storyboardId);
+    // אוהד כתב הערה חדשה בזמן הריצה, אישר, או שהסטורי בורד ננעל — לא דורסים
+    if (sb?.status !== 'draft' || shot.approval !== 'needs_revision' || shot.revisionNote.trim() !== r.note) {
+      return { shotId: r.shotId, skipped: 'stale' };
+    }
+    const ts = ctx.now().toISOString();
+    ctx.db
+      .prepare("UPDATE shots SET fields = ?, approval = 'pending', updated_at = ? WHERE id = ?")
+      .run(json(r.fields), ts, r.shotId);
+    emit(ctx, {
+      projectId: job.projectId,
+      type: 'shot.revised',
+      actor: 'claude',
+      message: `שוט ${shot.number} תוקן לפי ההערה "${r.note}"${r.changed.length ? `: ${r.changed.join(' · ')}` : ''}`,
+      payload: { shotId: r.shotId, note: r.note, changed: r.changed },
+    });
+    return { shotId: r.shotId, changed: r.changed };
+  },
+};
+
 export const HANDLERS: Record<JobType, JobHandler<any>> = {
   'script.generate': scriptGenerate,
   'script.revise': scriptRevise,
   'storyboard.generate': storyboardGenerate,
+  'shot.revise': shotRevise,
   'lessons.distill': lessonsDistill,
   'feedback.review': feedbackReview,
   ...MEDIA_HANDLERS,

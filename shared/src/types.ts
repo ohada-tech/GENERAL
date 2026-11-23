@@ -62,6 +62,7 @@ export type JobType =
   | 'script.generate'
   | 'script.revise'
   | 'storyboard.generate'
+  | 'shot.revise'
   | 'frame.generate'
   | 'clip.generate'
   | 'voiceover.generate'
@@ -74,6 +75,7 @@ export const JOB_LABELS: Record<JobType, string> = {
   'script.generate': 'יצירת טיוטת תסריט',
   'script.revise': 'יצירת גרסה מתוקנת לתסריט',
   'storyboard.generate': 'יצירת סטורי בורד',
+  'shot.revise': 'תיקון שוט לפי ההערה שלך',
   'frame.generate': 'יצירת תמונה לשוט',
   'clip.generate': 'הנפשת שוט',
   'voiceover.generate': 'יצירת קריינות',
@@ -87,6 +89,7 @@ export const JOB_STAGE: Record<JobType, StageKey> = {
   'script.generate': 'script',
   'script.revise': 'script',
   'storyboard.generate': 'storyboard',
+  'shot.revise': 'storyboard',
   'frame.generate': 'images',
   'clip.generate': 'animation',
   'voiceover.generate': 'audio',

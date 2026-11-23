@@ -722,6 +722,53 @@ export function approveAllShots(ctx: Ctx, projectId: string) {
   return { approved: pending.length };
 }
 
+/**
+ * אוהד כותב תיקון על שוט: ההערה נשמרת (השוט "דורש תיקון") ו-Claude מתקן אותו מיד ברקע —
+ * תיאור, פרומפט תמונה, פרומפט הנפשה ושאר השדות הוויזואליים. הקריינות לא משתנה (היא של התסריט / ChatGPT).
+ */
+export function requestShotFix(ctx: Ctx, shotId: string, note: string, opts: { apply?: boolean } = {}) {
+  const shot = setShotApproval(ctx, shotId, 'needs_revision', note);
+  const p = mustProject(ctx, shot.projectId);
+  const apply = opts.apply !== false && p.pipelineState !== 'stopped';
+  const job = apply
+    ? tx(ctx.db, () =>
+        enqueueJob(ctx, {
+          projectId: shot.projectId,
+          type: 'shot.revise',
+          payload: { shotId, note: shot.revisionNote },
+          idempotencyKey: `shot.revise:${shotId}:${uid()}`,
+          actor: owner(ctx),
+        }),
+      ).job
+    : null;
+  return { shot, jobId: job?.id ?? null };
+}
+
+/** "Claude יתקן את כל השוטים עם הערות" — לשוטים שההערה שלהם עדיין לא טופלה */
+export function applyShotFixes(ctx: Ctx, projectId: string) {
+  const sb = currentStoryboard(ctx.db, projectId);
+  if (!sb || sb.status !== 'draft') throw new GateError('אין סטורי בורד פתוח לעריכה');
+  const p = mustProject(ctx, projectId);
+  if (p.pipelineState === 'stopped') throw new GateError('ה-Pipeline עצור. הפעל אותו מחדש כדי להריץ משימות.');
+  const pending = listShots(ctx.db, sb.id).filter((s) => s.approval === 'needs_revision' && s.revisionNote.trim());
+  const busy = activeShotFixes(ctx, projectId);
+  let queued = 0;
+  for (const s of pending) {
+    if (busy.has(s.id)) continue;
+    requestShotFix(ctx, s.id, s.revisionNote);
+    queued++;
+  }
+  return { queued };
+}
+
+/** שוטים ש-Claude מתקן עכשיו (משימת shot.revise בתור או רצה) */
+export function activeShotFixes(ctx: Ctx, projectId: string): Set<string> {
+  const rows = ctx.db
+    .prepare("SELECT payload FROM jobs WHERE project_id = ? AND type = 'shot.revise' AND status IN ('queued','running')")
+    .all(projectId) as Array<{ payload: string }>;
+  return new Set(rows.map((r) => String(JSON.parse(r.payload)?.shotId ?? '')).filter(Boolean));
+}
+
 export function approveStoryboard(ctx: Ctx, projectId: string, note = '') {
   const sb = currentStoryboard(ctx.db, projectId);
   if (!sb) throw new GateError('אין סטורי בורד לאישור');

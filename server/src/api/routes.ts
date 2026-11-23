@@ -187,6 +187,8 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
           .filter((m) => m.kind === 'frame' && m.shotId && m.assetId)
           .map((m) => [m.shotId!, { mediaId: m.id, status: m.status, version: m.version }]),
       ),
+      // שוטים ש-Claude מתקן עכשיו לפי ההערה
+      fixing: [...cmd.activeShotFixes(ctx, id)],
     };
   });
   app.post('/api/projects/:id/storyboard/generate', async (req) =>
@@ -210,9 +212,13 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
   );
   app.post('/api/projects/:id/shots/approve-all', async (req) => cmd.approveAllShots(ctx, (req.params as any).id));
   app.post('/api/shots/:sid/approve', async (req) => cmd.setShotApproval(ctx, (req.params as any).sid, 'approved'));
-  app.post('/api/shots/:sid/request-revision', async (req) =>
-    cmd.setShotApproval(ctx, (req.params as any).sid, 'needs_revision', ((req.body ?? {}) as Body).note ?? ''),
-  );
+  // הערת תיקון על שוט: נשמרת, ו-Claude מתקן את השוט מיד ברקע (apply: false = רק לשמור)
+  app.post('/api/shots/:sid/request-revision', async (req) => {
+    const b = (req.body ?? {}) as Body;
+    const r = cmd.requestShotFix(ctx, (req.params as any).sid, b.note ?? '', { apply: b.apply !== false });
+    return { ...r.shot, fixJobId: r.jobId };
+  });
+  app.post('/api/projects/:id/shots/apply-fixes', async (req) => cmd.applyShotFixes(ctx, (req.params as any).id));
 
   /* ---------- references ---------- */
   app.post('/api/shots/:sid/references', async (req, reply) => {

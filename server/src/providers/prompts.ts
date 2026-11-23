@@ -16,6 +16,7 @@ import {
   type QaCriterion,
   type QaDetector,
   type ScriptContent,
+  type ShotFields,
   STORY_ROLES,
   wordsPerSecond,
 } from '@apos/shared';
@@ -638,5 +639,47 @@ export function storyboardReviewUserPrompt(ctx: ProjectContext, script: ScriptCo
     storyboardUserPrompt(ctx, script),
     `DRAFT SHOTS (JSON):\n${JSON.stringify(shots, null, 2)}`,
     'Return reviewNotes and the improved full shot list.',
+  ].join('\n\n');
+}
+
+/* ---------- תיקון שוט בודד לפי הערה של אוהד ---------- */
+
+export const SHOT_REVISE_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['shot', 'changed'],
+  properties: {
+    shot: STORYBOARD_JSON_SCHEMA.properties.shots.items,
+    changed: { type: 'array', items: str },
+  },
+} as const;
+
+export function shotReviseSystemPrompt(defaults: { imageModel: string; animationModel: string }): string {
+  return [
+    storyboardSystemPrompt(defaults),
+    '',
+    'TASK NOW: revise ONE existing shot according to the director\'s note. SURGICAL EDIT: change only what the note asks for, and update every field the note affects so they stay consistent with each other (action, composition, lighting, imagePrompt, animationPrompt, etc.). Every other field stays exactly as it is, character for character.',
+    'narration and sceneIndex MUST be returned exactly unchanged — the voiceover belongs to the approved script and is not yours to edit. If the note asks to change the narration, leave it unchanged and say so in "changed".',
+    'Keep continuity with the neighbouring shots (same character identity, wardrobe, product, location) unless the note explicitly breaks it.',
+    'changed: 1–3 short bullets in Hebrew, at most 10 words each, saying what you changed (e.g. "זווית נמוכה במקום גובה עיניים"). No praise, no explanations.',
+  ].join('\n');
+}
+
+export function shotReviseUserPrompt(
+  ctx: ProjectContext,
+  shots: Array<ShotFields & { number: number }>,
+  target: ShotFields & { number: number },
+  note: string,
+): string {
+  const strip = ({ number, ...f }: ShotFields & { number: number }) => ({ number, ...Object.fromEntries(SHOT_KEYS.map((k) => [k, (f as any)[k]])) });
+  const neighbours = shots
+    .filter((s) => Math.abs(s.number - target.number) <= 2 && s.number !== target.number)
+    .map((s) => ({ number: s.number, action: s.action, character: s.character, wardrobe: s.wardrobe, colorMood: s.colorMood }));
+  return [
+    `BRIEF:\n${briefToText(ctx)}`,
+    `NEIGHBOURING SHOTS (for continuity only, do not change):\n${JSON.stringify(neighbours, null, 2)}`,
+    `SHOT ${target.number} — CURRENT (JSON):\n${JSON.stringify(strip(target), null, 2)}`,
+    `DIRECTOR'S NOTE FOR SHOT ${target.number}:\n${note}`,
+    'Return the full revised shot.',
   ].join('\n\n');
 }

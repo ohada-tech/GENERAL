@@ -29,7 +29,7 @@ export function enqueueJob(ctx: Ctx, input: EnqueueInput): EnqueueResult {
   if (existingByKey) return { job: mapJob(existingByKey as any), created: false, reason: 'duplicate_key' };
 
   // משימות מדיה הן לכל פריט בנפרד (שוט/גרסה) — הכפילות נמנעת לפי מזהה הפריט במפתח
-  const perItem = input.type.startsWith('frame.') || input.type.startsWith('clip.') || input.type.startsWith('voiceover.') || input.type.startsWith('music.') || input.type.startsWith('edit.');
+  const perItem = input.type.startsWith('frame.') || input.type.startsWith('shot.') || input.type.startsWith('clip.') || input.type.startsWith('voiceover.') || input.type.startsWith('music.') || input.type.startsWith('edit.');
   const active = perItem
     ? null
     : ctx.db

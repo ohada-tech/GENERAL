@@ -64,7 +64,8 @@ const TAB: Record<StageKey, string> = {
 };
 
 function latestJobFor(jobs: Job[], stage: StageKey) {
-  return jobs.find((j) => JOB_STAGE[j.type] === stage && j.status !== 'cancelled') ?? null;
+  // תיקון שוט בודד (shot.revise) לא קובע את מצב השלב כולו — הוא מוצג על כרטיס השוט
+  return jobs.find((j) => JOB_STAGE[j.type] === stage && j.type !== 'shot.revise' && j.status !== 'cancelled') ?? null;
 }
 
 const isActive = (j: Job | null) => !!j && (j.status === 'queued' || j.status === 'running');

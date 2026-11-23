@@ -29,6 +29,8 @@ interface StoryboardData {
   references: Reference[];
   /** התמונה של כל שוט מההפקה (shotId → טייק) */
   frames?: Record<string, { mediaId: string; status: string; version: number }>;
+  /** שוטים ש-Claude מתקן עכשיו לפי ההערה */
+  fixing?: string[];
 }
 
 const approvalTone = (a: string) => (a === 'approved' ? 'completed' : a === 'needs_revision' ? 'needs_revision' : 'waiting_internal');
@@ -40,10 +42,12 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
   const scriptDone = state.stages.find((s) => s.key === 'script')!.status === 'completed';
   const running = sbStage.status === 'in_progress';
   const [version, setVersion] = useState<string>('');
+  const [fixingNow, setFixingNow] = useState(false);
   const { data, error, loading, reload } = useApi<StoryboardData>(
     `/api/projects/${project.id}/storyboard${version ? `?version=${version}` : ''}`,
-    { pollMs: running ? 2000 : 8000 },
+    { pollMs: running || fixingNow ? 2000 : 8000 },
   );
+  useEffect(() => setFixingNow((data?.fixing?.length ?? 0) > 0), [data]);
   const [openShot, setOpenShot] = useState<string | null>(null);
   const act = useAction();
 
@@ -63,6 +67,8 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
   const refs = data?.references ?? [];
   const readOnly = !sb || sb.status !== 'draft';
   const approvedCount = shots.filter((s) => s.approval === 'approved').length;
+  const fixing = new Set(data?.fixing ?? []);
+  const unfixed = shots.filter((s) => s.approval === 'needs_revision' && s.revisionNote && !fixing.has(s.id)).length;
 
   if (!sb) {
     return (
@@ -152,6 +158,16 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
                     : ` ← יתחיל ${shots.length} תמונות (~$${(shots.length * imageModel(project.settings.imageModel).credits * KIE_USD_PER_CREDIT).toFixed(2)})`
                   : ''}
               </button>
+              {unfixed > 0 && (
+                <button
+                  className="btn"
+                  disabled={act.busy}
+                  onClick={() => void post(`/api/projects/${project.id}/shots/apply-fixes`, {})}
+                  title="Claude מתקן כל שוט לפי ההערה שכתבת עליו (תיאור, פרומפט תמונה והנפשה). הקריינות לא משתנה."
+                >
+                  ✨ תקן לפי ההערות ({unfixed})
+                </button>
+              )}
               {project.settings.generator === 'higgsfield' && <HfRouteToggle project={project} onChanged={refresh} />}
             </>
           )}
@@ -197,7 +213,8 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
             const frame = data?.frames?.[s.id];
             const preview = frame ? `/api/media/${frame.mediaId}/file` : s.previewAssetId ? assetUrl(s.previewAssetId) : approvedRef?.imageUrl;
             return (
-              <button key={s.id} className={`shot-card ap-${s.approval}`} onClick={() => setOpenShot(s.id)}>
+              <div key={s.id} className={`shot-card ap-${s.approval}`}>
+                <button type="button" className="shot-open" onClick={() => setOpenShot(s.id)} title="פתח את השוט לעריכה">
                 <div className={`shot-thumb ar-${project.brief.aspectRatio.replace(':', 'x') || '16x9'}`}>
                   {preview ? <img src={preview} alt={`שוט ${s.number}`} loading="lazy" referrerPolicy="no-referrer" /> : <span>שוט {s.number}</span>}
                 </div>
@@ -220,9 +237,10 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
                     </span>
                   </div>
                   {!s.imagePrompt && <div className="small warn-text">חסר פרומפט תמונה</div>}
-                  {s.approval === 'needs_revision' && <div className="small warn-text">↺ {s.revisionNote}</div>}
                 </div>
-              </button>
+                </button>
+                <ShotFixBox shot={s} fixing={fixing.has(s.id)} readOnly={readOnly} onChanged={refresh} />
+              </div>
             );
           })}
         </div>
@@ -242,6 +260,60 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
           onChanged={refresh}
         />
       )}
+    </div>
+  );
+}
+
+/** תיקון ישירות על כרטיס השוט: כותבים מה לתקן, ו-Claude מתקן את השוט ברקע */
+function ShotFixBox({ shot, fixing, readOnly, onChanged }: { shot: Shot; fixing: boolean; readOnly: boolean; onChanged: () => Promise<void> }) {
+  const [note, setNote] = useState('');
+  const act = useAction();
+  const send = async () => {
+    const text = note.trim();
+    if (!text) return;
+    const r = await act.run(() => api.post(`/api/shots/${shot.id}/request-revision`, { note: text }));
+    if (r !== undefined) {
+      setNote('');
+      await onChanged();
+    }
+  };
+  const hasNote = !!shot.revisionNote?.trim();
+  return (
+    <div className="shot-fix">
+      {hasNote && (
+        <div className={`small ${shot.approval === 'needs_revision' ? 'warn-text' : 'ok-text'}`}>
+          {fixing ? (
+            <>
+              <span className="spinner" /> Claude מתקן: {shot.revisionNote}
+            </>
+          ) : shot.approval === 'needs_revision' ? (
+            <>↺ לתיקון: {shot.revisionNote}</>
+          ) : (
+            <>✨ תוקן לפי: {shot.revisionNote}</>
+          )}
+        </div>
+      )}
+      {!readOnly && (
+        <div className="shot-fix-row">
+          <textarea
+            rows={1}
+            placeholder="✏️ מה לתקן בשוט הזה?"
+            value={note}
+            disabled={act.busy}
+            onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+          />
+          <button type="button" className="btn btn-sm" disabled={act.busy || !note.trim()} onClick={() => void send()} title="שומר את ההערה ו-Claude מתקן את השוט (הקריינות לא משתנה)">
+            תקן
+          </button>
+        </div>
+      )}
+      <InlineError error={act.error} onClose={act.clearError} />
     </div>
   );
 }
