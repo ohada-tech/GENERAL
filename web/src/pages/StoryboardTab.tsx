@@ -265,6 +265,21 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
                 </div>
                 </button>
                 <ShotFixBox shot={s} fixing={fixing.has(s.id)} readOnly={readOnly} onChanged={refresh} />
+                {!readOnly && (
+                  <div className="row end">
+                    <ConfirmButton
+                      disabled={act.busy}
+                      confirmLabel={s.narration?.trim() ? 'למחוק? הקריינות תעבור לשוט הסמוך' : 'בטוח? לחץ שוב'}
+                      onConfirm={async () => {
+                        await act.run(() => api.del(`/api/shots/${s.id}`));
+                        if (openShot === s.id) setOpenShot(null);
+                        await refresh();
+                      }}
+                    >
+                      🗑 מחק שוט מיותר
+                    </ConfirmButton>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -430,6 +445,7 @@ function ShotEditor({
             </button>
             <ConfirmButton
               disabled={act.busy}
+              confirmLabel={shot.narration?.trim() ? 'למחוק? הקריינות תעבור לשוט הסמוך' : 'בטוח? לחץ שוב'}
               onConfirm={async () => {
                 await act.run(() => api.del(`/api/shots/${shot.id}`));
                 await onChanged();

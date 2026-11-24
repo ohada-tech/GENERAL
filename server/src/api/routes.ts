@@ -206,10 +206,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     return cmd.addShot(ctx, (req.params as any).id, req.body ?? {});
   });
   app.patch('/api/shots/:sid', async (req) => cmd.updateShot(ctx, (req.params as any).sid, req.body ?? {}));
-  app.delete('/api/shots/:sid', async (req, reply) => {
-    cmd.deleteShot(ctx, (req.params as any).sid);
-    reply.code(204);
-  });
+  app.delete('/api/shots/:sid', async (req) => cmd.deleteShot(ctx, (req.params as any).sid));
   app.post('/api/shots/:sid/move', async (req) =>
     cmd.moveShot(ctx, (req.params as any).sid, ((req.body ?? {}) as Body).direction === 'up' ? 'up' : 'down'),
   );

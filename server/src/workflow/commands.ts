@@ -656,6 +656,27 @@ function renumber(ctx: Ctx, storyboardId: string, orderedIds: string[]) {
 export function deleteShot(ctx: Ctx, shotId: string) {
   const { shot, sb } = mustDraftStoryboardOfShot(ctx, shotId);
   return tx(ctx.db, () => {
+    // מוחקים את השוט, לא את הקריינות: הטקסט שלו עובר לשוט סמוך (קודם באותה סצנה, אחר כך הבא),
+    // יחד עם הזמן שלו, כדי שהקריינות תישאר שלמה
+    const narration = shot.narration?.trim() ?? '';
+    let movedTo: number | null = null;
+    if (narration) {
+      const all = listShots(ctx.db, sb.id);
+      const i = all.findIndex((s) => s.id === shotId);
+      const prev = all[i - 1];
+      const next = all[i + 1];
+      const same = (s?: (typeof all)[number]) => !!s && s.sceneIndex === shot.sceneIndex;
+      const target = same(prev) ? prev : same(next) ? next : (prev ?? next);
+      if (target) {
+        const before = target === prev;
+        const own = target.narration?.trim() ?? '';
+        const merged = own ? (before ? `${own} ${narration}` : `${narration} ${own}`) : narration;
+        const { id: _i, storyboardId: _s, projectId: _p, number: _n, approval: _a, revisionNote: _r, previewAssetId: _pa, updatedAt: _u, ...rest } = target;
+        const fields = shotFieldsSchema.parse({ ...rest, narration: merged, durationSec: (target.durationSec || 0) + (shot.durationSec || 0) });
+        ctx.db.prepare('UPDATE shots SET fields = ?, updated_at = ? WHERE id = ?').run(json(fields), ts(ctx), target.id);
+        movedTo = before ? target.number : target.number - 1; // המספר אחרי המחיקה
+      }
+    }
     ctx.db.prepare('DELETE FROM shots WHERE id = ?').run(shotId);
     renumber(
       ctx,
@@ -666,9 +687,10 @@ export function deleteShot(ctx: Ctx, shotId: string) {
       projectId: shot.projectId,
       type: 'shot.deleted',
       actor: owner(ctx),
-      message: `שוט ${shot.number} נמחק`,
-      payload: { shotId },
+      message: `שוט ${shot.number} נמחק${movedTo != null ? ` (הקריינות עברה לשוט ${movedTo})` : ''}`,
+      payload: { shotId, narrationMovedTo: movedTo },
     });
+    return { narrationMovedTo: movedTo };
   });
 }
 
