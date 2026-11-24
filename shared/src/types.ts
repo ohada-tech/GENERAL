@@ -238,6 +238,8 @@ export interface ProjectSummary {
   id: string;
   name: string;
   clientName: string;
+  /** למי הפרויקט שייך: genesis = GNSS, studio = OA (הסטודיו של אוהד). מ-settings.brand */
+  brand: 'genesis' | 'studio';
   dueDate: string;
   updatedAt: string;
   state: ProjectState;

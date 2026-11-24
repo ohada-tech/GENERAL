@@ -20,6 +20,25 @@ const FILTERS: Array<{ key: FilterKey; label: string }> = [
   { key: 'all', label: 'הכול' },
 ];
 
+/** הפרדה בין הפרויקטים של Genesis (GNSS) לפרויקטים של הסטודיו (OA). לפי "הלקוח שייך ל" בהגדרות הפרויקט */
+type SpaceKey = 'genesis' | 'studio' | 'all';
+const SPACES: Array<{ key: SpaceKey; label: string; title: string }> = [
+  { key: 'genesis', label: 'GNSS', title: 'פרויקטים של Genesis' },
+  { key: 'studio', label: 'OA', title: 'הפרויקטים של הסטודיו שלי (Ohad Alfi)' },
+  { key: 'all', label: 'הכול', title: 'כל הפרויקטים' },
+];
+const SPACE_KEY = 'apos.dashboard.space';
+const brandOf = (p: ProjectSummary) => (p.brand === 'studio' ? 'studio' : 'genesis');
+const inSpace = (p: ProjectSummary, s: SpaceKey) => s === 'all' || brandOf(p) === s;
+function savedSpace(): SpaceKey {
+  try {
+    const v = localStorage.getItem(SPACE_KEY);
+    return v === 'genesis' || v === 'studio' || v === 'all' ? v : 'all';
+  } catch {
+    return 'all';
+  }
+}
+
 const isDone = (p: ProjectSummary) =>
   p.state.overallStatus === 'completed' || p.state.stages.find((s) => s.key === 'delivery')?.status === 'completed';
 const waitsForMe = (p: ProjectSummary) => p.state.myActions.some((a) => a.kind !== 'task');
@@ -95,13 +114,23 @@ export function Dashboard() {
   const { data, error, loading, reload } = useApi<DashboardData>('/api/dashboard', { pollMs: 5000 });
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState<FilterKey>('active');
+  const [space, setSpaceState] = useState<SpaceKey>(savedSpace);
+  const setSpace = (s: SpaceKey) => {
+    setSpaceState(s);
+    try {
+      localStorage.setItem(SPACE_KEY, s);
+    } catch {
+      /* מצב פרטי — הבחירה פשוט לא נשמרת */
+    }
+  };
 
-  const projects = data?.projects ?? [];
+  const allProjects = data?.projects ?? [];
+  const projects = useMemo(() => allProjects.filter((p) => inSpace(p, space)), [allProjects, space]);
 
   // לקוח בלי לוגו אבל עם אתר — השרת מנסה להביא את הלוגו מהאתר (פעם אחת לפרויקט, ברקע)
   const asked = useRef(new Set<string>());
   useEffect(() => {
-    const todo = projects.filter((p) => p.logoAuto && !asked.current.has(p.id));
+    const todo = allProjects.filter((p) => p.logoAuto && !asked.current.has(p.id));
     if (!todo.length) return;
     todo.forEach((p) => asked.current.add(p.id));
     void (async () => {
@@ -112,7 +141,7 @@ export function Dashboard() {
       }
       if (found) await reload();
     })();
-  }, [projects, reload]);
+  }, [allProjects, reload]);
 
   const myActions = useMemo(
     () =>
@@ -184,6 +213,17 @@ export function Dashboard() {
         </div>
       </header>
 
+      <div className="t-spaces" role="tablist" aria-label="הפרדת פרויקטים: GNSS או OA">
+        {SPACES.map((s) => {
+          const n = allProjects.filter((p) => inSpace(p, s.key) && !isDone(p)).length;
+          return (
+            <button key={s.key} role="tab" aria-selected={space === s.key} title={s.title} onClick={() => setSpace(s.key)}>
+              <span dir="ltr">{s.label}</span> <span className="t-count">{n}</span>
+            </button>
+          );
+        })}
+      </div>
+
       {myActions.length > 0 && (
         <section className="t-section">
           <div className="t-section-head">
@@ -229,7 +269,11 @@ export function Dashboard() {
           </div>
         </div>
 
-        {projects.length === 0 ? (
+        {projects.length === 0 && allProjects.length > 0 ? (
+          <Empty title={space === 'studio' ? 'אין עדיין פרויקטים של OA' : 'אין פרויקטים של GNSS'}>
+            <span className="muted small">מעבירים פרויקט בלחיצה על התגית GNSS / OA בכרטיס שלו (או בהגדרות הפרויקט: "הלקוח שייך ל")</span>
+          </Empty>
+        ) : projects.length === 0 ? (
           <Empty title="אין עדיין פרויקטים">
             <button className="btn btn-primary" onClick={() => setCreating(true)}>
               פתח פרויקט ראשון
@@ -249,7 +293,10 @@ export function Dashboard() {
                   <Frame p={p} tag={done ? '✓ נמסר' : `${cur.number} · ${cur.label}`} />
                   <div className="t-card-body">
                     <div className="row between gap-s">
-                      <StatusBadge status={p.state.overallStatus} />
+                      <span className="row gap-s">
+                        <StatusBadge status={p.state.overallStatus} />
+                        <SpaceChip p={p} onDone={reload} />
+                      </span>
                       {p.dueDate && !done && (
                         <span className={`small ${due !== null && due < 0 ? 'danger-text' : due !== null && due <= 3 ? 'warn-text' : 'muted'}`}>
                           {due !== null && due < 0 ? `באיחור ${-due} ימים` : `יעד ${fmtDate(p.dueDate)}`}
@@ -300,8 +347,33 @@ export function Dashboard() {
         )}
       </section>
 
-      {creating && <NewProjectModal onClose={() => setCreating(false)} />}
+      {creating && <NewProjectModal space={space} onClose={() => setCreating(false)} />}
     </div>
+  );
+}
+
+/** תגית GNSS / OA בכרטיס — לחיצה מעבירה את הפרויקט לצד השני (settings.brand, גם מיתוג הקבצים ללקוח) */
+function SpaceChip({ p, onDone }: { p: ProjectSummary; onDone: () => Promise<void> | void }) {
+  const act = useAction();
+  const b = brandOf(p);
+  const to = b === 'genesis' ? 'studio' : 'genesis';
+  const toggle = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    await act.run(() => api.patch(`/api/projects/${p.id}`, { settings: { brand: to } }));
+    await onDone();
+  };
+  return (
+    <button
+      type="button"
+      className={`t-space-chip t-space-${b}`}
+      dir="ltr"
+      disabled={act.busy}
+      onClick={toggle}
+      title={`${b === 'genesis' ? 'פרויקט של Genesis' : 'פרויקט של הסטודיו'} — לחיצה מעבירה ל-${to === 'genesis' ? 'GNSS' : 'OA'} (גם המיתוג של הקבצים ללקוח)`}
+    >
+      {b === 'genesis' ? 'GNSS' : 'OA'}
+    </button>
   );
 }
 
@@ -332,14 +404,14 @@ function DoneToggle({ p, done, onDone }: { p: ProjectSummary; done: boolean; onD
   );
 }
 
-function NewProjectModal({ onClose }: { onClose: () => void }) {
+function NewProjectModal({ space, onClose }: { space: SpaceKey; onClose: () => void }) {
   const [name, setName] = useState('');
   const [clientName, setClientName] = useState('');
   const { busy, error, run } = useAction();
   const navigate = useNavigate();
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const p = await run(() => api.post<Project>('/api/projects', { name, clientName }));
+    const p = await run(() => api.post<Project>('/api/projects', { name, clientName, ...(space !== 'all' ? { settings: { brand: space } } : {}) }));
     if (p) navigate(`/projects/${p.id}/brief`);
   };
   return (

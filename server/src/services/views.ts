@@ -57,6 +57,7 @@ export function dashboard(ctx: Ctx): DashboardData {
     id: p.id,
     name: p.name,
     clientName: p.clientName,
+    brand: p.settings.brand,
     dueDate: p.brief.dueDate,
     updatedAt: p.updatedAt,
     state: projectState(ctx, p),
