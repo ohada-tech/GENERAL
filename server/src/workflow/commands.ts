@@ -795,6 +795,8 @@ export function approveStoryboard(ctx: Ctx, projectId: string, note = '') {
       for (const s of changed) {
         for (const kind of ['frame', 'clip']) {
           const m = latest.get(`${kind}:${s.id}`);
+          // תמונה/קליפ שהועלו אחרי שהשוט שונה כבר מתאימים לתוכן החדש — נשארים
+          if (m && m.params?.shotSignature === frameSignature(s)) continue;
           if (m) redo.run('השוט שונה בעריכת הסטורי בורד — צריך גרסה חדשה', ts(ctx), m.id);
         }
       }

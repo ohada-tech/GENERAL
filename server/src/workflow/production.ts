@@ -596,7 +596,8 @@ export function addExternalMedia(ctx: Ctx, projectId: string, input: ExternalMed
   if (!['frame', 'clip', 'voiceover', 'music', 'final'].includes(kind)) throw new GateError('סוג תוצר לא מוכר', 400);
   const shotId = kind === 'frame' || kind === 'clip' ? (input.shotId ?? null) : null;
   if ((kind === 'frame' || kind === 'clip') && !shotId) throw new GateError('חסר שוט לתמונה/קליפ', 400);
-  if (shotId && !approvedShots(ctx, projectId).some((s) => s.id === shotId)) {
+  const targetShot = shotId ? approvedShots(ctx, projectId).find((s) => s.id === shotId) : undefined;
+  if (shotId && !targetShot) {
     throw new GateError('השוט לא שייך לסטורי בורד המאושר של הפרויקט', 400);
   }
   const ext = (input.filename.split('.').pop() ?? '').toLowerCase();
@@ -639,7 +640,8 @@ export function addExternalMedia(ctx: Ctx, projectId: string, input: ExternalMed
         provider,
         label,
         input.prompt ?? '',
-        json({ source, hfCredits: input.hfCredits ?? null, sourceUrl: input.sourceUrl ?? null }),
+        // החתימה של השוט ברגע ההעלאה: סגירת עריכה לא תפסול תוצר שכבר מתאים לתוכן החדש
+        json({ source, hfCredits: input.hfCredits ?? null, sourceUrl: input.sourceUrl ?? null, shotSignature: targetShot ? frameSignature(targetShot) : null }),
         assetId,
         input.note ?? '',
         ts(ctx),

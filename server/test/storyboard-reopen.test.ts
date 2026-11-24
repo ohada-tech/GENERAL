@@ -57,4 +57,17 @@ describe('פתיחת הסטורי בורד לעריכה אחרי שהתמונו�
     const frames = listMedia(ctx.db, p.id, 'frame');
     expect(frames.filter((m) => m.status === 'approved')).toHaveLength(shots.length - 1);
   });
+
+  it('תמונה שהועלתה לשוט אחרי ששינו אותו (בזמן העריכה) נשארת בסגירה', async () => {
+    const ctx = makeCtx();
+    const { p, shots } = await withImages(ctx);
+    cmd.reopenStoryboard(ctx, p.id);
+    cmd.updateShot(ctx, shots[1].id, { imagePrompt: 'A totally different frame' });
+    const fresh = prod.addExternalMedia(ctx, p.id, { kind: 'frame', shotId: shots[1].id, data: sampleMedia().png, mime: 'image/png', filename: 'n.png', source: 'higgsfield-unlimited' });
+    cmd.setShotApproval(ctx, shots[1].id, 'approved');
+    cmd.approveStoryboard(ctx, p.id);
+
+    expect(prod.externalRequests(ctx, p.id).images).toHaveLength(0);
+    expect(listMedia(ctx.db, p.id, 'frame').find((m) => m.id === fresh.id)!.status).toBe('ready');
+  });
 });
