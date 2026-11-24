@@ -109,6 +109,29 @@ describe('Higgsfield mode (Claude / manual uploads)', () => {
     expect(all.total, JSON.stringify(all)).toBe(shots.length);
   });
 
+  it('הנפשת שוטי פנים לחוד בקרדיטים עם מודל שנבחר — גם כשהפרויקט על אנלימיטד', async () => {
+    const ctx = makeCtx();
+    const { p, shots } = await readyProject(ctx);
+    expect(shots.length).toBeGreaterThan(1);
+    for (const s of shots) cmd.updateShot(ctx, s.id, { character: '', imagePrompt: 'Product on a table', animationPrompt: 'slow push in', action: 'product', shotType: 'wide' });
+    cmd.updateShot(ctx, shots[0].id, { character: 'Dana, 30, the customer' });
+    for (const s of shots) cmd.setShotApproval(ctx, s.id, 'approved');
+    cmd.approveStoryboard(ctx, p.id);
+    const png = sampleMedia().png;
+    for (const s of shots) prod.addExternalMedia(ctx, p.id, { kind: 'frame', shotId: s.id, data: png, mime: 'image/png', filename: 'f.png', source: 'higgsfield-unlimited' });
+    prod.approveStage(ctx, p.id, 'images');
+    const app = await buildApp(ctx);
+    const run = (payload: object) => app.inject({ method: 'POST', url: `/api/projects/${p.id}/production/animation/hf-run`, payload });
+    expect((await run({ scope: 'all' })).statusCode).toBe(409); // אנלימיטד — הכפתור הרגיל לא רץ
+    expect((await run({ scope: 'all', faces: true, model: 'nope' })).statusCode).toBe(400);
+    const r = (await run({ scope: 'all', faces: true, model: 'seedance-2' })).json();
+    expect(r).toMatchObject({ status: 'queued', total: 1, faces: true, model: 'seedance-2' });
+    const next = (await app.inject({ url: '/api/hf/next' })).json();
+    expect(next.items).toHaveLength(1);
+    expect(next.items[0]).toMatchObject({ shotId: shots[0].id, kind: 'clip', job: 'seedance_2_0' });
+    expect(next.items[0].startImage).toMatch(/^\/api\/media\//);
+  });
+
   it('משימה ל-Claude מכפתור: אנלימיטד פיילוט ובדיקת איכות, העובד מקבל הוראות ומדווח', async () => {
     const ctx = makeCtx();
     const { p } = await readyProject(ctx);

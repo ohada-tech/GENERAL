@@ -4,7 +4,7 @@
  * חזרה למערכת (/media/from-url). הלחיצה היא האישור לריצה — הכפתור מציג את העלות לפני.
  * מסלול אנלימיטד (דפדפן) לא רץ מכאן — רק מסלול הקרדיטים.
  */
-import { hfImageCredits, hfVideoCredits, videoModelForShot } from '@apos/shared';
+import { VIDEO_MODELS, hfImageCredits, hfVideoCredits, isFaceShot, videoModel, videoModelForShot, type VideoModelDef } from '@apos/shared';
 import type { Ctx } from '../context.js';
 import { GateError, NotFoundError } from '../context.js';
 import { uid } from '../db/db.js';
@@ -15,7 +15,7 @@ import { externalRequests } from '../workflow/production.js';
 /** שוטי הסטורי בורד הנוכחי לפי מזהה: מודל הנפשה ואורך */
 function shotMap(ctx: Ctx, projectId: string) {
   const sb = currentStoryboard(ctx.db, projectId);
-  return new Map((sb ? listShots(ctx.db, sb.id) : []).map((x) => [x.id, { m: x.animationModel, d: x.durationSec }]));
+  return new Map((sb ? listShots(ctx.db, sb.id) : []).map((x) => [x.id, { m: x.animationModel, d: x.durationSec, face: isFaceShot(x) }]));
 }
 
 export type HfStage = 'images' | 'animation';
@@ -34,6 +34,10 @@ export interface HfRun {
   requestedAt: string;
   startedAt: string | null;
   finishedAt: string | null;
+  /** הנפשת שוטי פנים בלבד (בקרדיטים גם כשהפרויקט על אנלימיטד) */
+  faces: boolean;
+  /** מודל הנפשה שנבחר בכפתור — גובר על ההמלצה של כל שוט */
+  model: string | null;
 }
 
 type Row = {
@@ -51,6 +55,8 @@ type Row = {
   finished_at: string | null;
   shot_ids?: string | null;
   variants?: number;
+  faces?: number;
+  model?: string | null;
 };
 const map = (r: Row): HfRun => ({
   id: r.id,
@@ -65,6 +71,8 @@ const map = (r: Row): HfRun => ({
   requestedAt: r.requested_at,
   startedAt: r.started_at,
   finishedAt: r.finished_at,
+  faces: !!r.faces,
+  model: r.model ?? null,
 });
 
 /** שם המודל ב-CLI של היגספילד */
@@ -82,41 +90,69 @@ function pendingItems(ctx: Ctx, projectId: string, stage: HfStage, shotIds?: str
   return (stage === 'images' ? req.images : req.animation) as Array<NonNullable<(typeof req.images)[number]> & { approvedFrame?: { fileUrl: string } | null; durationSec?: number }>;
 }
 
-export function requestHfRun(ctx: Ctx, projectId: string, stage: HfStage, scope: HfScope, opts: { shotIds?: string[]; variants?: number } = {}) {
+/** רק שוטי הפנים מתוך הרשימה */
+function faceItems<T extends { shotId: string }>(ctx: Ctx, projectId: string, items: T[]) {
+  const shots = shotMap(ctx, projectId);
+  return items.filter((i) => shots.get(i.shotId)?.face);
+}
+
+export function requestHfRun(
+  ctx: Ctx,
+  projectId: string,
+  stage: HfStage,
+  scope: HfScope,
+  opts: { shotIds?: string[]; variants?: number; faces?: boolean; model?: string } = {},
+) {
   const p = getProject(ctx.db, projectId);
   if (!p) throw new NotFoundError('פרויקט');
   if (p.settings.generator !== 'higgsfield') throw new GateError('הפרויקט לא מוגדר על היגספילד', 409);
-  if (p.settings.hfRoute !== 'credits') throw new GateError('הרצה בלחיצה עובדת במסלול קרדיטים. באנלימיטד — Claude מריץ בדפדפן', 409);
+  const faces = !!opts.faces;
+  if (faces && stage !== 'animation') throw new GateError('הרצת שוטי פנים לחוד היא רק בשלב ההנפשה', 400);
+  // שוטי פנים: הלחיצה היא האישור לקרדיטים, גם כשהפרויקט על אנלימיטד
+  if (!faces && p.settings.hfRoute !== 'credits') throw new GateError('הרצה בלחיצה עובדת במסלול קרדיטים. באנלימיטד — Claude מריץ בדפדפן', 409);
+  let model: VideoModelDef | null = null;
+  if (opts.model) {
+    model = VIDEO_MODELS.find((m) => m.id === opts.model) ?? null;
+    if (!model || !HF_VIDEO_JOB[model.id]) throw new GateError('מודל הנפשה לא מוכר', 400);
+  }
   const active = ctx.db.prepare("SELECT 1 FROM hf_runs WHERE project_id = ? AND stage = ? AND status IN ('queued','running')").get(projectId, stage);
   if (active) throw new GateError('כבר יש הרצה פעילה בשלב הזה', 409);
   let items = pendingItems(ctx, projectId, stage, opts.shotIds);
   if (stage === 'animation') items = items.filter((i) => i.approvedFrame);
-  if (!items.length) throw new GateError(stage === 'images' ? 'אין שוטים שמחכים לתמונה' : 'אין שוטים עם תמונה מאושרת שמחכים להנפשה', 409);
+  if (faces) items = faceItems(ctx, projectId, items);
+  if (!items.length)
+    throw new GateError(
+      faces ? 'אין שוטי פנים עם תמונה מאושרת שמחכים להנפשה' : stage === 'images' ? 'אין שוטים שמחכים לתמונה' : 'אין שוטים עם תמונה מאושרת שמחכים להנפשה',
+      409,
+    );
   if (scope === 'pilot') items = items.slice(0, 1);
   const variants = Math.max(1, Math.min(4, Math.round(opts.variants ?? 1)));
-  const credits = Math.round(costOf(ctx, projectId, stage, items) * variants * 100) / 100;
+  const credits = Math.round(costOf(ctx, projectId, stage, items, model?.id) * variants * 100) / 100;
   const id = uid();
   const at = ctx.now().toISOString();
   ctx.db
-    .prepare("INSERT INTO hf_runs (id, project_id, stage, scope, status, total, done, credits, error, requested_at, shot_ids, variants) VALUES (?, ?, ?, ?, 'queued', ?, 0, ?, '', ?, ?, ?)")
-    .run(id, projectId, stage, scope, items.length * variants, credits, at, opts.shotIds ? JSON.stringify(opts.shotIds) : null, variants);
+    .prepare(
+      "INSERT INTO hf_runs (id, project_id, stage, scope, status, total, done, credits, error, requested_at, shot_ids, variants, faces, model) VALUES (?, ?, ?, ?, 'queued', ?, 0, ?, '', ?, ?, ?, ?, ?)",
+    )
+    .run(id, projectId, stage, scope, items.length * variants, credits, at, opts.shotIds ? JSON.stringify(opts.shotIds) : null, variants, faces ? 1 : 0, model?.id ?? null);
+  const what = faces ? 'הנפשת שוטי פנים' : stage === 'images' ? 'תמונות' : 'הנפשה';
   emit(ctx, {
     projectId,
     type: 'project.progress',
     actor: 'אוהד',
-    message: `▶ הרצה בהיגספילד: ${stage === 'images' ? 'תמונות' : 'הנפשה'} · ${scope === 'pilot' ? 'פיילוט (שוט אחד)' : `${items.length} שוטים`} · ~${credits} קרדיטים`,
-    payload: { hfRun: id, stage, scope, credits },
+    message: `▶ הרצה בהיגספילד: ${what}${model ? ` · ${model.label.split(' · ')[0]}` : ''} · ${scope === 'pilot' ? 'פיילוט (שוט אחד)' : `${items.length} שוטים`} · ~${credits} קרדיטים`,
+    payload: { hfRun: id, stage, scope, credits, faces, model: model?.id ?? null },
   });
   return map(ctx.db.prepare('SELECT * FROM hf_runs WHERE id = ?').get(id) as Row);
 }
 
-function costOf(ctx: Ctx, projectId: string, stage: HfStage, items: Array<{ shotId: string; durationSec?: number }>) {
+function costOf(ctx: Ctx, projectId: string, stage: HfStage, items: Array<{ shotId: string; durationSec?: number }>, modelId?: string) {
   const p = getProject(ctx.db, projectId)!;
   if (stage === 'images') return items.length * hfImageCredits(p.settings.imageModel);
   const shots = shotMap(ctx, projectId);
   return items.reduce((a, it) => {
     const s = shots.get(it.shotId);
-    return a + hfVideoCredits(videoModelForShot(s?.m ?? '', p.settings.videoModel).id, s?.d || 5);
+    return a + hfVideoCredits(modelId ?? videoModelForShot(s?.m ?? '', p.settings.videoModel).id, s?.d || 5);
   }, 0);
 }
 
@@ -131,6 +167,7 @@ export function nextHfRun(ctx: Ctx) {
   const variants = Math.max(1, r.variants || 1);
   let items = pendingItems(ctx, run.projectId, run.stage, shotIds);
   if (run.stage === 'animation') items = items.filter((i) => i.approvedFrame);
+  if (run.faces) items = faceItems(ctx, run.projectId, items);
   items = items.slice(0, Math.ceil(run.total / variants));
   // וריאציות: אותו שוט כמה פעמים, כטייקים נוספים
   items = items.flatMap((it) => Array.from({ length: variants }, () => it));
@@ -143,7 +180,7 @@ export function nextHfRun(ctx: Ctx) {
     project: { id: p.id, name: p.name },
     items: items.map((it) => {
       const s = shots.get(it.shotId);
-      const vm = videoModelForShot(s?.m ?? '', p.settings.videoModel);
+      const vm = run.model ? videoModel(run.model) : videoModelForShot(s?.m ?? '', p.settings.videoModel);
       return {
         shotId: it.shotId,
         shotNumber: it.shotNumber,

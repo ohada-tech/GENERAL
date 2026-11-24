@@ -1,4 +1,4 @@
-import { hfCostLabel, type CostEstimate, type Media, type MediaKind, type Shot } from '@apos/shared';
+import { VIDEO_MODELS, hfCostLabel, hfVideoCredits, isFaceShot, type CostEstimate, type Media, type MediaKind, type Shot } from '@apos/shared';
 import { useState } from 'react';
 import { ConfirmButton, Empty, ErrorBox, InlineError, Loading, Modal, Tag } from '../components/ui';
 import { api, useAction, useApi } from '../lib/api';
@@ -135,10 +135,51 @@ export function ProductionTab({ detail, reload }: TabProps) {
           projectId={project.id}
           agentTasks={agent.data ?? []}
           onAgentChanged={async () => { await agent.reload(); await refresh(); }}
-          onHfRun={(scope) => run(() => api.post(`/api/projects/${project.id}/production/${st}/hf-run`, { scope }))}
+          onHfRun={(scope, extra) => run(() => api.post(`/api/projects/${project.id}/production/${st}/hf-run`, { scope, ...extra }))}
         />
       ))}
     </div>
+  );
+}
+
+const FACE_MODEL_KEY = 'apos.faceAnimModel';
+
+/** הנפשת שוטי הפנים לחוד, בקרדיטים (גם כשהפרויקט על אנלימיטד), עם בחירת מודל הנפשה */
+function FaceRunControls(props: { view: StageView; shots: Shot[]; busy: boolean; onRun: (model: string) => void }) {
+  const [model, setModel] = useState(() => {
+    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(FACE_MODEL_KEY) : null;
+    return VIDEO_MODELS.some((m) => m.id === saved) ? saved! : 'seedance-2';
+  });
+  const r = props.view.hfRun;
+  if (r && (r.status === 'queued' || r.status === 'running')) return null; // ההרצה הפעילה מוצגת ב-HfRunControls
+  const byId = new Map(props.shots.map((s) => [s.id, s]));
+  const waiting = props.view.items
+    .filter((i) => i.shotId && (!i.media || i.media.status === 'failed' || i.media.status === 'rejected'))
+    .map((i) => byId.get(i.shotId!))
+    .filter((s): s is Shot => !!s && isFaceShot(s));
+  if (!waiting.length) return null;
+  const credits = waiting.reduce((a, s) => a + hfVideoCredits(model, s.durationSec || 5), 0);
+  const pick = (id: string) => {
+    setModel(id);
+    try {
+      localStorage.setItem(FACE_MODEL_KEY, id);
+    } catch {
+      /* פרטי */
+    }
+  };
+  return (
+    <span className="row gap-s wrap" title={`שוטי פנים: ${waiting.map((s) => s.number).join(', ')}`}>
+      <select aria-label="מודל הנפשה לשוטי פנים" value={model} disabled={props.busy} onChange={(e) => pick(e.target.value)}>
+        {VIDEO_MODELS.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.label}
+          </option>
+        ))}
+      </select>
+      <ConfirmButton className="btn" disabled={props.busy} onConfirm={() => props.onRun(model)} confirmLabel={`לחץ שוב להרצה בקרדיטים · ~${hfCostLabel(credits)}`}>
+        <Icon n="play" /> הנפש שוטי פנים לחוד ({waiting.length}) · ~{hfCostLabel(credits)}
+      </ConfirmButton>
+    </span>
   );
 }
 
@@ -189,7 +230,7 @@ function StageCard(props: {
   onUpload: (kind: MediaKind, shotId: string | null, file: File) => void;
   external: boolean;
   hfRoute: 'unlimited' | 'credits';
-  onHfRun: (scope: 'pilot' | 'all') => void;
+  onHfRun: (scope: 'pilot' | 'all', extra?: { faces: true; model: string }) => void;
   projectId: string;
   agentTasks: AgentTask[];
   onAgentChanged: () => Promise<void> | void;
@@ -234,6 +275,9 @@ function StageCard(props: {
         <div className="row gap-s wrap">
           {props.external && (v.stage === 'images' || v.stage === 'animation') && (
             <HfRunControls view={v} route={props.hfRoute} busy={props.busy} missing={missing} approved={approved} onRun={props.onHfRun} />
+          )}
+          {props.external && v.stage === 'animation' && v.canStart && !approved && missing > 0 && (
+            <FaceRunControls view={v} shots={props.shots} busy={props.busy} onRun={(model) => props.onHfRun('all', { faces: true, model })} />
           )}
           {v.stage !== 'delivery' && v.canStart && !approved && missing > 0 && !generating && !(props.external && (v.stage === 'images' || v.stage === 'animation')) && (
             <button className="btn btn-primary" disabled={props.busy} onClick={props.onStart}>

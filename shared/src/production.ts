@@ -181,6 +181,16 @@ export function videoModelForShot(animationModelText: string, projectDefault: st
   return VIDEO_MODELS.find((m) => m.match.some((k) => t.includes(k))) ?? videoModel(projectDefault);
 }
 
+const NO_CHARACTER = /^\s*(|-|—|none|n\/a|no one|nobody|no character|no people|ללא|אין|אין דמות|בלי דמות|מוצר בלבד|product only)\s*\.?\s*$/i;
+const FACE_WORDS =
+  /\b(face|faces|facial|portrait|selfie|headshot|close-?up of (a|the|his|her)|woman|women|man|men|girl|boy|person|people|guy|lady|kid|child|customer|actor|actress|presenter|eyes|smil(e|es|ing)|talking to (the )?camera|looks? (in|at|into) (the )?camera)\b|פניו|פניה|פנים של|הבעת פנים|פרצוף|דיוקן|אישה|גבר|ילד|ילדה|נער|נערה|בחור|בחורה|לקוח|לקוחה|מחייך|מחייכת|מסתכל|מסתכלת|מדבר למצלמה|מדברת למצלמה/i;
+
+/** שוט עם פנים של אדם: יש בו דמות, או שהפרומפט מתאר אדם / פנים. שוטים כאלה מונפשים לחוד בקרדיטים (איכות פנים). */
+export function isFaceShot(s: { character?: string; imagePrompt?: string; animationPrompt?: string; action?: string; shotType?: string }): boolean {
+  if (!NO_CHARACTER.test(s.character ?? '')) return true;
+  return FACE_WORDS.test([s.imagePrompt, s.animationPrompt, s.action, s.shotType].filter(Boolean).join(' \n '));
+}
+
 /** משך הקליפ שיוזמן: המשך הנתמך הקצר ביותר שמכסה את השוט (העודף נחתך בעריכה). */
 export function clipDuration(model: VideoModelDef, shotSec: number): number {
   return model.durations.find((d) => d >= shotSec) ?? model.durations[model.durations.length - 1];

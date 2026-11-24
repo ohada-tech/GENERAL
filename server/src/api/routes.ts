@@ -404,9 +404,11 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/api/projects/:id/production/:stage/hf-run', async (req, reply) => {
     const stage = (req.params as any).stage;
     if (stage !== 'images' && stage !== 'animation') throw new GateError('אפשר להריץ בהיגספילד רק תמונות או הנפשה', 400);
-    const scope = ((req.body ?? {}) as Body).scope === 'pilot' ? 'pilot' : 'all';
+    const b = (req.body ?? {}) as { scope?: string; faces?: boolean; model?: string };
+    const scope = b.scope === 'pilot' ? 'pilot' : 'all';
     reply.code(201);
-    return hf.requestHfRun(ctx, (req.params as any).id, stage, scope);
+    // faces: רק שוטי הפנים, בקרדיטים (גם כשהפרויקט על אנלימיטד), עם מודל ההנפשה שנבחר
+    return hf.requestHfRun(ctx, (req.params as any).id, stage, scope, { faces: !!b.faces, model: typeof b.model === 'string' && b.model ? b.model : undefined });
   });
   // העובד המקומי (~/.apos/hf-worker.cjs)
   app.get('/api/hf/next', async (_req, reply) => {

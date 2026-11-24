@@ -416,4 +416,8 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE hf_runs ADD COLUMN shot_ids TEXT;
   ALTER TABLE hf_runs ADD COLUMN variants INTEGER NOT NULL DEFAULT 1;
   `,
+  /* v22 — הנפשת שוטי פנים לחוד בקרדיטים, עם מודל הנפשה שנבחר בכפתור */ `
+  ALTER TABLE hf_runs ADD COLUMN faces INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE hf_runs ADD COLUMN model TEXT;
+  `,
 ];
