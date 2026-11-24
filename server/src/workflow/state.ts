@@ -342,6 +342,8 @@ export function computeProjectState(input: StateInput): ProjectState {
       st.milestones = st.milestones.map((m) => ({ ...m, done: true }));
     }
     actions.length = 0;
+    // פרויקט שנמסר — חסמים ישנים (משימה שנכשלה בדרך) כבר לא רלוונטיים
+    derivedBlockers.length = 0;
     // סבב תיקונים פתוח: הכל כבר נעשה, חוץ מהמסירה המתוקנת
     if (rev) {
       const d = stages.delivery;

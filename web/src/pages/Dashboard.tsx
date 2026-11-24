@@ -152,7 +152,6 @@ export function Dashboard() {
         ),
     [projects],
   );
-  const blockers = useMemo(() => projects.flatMap((p) => p.state.blockers.map((b) => ({ ...b, project: p }))), [projects]);
   const stats = useMemo(
     () => ({
       active: projects.filter((p) => !isDone(p)).length,
@@ -177,7 +176,6 @@ export function Dashboard() {
           <h1>{greeting()}, אוהד</h1>
           <p className="t-sub">
             {myActions.length ? `${myActions.length} דברים מחכים לך` : 'אין כרגע משהו שמחכה לך'}
-            {blockers.length ? ` · ${blockers.length} חסמים` : ''}
           </p>
           <PlanLine plan={data?.planUsage} />
         </div>
@@ -245,17 +243,7 @@ export function Dashboard() {
         </section>
       )}
 
-      {blockers.length > 0 && (
-        <section className="t-blockers">
-          {blockers.map((b, i) => (
-            <Link key={i} to={`/projects/${b.project.id}`} className="t-blocker">
-              <span className="t-kind t-kind-fix">חסם · {STAGE_BY_KEY[b.stage]?.label}</span>
-              <span className="grow">{b.reason}</span>
-              <span className="muted small">{b.project.name}</span>
-            </Link>
-          ))}
-        </section>
-      )}
+      {/* חסמים לא מוצגים כפס הודעות בדף — התקלות מגיעות להתראות (הפעמון למעלה) */}
 
       <section className="t-section">
         <div className="t-section-head">
