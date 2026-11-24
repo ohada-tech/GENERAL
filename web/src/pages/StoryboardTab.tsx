@@ -41,7 +41,8 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
   const { project, state } = detail;
   const sbStage = state.stages.find((s) => s.key === 'storyboard')!;
   const refStage = state.stages.find((s) => s.key === 'references')!;
-  const scriptDone = state.stages.find((s) => s.key === 'script')!.status === 'completed';
+  // The script stage shows ✓ already at internal approval; the storyboard still needs the client's approval.
+  const scriptDone = !!state.stages.find((s) => s.key === 'script')!.milestones.find((m) => m.label === 'אישור לקוח')?.done;
   const running = sbStage.status === 'in_progress';
   const [version, setVersion] = useState<string>('');
   const [fixingNow, setFixingNow] = useState(false);

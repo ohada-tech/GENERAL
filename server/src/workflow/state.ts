@@ -154,7 +154,8 @@ export function computeProjectState(input: StateInput): ProjectState {
       set('script', { status: 'needs_revision', detail: `נדרשים שינויים ב-${v}`, milestones });
       actions.push({ kind: 'fix', stage: 'script', label: `צור גרסה מתוקנת לתסריט ${v}`, tab: 'script' });
     } else if (latestScript.status === 'internal_approved') {
-      set('script', { status: 'waiting_client', detail: `${v} אושר פנימית — ממתין לאישור הלקוח`, milestones });
+      // Approved internally = the script stage is done (✓); the client's sign-off is still tracked as a milestone and action.
+      set('script', { status: 'completed', detail: `${v} אושר פנימית`, milestones });
       actions.push({ kind: 'approval', stage: 'script', label: `הצג ללקוח את תסריט ${v} וסמן את אישורו`, tab: 'script' });
     } else {
       set('script', { status: 'completed', detail: `${v} אושר ע"י הלקוח`, milestones });

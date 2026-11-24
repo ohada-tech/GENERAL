@@ -90,7 +90,7 @@ describe('Script stage', () => {
     expect(() => cmd.requestStoryboardGeneration(ctx, p.id)).toThrow(/אישור לקוח/);
 
     cmd.approveScriptInternal(ctx, v.id, 'נראה טוב');
-    expect(stage(ctx, p.id, 'script').status).toBe('waiting_client');
+    expect(stage(ctx, p.id, 'script').status).toBe('completed');
     expect(listJobs(ctx.db, p.id).filter((j) => j.type === 'storyboard.generate')).toHaveLength(0);
     expect(() => cmd.requestStoryboardGeneration(ctx, p.id)).toThrow(/אישור לקוח/);
 
