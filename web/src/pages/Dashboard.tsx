@@ -259,7 +259,7 @@ export function Dashboard() {
 
         {projects.length === 0 && allProjects.length > 0 ? (
           <Empty title={space === 'studio' ? 'אין עדיין פרויקטים של OA' : 'אין פרויקטים של GNSS'}>
-            <span className="muted small">מעבירים פרויקט בלחיצה על התגית GNSS / OA בכרטיס שלו (או בהגדרות הפרויקט: "הלקוח שייך ל")</span>
+            <span className="muted small">מעבירים פרויקט במתג GNSS | OA בכרטיס שלו (או בהגדרות הפרויקט: "הלקוח שייך ל")</span>
           </Empty>
         ) : projects.length === 0 ? (
           <Empty title="אין עדיין פרויקטים">
@@ -340,28 +340,37 @@ export function Dashboard() {
   );
 }
 
-/** תגית GNSS / OA בכרטיס — לחיצה מעבירה את הפרויקט לצד השני (settings.brand, גם מיתוג הקבצים ללקוח) */
+/** מתג GNSS | OA בכרטיס — הצד המסומן הוא הטאב של הפרויקט; לחיצה על הצד השני מעבירה אותו (settings.brand, גם מיתוג הקבצים ללקוח) */
 function SpaceChip({ p, onDone }: { p: ProjectSummary; onDone: () => Promise<void> | void }) {
   const act = useAction();
   const b = brandOf(p);
-  const to = b === 'genesis' ? 'studio' : 'genesis';
-  const toggle = async (e: React.MouseEvent) => {
+  const move = (to: 'genesis' | 'studio') => async (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    if (to === b) return;
     await act.run(() => api.patch(`/api/projects/${p.id}`, { settings: { brand: to } }));
     await onDone();
   };
+  const opts: Array<{ key: 'genesis' | 'studio'; label: string }> = [
+    { key: 'genesis', label: 'GNSS' },
+    { key: 'studio', label: 'OA' },
+  ];
   return (
-    <button
-      type="button"
-      className={`t-space-chip t-space-${b}`}
-      dir="ltr"
-      disabled={act.busy}
-      onClick={toggle}
-      title={`${b === 'genesis' ? 'פרויקט של Genesis' : 'פרויקט של הסטודיו'} — לחיצה מעבירה ל-${to === 'genesis' ? 'GNSS' : 'OA'} (גם המיתוג של הקבצים ללקוח)`}
-    >
-      {b === 'genesis' ? 'GNSS' : 'OA'}
-    </button>
+    <span className="t-space-switch" dir="ltr" role="group" aria-label="לאיזה טאב הפרויקט שייך">
+      {opts.map((o) => (
+        <button
+          key={o.key}
+          type="button"
+          className={`t-space-${o.key}`}
+          aria-pressed={b === o.key}
+          disabled={act.busy}
+          onClick={move(o.key)}
+          title={b === o.key ? `הפרויקט נמצא ב-${o.label}` : `העבר את הפרויקט ל-${o.label} (גם המיתוג של הקבצים ללקוח)`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </span>
   );
 }
 
