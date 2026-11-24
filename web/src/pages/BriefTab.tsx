@@ -222,7 +222,7 @@ export function BriefTab({ detail, reload }: TabProps) {
               onChange={(e) => set('durationSec', e.target.value ? Math.max(0, Math.round(Number(e.target.value))) : null)}
             />
           </Field>
-          <Field label="תאריך יעד" required missing={missing.has('dueDate')}>
+          <Field label="תאריך יעד" required missing={missing.has('dueDate')} hint="אוטומטי: 7 ימי עסקים משיחת האפיון / מכניסת הפרויקט. אפשר לשנות.">
             <input type="date" value={draft.dueDate} onChange={(e) => set('dueDate', e.target.value)} />
           </Field>
         </div>

@@ -68,6 +68,29 @@ export function emptyBrief(): Brief {
   return briefSchema.parse({});
 }
 
+/** כמה ימי עסקים מקבלים כברירת מחדל לתאריך יעד, משיחת האפיון / מכניסת הפרויקט */
+export const DEFAULT_DUE_BUSINESS_DAYS = 7;
+
+/**
+ * תאריך יעד ברירת מחדל: N ימי עסקים (א'–ה', בלי שישי ושבת) אחרי `from`, לפי שעון ישראל.
+ * מחזיר YYYY-MM-DD.
+ */
+export function defaultDueDate(from: Date | string = new Date(), days = DEFAULT_DUE_BUSINESS_DAYS): string {
+  const d = typeof from === 'string' ? new Date(from) : from;
+  const base = Number.isNaN(d.getTime()) ? new Date() : d;
+  // היום המקומי בישראל (כדי ששיחה ב-01:00 לפנות בוקר לא תיספר כיום הקודם)
+  const ymd = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit' }).format(base);
+  const [y, m, day] = ymd.split('-').map(Number);
+  const cur = new Date(Date.UTC(y, m - 1, day));
+  let left = days;
+  while (left > 0) {
+    cur.setUTCDate(cur.getUTCDate() + 1);
+    const wd = cur.getUTCDay();
+    if (wd !== 5 && wd !== 6) left--;
+  }
+  return cur.toISOString().slice(0, 10);
+}
+
 export interface BriefFieldCheck {
   field: keyof Brief;
   label: string;

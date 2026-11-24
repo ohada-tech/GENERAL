@@ -17,6 +17,7 @@ import {
   STAGE_KEYS,
   validateBrief,
   versionLabel,
+  defaultDueDate,
   type Brief,
   type ProjectSettings,
   type StageKey,
@@ -78,7 +79,8 @@ export function createProject(ctx: Ctx, input: { name: string; clientName: strin
       .prepare(
         'INSERT INTO projects (id, name, client_name, brief, settings, pipeline_state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       )
-      .run(id, name, input.clientName?.trim() ?? '', json(briefSchema.parse({})), json(settings), 'active', t, t);
+      // תאריך יעד ברירת מחדל: 7 ימי עסקים מכניסת הפרויקט (מסומן כמילוי אוטומטי, אפשר לשנות)
+      .run(id, name, input.clientName?.trim() ?? '', json(briefSchema.parse({ dueDate: defaultDueDate(t), aiFilled: ['dueDate'] })), json(settings), 'active', t, t);
     emit(ctx, { projectId: id, type: 'project.created', actor: owner(ctx), message: `נפתח פרויקט "${name}"` });
     return getProject(ctx.db, id)!;
   });
@@ -189,6 +191,11 @@ export function updateBrief(ctx: Ctx, id: string, patch: Partial<Brief>, opts: {
 export function completeBrief(ctx: Ctx, id: string) {
   const p = mustProject(ctx, id);
   if (p.briefCompletedAt) throw new GateError('האפיון כבר סומן כמוכן');
+  // תאריך יעד ריק לא תוקע: 7 ימי עסקים מכניסת הפרויקט
+  if (!p.brief.dueDate.trim()) {
+    updateBrief(ctx, id, { dueDate: defaultDueDate(p.createdAt), aiFilled: [...new Set([...p.brief.aiFilled, 'dueDate'])] }, { by: 'Claude', note: 'תאריך יעד אוטומטי: 7 ימי עסקים מכניסת הפרויקט' });
+    return completeBrief(ctx, id);
+  }
   const v = validateBrief(p.brief);
   if (!v.complete) {
     throw new GateError(`חסרים שדות חובה באפיון: ${v.missingRequired.map((m) => m.label).join(', ')}`, 422);

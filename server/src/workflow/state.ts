@@ -97,7 +97,9 @@ export function computeProjectState(input: StateInput): ProjectState {
   /* 01 Brief */
   {
     const done = !!project.briefCompletedAt;
-    const status: Status = done ? 'completed' : bv.requiredDone > 0 ? 'in_progress' : 'not_started';
+    // תאריך היעד האוטומטי (7 ימי עסקים) לא נחשב כהתחלת עבודה על האפיון
+    const autoOnly = project.brief.aiFilled.includes('dueDate') && project.brief.dueDate.trim() ? 1 : 0;
+    const status: Status = done ? 'completed' : bv.requiredDone > autoOnly ? 'in_progress' : 'not_started';
     set('brief', {
       status,
       detail: done

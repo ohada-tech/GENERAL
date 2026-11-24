@@ -2,7 +2,7 @@
  * מילוי אפיון אוטומטי: מסיכום / צ'אט / קבצים / אתר הלקוח ← כל שדות האפיון.
  * ממלא רק שדות ריקים (אלא אם ביקשו לדרוס), מסמן מה מילא ה-AI, ומחזיר מה עוד חסר — כשאלות קצרות לאוהד.
  */
-import { briefSchema, type Brief } from '@apos/shared';
+import { briefSchema, defaultDueDate, type Brief } from '@apos/shared';
 import { GateError, NotFoundError, type Ctx } from '../context.js';
 import { getProject } from '../db/repo.js';
 import { ProviderError } from '../providers/types.js';
@@ -119,7 +119,7 @@ export async function autofillBrief(
     | undefined;
   if (!prov?.json) throw new ProviderError('אין מנוע מחובר (Claude או ChatGPT) למילוי האפיון', false, 'not_configured');
 
-  const current = Object.fromEntries(Object.entries(p.brief).filter(([k, v]) => !isEmpty(v) && !['attachmentIds', 'aiFilled', 'aiQuestions'].includes(k)));
+  const current = Object.fromEntries(Object.entries(p.brief).filter(([k, v]) => !isEmpty(v) && !['attachmentIds', 'aiFilled', 'aiQuestions'].includes(k) && !(k === 'dueDate' && (p.brief.aiFilled ?? []).includes('dueDate'))));
   const r = await prov.json<Extracted>(
     'brief_autofill',
     SCHEMA,
@@ -127,11 +127,11 @@ export async function autofillBrief(
       'You fill a video production brief for an AI video studio, from the sources the owner (Ohad) collected: chat summaries, client notes, files and the client website.',
       'Fill every field you can support from the sources. Write field values in Hebrew (keep brand names, product names, URLs and English terms exactly as written; the brand name exactly as the brand writes it).',
       'Never invent facts: if the sources do not say it, return an empty string (or null / empty array). Prefer concrete wording from the sources over generic phrasing.',
-      'videoType: the kind of video (e.g. סרטון תדמית, סרטון מוצר, רילס, פרסומת). durationSec: total seconds if stated. aspectRatio: 9:16 / 16:9 / 1:1 / 4:5 if stated or clearly implied by the platform. dueDate: YYYY-MM-DD only if an explicit date is given. platforms: where it will be shown.',
+      'videoType: the kind of video (e.g. סרטון תדמית, סרטון מוצר, רילס, פרסומת). durationSec: total seconds if stated. aspectRatio: 9:16 / 16:9 / 1:1 / 4:5 if stated or clearly implied by the platform. dueDate: YYYY-MM-DD only if an explicit deadline is given (resolve relative dates like "next Thursday" from TODAY); otherwise empty — the system sets a default. platforms: where it will be shown.',
       'targetMarket: the country/market of the audience — never assume Israel unless the sources say so. language: the voice-over language.',
       'missing: up to 6 short Hebrew questions for Ohad about what is still unknown and matters most for the script (only things the sources do not answer).',
     ].join('\n'),
-    `PROJECT: ${p.name}\nCLIENT: ${p.clientName}\n\nALREADY FILLED (keep consistent):\n${JSON.stringify(current, null, 1).slice(0, 4000)}\n\nKNOWN RULES FOR THIS CLIENT:\n${lessonsFor(ctx, p.clientName, ['general', 'script']).slice(0, 12).join('\n') || '(none)'}\n\nSOURCES:\n${sources}`,
+    `TODAY: ${ctx.now().toISOString().slice(0, 10)}\nPROJECT: ${p.name}\nCLIENT: ${p.clientName}\n\nALREADY FILLED (keep consistent):\n${JSON.stringify(current, null, 1).slice(0, 4000)}\n\nKNOWN RULES FOR THIS CLIENT:\n${lessonsFor(ctx, p.clientName, ['general', 'script']).slice(0, 12).join('\n') || '(none)'}\n\nSOURCES:\n${sources}`,
   );
 
   const got = r.data?.brief;
@@ -144,7 +144,18 @@ export async function autofillBrief(
     (patch as Record<string, unknown>)[key] = value;
     filled.push(key);
   };
-  for (const f of FIELDS) consider(f, String(got[f] ?? '').trim());
+  // תאריך יעד שנקבע אוטומטית (7 ימי עסקים) מתעדכן: תאריך מפורש מהשיחה גובר, ובלעדיו — 7 ימי עסקים ממועד שיחת האפיון (עכשיו)
+  const autoDue = !p.brief.dueDate.trim() || (p.brief.aiFilled ?? []).includes('dueDate');
+  const explicitDue = /^\d{4}-\d{2}-\d{2}$/.test(String(got.dueDate ?? '').trim()) ? String(got.dueDate).trim() : '';
+  for (const f of FIELDS) {
+    if (f === 'dueDate') continue;
+    consider(f, String(got[f] ?? '').trim());
+  }
+  if (autoDue || input.overwrite) {
+    const due = explicitDue || (autoDue ? defaultDueDate(ctx.now()) : '');
+    if (due && due !== p.brief.dueDate) patch.dueDate = due;
+    if (due) filled.push('dueDate');
+  }
   consider('platforms', (got.platforms ?? []).map((x) => String(x).trim()).filter(Boolean));
   if (typeof got.durationSec === 'number' && got.durationSec > 0) consider('durationSec', Math.round(got.durationSec));
   if (typeof got.voiceoverNeeded === 'boolean' && (input.overwrite || p.brief.voiceoverNeeded === briefSchema.parse({}).voiceoverNeeded)) {
