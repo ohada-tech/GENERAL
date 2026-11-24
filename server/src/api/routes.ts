@@ -189,6 +189,8 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
       ),
       // שוטים ש-Claude מתקן עכשיו לפי ההערה
       fixing: [...cmd.activeShotFixes(ctx, id)],
+      // נפתח לעריכה אחרי אישור: "סגור עריכה" משאיר את התמונות של שוטים שלא השתנו
+      editingAfterApproval: prod.storyboardEditingAfterApproval(ctx, id),
     };
   });
   app.post('/api/projects/:id/storyboard/generate', async (req) =>

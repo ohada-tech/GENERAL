@@ -49,6 +49,8 @@ export interface ProductionSummary {
   kieConfigured: boolean;
   /** higgsfield = Claude מייצר ב-Higgsfield ומעלה (או העלאה ידנית) — לא צריך KIE */
   generator?: 'kie' | 'higgsfield';
+  /** הסטורי בורד נפתח לעריכה אחרי שאושר — שלבי ההפקה שומרים על מה שכבר נוצר */
+  storyboardEditing?: boolean;
 }
 
 const TAB: Record<StageKey, string> = {
@@ -246,7 +248,7 @@ export function computeProjectState(input: StateInput): ProjectState {
   {
     const prod = input.production;
     const LABEL: Record<string, string> = { images: 'התמונות', animation: 'ההנפשה', audio: 'הסאונד', editing: 'העריכה', delivery: 'המסירה' };
-    let prevDone = sbDone;
+    let prevDone = sbDone || !!prod?.storyboardEditing;
     for (const ps of prod?.stages ?? []) {
       const key = ps.stage as StageKey;
       const total = ps.items.length;

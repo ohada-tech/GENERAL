@@ -39,6 +39,7 @@ import {
 } from '../db/repo.js';
 import { emit } from './events.js';
 import { enqueueJob } from './queue.js';
+import { frameSignature, latestMedia } from './production.js';
 
 const ts = (ctx: Ctx) => ctx.now().toISOString();
 const owner = (ctx: Ctx) => ctx.config.ownerName;
@@ -779,7 +780,26 @@ export function approveStoryboard(ctx: Ctx, projectId: string, note = '') {
   if (notApproved.length) {
     throw new GateError(`יש לאשר את כל השוטים לפני אישור הסטורי בורד (חסרים: ${notApproved.map((s) => s.number).join(', ')})`);
   }
+  // נסגר אחרי עריכה: רק לשוטים שהתוכן הוויזואלי שלהם השתנה צריך תמונה (וקליפ) חדשים
+  const reopened = ctx.db
+    .prepare(
+      "SELECT payload FROM events WHERE project_id = ? AND type = 'storyboard.reopened' AND json_extract(payload, '$.storyboardId') = ? ORDER BY created_at DESC LIMIT 1",
+    )
+    .get(projectId, sb.id) as { payload: string } | undefined;
+  const snapshot = reopened ? ((JSON.parse(reopened.payload).snapshot ?? null) as Record<string, string> | null) : null;
+  const changed = snapshot ? shots.filter((s) => snapshot[s.id] !== undefined && snapshot[s.id] !== frameSignature(s)) : [];
   return tx(ctx.db, () => {
+    if (changed.length) {
+      const { latest } = latestMedia(ctx, projectId);
+      const redo = ctx.db.prepare("UPDATE media SET status = 'rejected', note = ?, updated_at = ? WHERE id = ? AND status IN ('ready','approved')");
+      for (const s of changed) {
+        for (const kind of ['frame', 'clip']) {
+          const m = latest.get(`${kind}:${s.id}`);
+          if (m) redo.run('השוט שונה בעריכת הסטורי בורד — צריך גרסה חדשה', ts(ctx), m.id);
+        }
+      }
+      ctx.db.prepare("UPDATE stage_gates SET approved_at = NULL, approved_by = NULL WHERE project_id = ?").run(projectId);
+    }
     ctx.db
       .prepare("UPDATE storyboards SET status = 'approved', approved_at = ?, approved_by = ? WHERE id = ?")
       .run(ts(ctx), owner(ctx), sb.id);
@@ -796,8 +816,10 @@ export function approveStoryboard(ctx: Ctx, projectId: string, note = '') {
       projectId,
       type: 'storyboard.approved',
       actor: owner(ctx),
-      message: `סטורי בורד v${sb.version} אושר (${shots.length} שוטים)`,
-      payload: { storyboardId: sb.id, version: sb.version },
+      message: snapshot
+        ? `סטורי בורד v${sb.version} נסגר אחרי עריכה${changed.length ? ` · שוטים ${changed.map((s) => s.number).join(', ')} השתנו וצריכים תמונה חדשה` : ' · בלי שינוי בשוטים, התמונות נשארות'}`
+        : `סטורי בורד v${sb.version} אושר (${shots.length} שוטים)`,
+      payload: { storyboardId: sb.id, version: sb.version, changedShots: changed.map((s) => s.id) },
     });
     recordFeedback(ctx, projectId, 'storyboard', note, 'approval');
     return getStoryboard(ctx.db, sb.id)!;
@@ -813,8 +835,9 @@ export function reopenStoryboard(ctx: Ctx, projectId: string) {
       projectId,
       type: 'storyboard.reopened',
       actor: owner(ctx),
-      message: `סטורי בורד v${sb.version} נפתח מחדש לעריכה`,
-      payload: { storyboardId: sb.id },
+      message: `סטורי בורד v${sb.version} נפתח מחדש לעריכה (התמונות שנוצרו נשארות)`,
+      // חתימה של כל שוט ברגע הפתיחה — בסגירה רק שוט שהשתנה יצטרך תמונה חדשה
+      payload: { storyboardId: sb.id, snapshot: Object.fromEntries(listShots(ctx.db, sb.id).map((s) => [s.id, frameSignature(s)])) },
     });
     return getStoryboard(ctx.db, sb.id)!;
   });

@@ -40,6 +40,7 @@ function productionSummary(ctx: Ctx, projectId: string) {
   return {
     kieConfigured: o.kieConfigured,
     generator: o.generator,
+    storyboardEditing: o.storyboardEditing,
     stages: o.stages.map((s) => ({
       stage: s.stage,
       approved: !!s.gate?.approvedAt,

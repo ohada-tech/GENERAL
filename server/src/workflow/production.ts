@@ -81,9 +81,24 @@ function approvedScript(ctx: Ctx, projectId: string) {
   return listScripts(ctx.db, projectId).find((s) => s.status === 'client_approved') ?? null;
 }
 
+/** הסטורי בורד הנוכחי נפתח לעריכה אחרי שכבר אושר (לא גרסה חדשה) — מה שנוצר בהפקה נשאר בתוקף */
+export function storyboardEditingAfterApproval(ctx: Ctx, projectId: string): boolean {
+  const sb = currentStoryboard(ctx.db, projectId);
+  if (!sb || sb.status !== 'draft') return false;
+  return !!ctx.db
+    .prepare("SELECT 1 FROM events WHERE project_id = ? AND type = 'storyboard.reopened' AND json_extract(payload, '$.storyboardId') = ? LIMIT 1")
+    .get(projectId, sb.id);
+}
+
+/** החתימה הוויזואלית של שוט: אם היא לא השתנתה, התמונה שנוצרה לו עדיין נכונה */
+export function frameSignature(shot: Shot) {
+  return shotPrompt(shot);
+}
+
 function approvedShots(ctx: Ctx, projectId: string): Shot[] {
   const sb = currentStoryboard(ctx.db, projectId);
-  if (!sb || sb.status !== 'approved') return [];
+  if (!sb) return [];
+  if (sb.status !== 'approved' && !storyboardEditingAfterApproval(ctx, projectId)) return [];
   return listShots(ctx.db, sb.id);
 }
 
@@ -272,9 +287,11 @@ export function startStage(ctx: Ctx, projectId: string, stage: ProductionStage, 
       ctx.db
         .prepare(
           `INSERT INTO stage_gates (project_id, stage, started_at) VALUES (?, ?, ?)
-           ON CONFLICT(project_id, stage) DO UPDATE SET started_at = excluded.started_at, approved_at = NULL, approved_by = NULL`,
+           ON CONFLICT(project_id, stage) DO UPDATE SET started_at = excluded.started_at,
+             approved_at = CASE WHEN ? > 0 THEN NULL ELSE approved_at END,
+             approved_by = CASE WHEN ? > 0 THEN NULL ELSE approved_by END`,
         )
-        .run(projectId, stage, ts(ctx));
+        .run(projectId, stage, ts(ctx), waiting, waiting);
       emit(ctx, {
         projectId,
         type: 'stage.awaiting_external',
@@ -534,6 +551,7 @@ export function productionOverview(ctx: Ctx, projectId: string) {
     budgetUsd: project.settings.budgetUsd,
     kieConfigured: ctx.providers.media.isConfigured(),
     generator: project.settings.generator,
+    storyboardEditing: storyboardEditingAfterApproval(ctx, projectId),
     hfRoute: project.settings.hfRoute,
     aspect: aspectFor(project.brief.aspectRatio),
     autoAdvance: project.settings.autoAdvance,

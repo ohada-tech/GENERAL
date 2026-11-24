@@ -85,6 +85,14 @@ export function applyRules(ctx: Ctx, e: ProjectEvent) {
     }
 
     case 'storyboard.approved': {
+      // נסגר אחרי עריכה בלי לשנות שום שוט — התמונות שכבר נוצרו נשארות, לא מפעילים כלום
+      const { latest } = latestMedia(ctx, projectId);
+      const plan = planStage(ctx, project, 'images');
+      const missing = plan.filter((it) => {
+        const cur = latest.get(`${it.kind}:${it.shotId ?? ''}`);
+        return !cur || cur.status === 'failed' || cur.status === 'rejected';
+      }).length;
+      if (plan.length && !missing) return;
       autoStart(ctx, projectId, 'images', `storyboard.approved:${p.storyboardId}`);
       return;
     }

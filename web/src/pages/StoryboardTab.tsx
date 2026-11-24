@@ -31,6 +31,8 @@ interface StoryboardData {
   frames?: Record<string, { mediaId: string; status: string; version: number }>;
   /** שוטים ש-Claude מתקן עכשיו לפי ההערה */
   fixing?: string[];
+  /** נפתח לעריכה אחרי שאושר — "סגור עריכה" משאיר את התמונות של שוטים שלא השתנו */
+  editingAfterApproval?: boolean;
 }
 
 const approvalTone = (a: string) => (a === 'approved' ? 'completed' : a === 'needs_revision' ? 'needs_revision' : 'waiting_internal');
@@ -69,6 +71,12 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
   const approvedCount = shots.filter((s) => s.approval === 'approved').length;
   const fixing = new Set(data?.fixing ?? []);
   const unfixed = shots.filter((s) => s.approval === 'needs_revision' && s.revisionNote && !fixing.has(s.id)).length;
+  const editing = !!data?.editingAfterApproval && sb?.status === 'draft';
+  // שוטים שעוד אין להם תמונה — רק להם תיווצר תמונה באישור
+  const needImage = shots.filter((s) => {
+    const f = data?.frames?.[s.id];
+    return !f || f.status === 'failed' || f.status === 'rejected';
+  }).length;
 
   if (!sb) {
     return (
@@ -149,13 +157,19 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
                 className="btn btn-primary"
                 onClick={() => post(`/api/projects/${project.id}/storyboard/approve`, {})}
                 disabled={act.busy || shots.length === 0 || approvedCount !== shots.length}
-                title={approvedCount !== shots.length ? 'יש לאשר את כל השוטים קודם' : 'אישור לפני יצירת התמונות'}
+                title={
+                  approvedCount !== shots.length
+                    ? 'יש לאשר את כל השוטים קודם'
+                    : editing
+                      ? 'סוגר את העריכה. התמונות שכבר נוצרו נשארות; רק שוט ששינית בו את התמונה יצטרך תמונה חדשה'
+                      : 'אישור לפני יצירת התמונות'
+                }
               >
-                ✓ אשר סטורי בורד
-                {project.settings.autoAdvance && shots.length > 0
+                {editing ? '🔒 סגור עריכה' : '✓ אשר סטורי בורד'}
+                {project.settings.autoAdvance && needImage > 0
                   ? project.settings.generator === 'higgsfield'
-                    ? ` ← ${shots.length} תמונות בהיגספילד · ${hfRouteCost(project.settings.hfRoute, shots.length * hfImageCredits(project.settings.imageModel))}`
-                    : ` ← יתחיל ${shots.length} תמונות (~$${(shots.length * imageModel(project.settings.imageModel).credits * KIE_USD_PER_CREDIT).toFixed(2)})`
+                    ? ` ← ${needImage} תמונות בהיגספילד · ${hfRouteCost(project.settings.hfRoute, needImage * hfImageCredits(project.settings.imageModel))}`
+                    : ` ← יתחיל ${needImage} תמונות (~$${(needImage * imageModel(project.settings.imageModel).credits * KIE_USD_PER_CREDIT).toFixed(2)})`
                   : ''}
               </button>
               {unfixed > 0 && (
@@ -172,8 +186,13 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
             </>
           )}
           {sb.status === 'approved' && (
-            <button className="btn" onClick={() => post(`/api/projects/${project.id}/storyboard/reopen`)} disabled={act.busy}>
-              פתח מחדש לעריכה
+            <button
+              className="btn"
+              onClick={() => post(`/api/projects/${project.id}/storyboard/reopen`)}
+              disabled={act.busy}
+              title="לתיקונים (למשל בפגישה עם לקוח). התמונות שכבר נוצרו נשארות, ובסגירה רק שוט ששינית יצטרך תמונה חדשה"
+            >
+              ✏️ פתח לעריכה
             </button>
           )}
           {sb.status !== 'superseded' && scriptDone && (
@@ -195,6 +214,12 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
         </div>
       )}
       {sb.status === 'superseded' && <div className="notice">זו גרסה קודמת — לקריאה בלבד.</div>}
+      {editing && (
+        <div className="notice warn">
+          ✏️ מצב עריכה. התמונות שכבר נוצרו נשמרות. כשתסיים לחץ "🔒 סגור עריכה": שוט שלא שינית נשאר עם התמונה שלו, ורק שוט ששינית בו את התמונה יצטרך
+          תמונה חדשה.
+        </div>
+      )}
       {sb.status === 'approved' && (
         <div className="notice ok">
           הסטורי בורד אושר. שלב יצירת התמונות (Higgsfield / Nano Banana) עדיין לא מחובר במערכת — השתמש בפרומפטים המוכנים (כפתור "העתק")
