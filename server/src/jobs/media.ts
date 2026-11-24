@@ -236,6 +236,16 @@ const voiceoverGenerate: JobHandler<MediaOut> = {
   async run(ctx, job) {
     const m = mustMedia(ctx, job);
     const project = getProject(ctx.db, m.projectId)!;
+    // טייק משלב הקריינות: הטקסט, הקול והמודל נקבעו ברגע הלחיצה (גם לפני אישור הלקוח)
+    if (m.params.direct === 'elevenlabs') {
+      if (!ctx.providers.voice?.isConfigured()) throw new GateError('ElevenLabs לא מחובר — הדבק מפתח ב"מפתחות" בסרגל העליון.');
+      const voiceId = String(m.params.voiceId ?? '');
+      const model = String(m.params.ttsModel ?? '') || 'eleven_v3';
+      if (!voiceId || !m.prompt) throw new GateError('חסר קול או טקסט לקריינות');
+      const data = await ctx.providers.voice.tts(m.prompt, voiceId, model);
+      const saved = await saveBytes(ctx, m, data, 'mp3', 'audio/mpeg');
+      return { mediaId: m.id, ...saved, credits: null, model: `ElevenLabs · ${model}`, prompt: m.prompt, extraParams: { voiceId, chars: m.prompt.length } };
+    }
     const text = approvedScriptText(ctx, m.projectId);
     if (!text) throw new GateError('אין קריינות בתסריט המאושר');
     if (project.settings.audioProvider === 'elevenlabs' && ctx.providers.voice) {

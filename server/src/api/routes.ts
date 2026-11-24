@@ -36,6 +36,7 @@ import * as time from '../services/time.js';
 import * as cmd from '../workflow/commands.js';
 import { emit } from '../workflow/events.js';
 import * as prod from '../workflow/production.js';
+import * as vo from '../workflow/voiceover.js';
 import { importProjects } from '../workflow/import.js';
 import { getMedia } from '../db/repo.js';
 
@@ -393,6 +394,17 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/api/projects/:id/production/:stage/reopen', async (req) =>
     prod.reopenStage(ctx, (req.params as any).id, mustStage((req.params as any).stage)),
   );
+  // שלב הקריינות (ElevenLabs) — מיד אחרי התסריט, בלי לחכות להנפשה
+  app.get('/api/projects/:id/voiceover', async (req) => vo.voiceoverOverview(ctx, (req.params as any).id));
+  app.post('/api/projects/:id/voiceover/generate', async (req, reply) => {
+    const b = (req.body ?? {}) as { voiceId?: string; model?: string; note?: string };
+    reply.code(201);
+    return vo.generateVoiceover(ctx, (req.params as any).id, {
+      voiceId: typeof b.voiceId === 'string' ? b.voiceId : undefined,
+      model: typeof b.model === 'string' ? b.model : undefined,
+      note: typeof b.note === 'string' ? b.note : undefined,
+    });
+  });
   app.get('/api/projects/:id/production/requests', async (req) => {
     const ids = String((req.query as { shotIds?: string }).shotIds ?? '').split(',').filter(Boolean);
     return prod.externalRequests(ctx, (req.params as any).id, ids.length ? { shotIds: ids } : {});

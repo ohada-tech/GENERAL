@@ -23,6 +23,7 @@ import { SettingsTab } from './SettingsTab';
 import { StoryboardTab } from './StoryboardTab';
 import { TimeTab } from './TimeTab';
 import { ProductionTab } from './ProductionTab';
+import { VoiceoverTab } from './VoiceoverTab';
 import { Icon } from '../components/Icon';
 import { UsageLine } from '../components/UsageLine';
 import { RevisionsCard, type RevisionRound } from '../components/Revisions';
@@ -47,6 +48,7 @@ const TABS: Array<{ key: string; label: string }> = [
   { key: 'overview', label: 'סקירה' },
   { key: 'brief', label: '01 אפיון' },
   { key: 'script', label: '02 תסריט' },
+  { key: 'voiceover', label: '🎙 קריינות' },
   { key: 'storyboard', label: '03–04 סטורי בורד ורפרנסים' },
   { key: 'production', label: '05–09 הפקה' },
   { key: 'time', label: 'זמן עבודה' },
@@ -57,6 +59,7 @@ const TABS: Array<{ key: string; label: string }> = [
 
 const EXTRA_TABS: Array<{ key: string; label: string }> = [
   { key: 'overview', label: 'סקירה' },
+  { key: 'voiceover', label: '🎙 קריינות (ElevenLabs)' },
   { key: 'time', label: 'זמן עבודה' },
   { key: 'activity', label: 'היסטוריה' },
   { key: 'jobs', label: 'משימות והרצות' },
@@ -202,6 +205,7 @@ export function ProjectPage({ health }: { health: Health | null }) {
         {tab === 'overview' && <OverviewTab {...props} />}
         {tab === 'brief' && <BriefTab {...props} />}
         {tab === 'script' && <ScriptTab {...props} />}
+        {tab === 'voiceover' && <VoiceoverTab {...props} />}
         {tab === 'storyboard' && <StoryboardTab {...props} />}
         {tab === 'production' && <ProductionTab {...props} />}
         {tab === 'time' && <TimeTab {...props} />}
