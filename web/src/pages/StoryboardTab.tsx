@@ -276,7 +276,7 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
                         await refresh();
                       }}
                     >
-                      🗑 מחק שוט מיותר
+                      מחק
                     </ConfirmButton>
                   </div>
                 )}
