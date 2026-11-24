@@ -674,11 +674,13 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 /* בחירת לוגו באפיון */
 .logo-pick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .logo-pick img { height: 40px; max-width: 140px; object-fit: contain; background: #fff; border-radius: 8px; padding: 4px 8px; border: 1px solid var(--border); }
+.logo-pick img.logo-light { background: #1c1c21; }
 
 /* לוגו הלקוח: על רקע בהיר, בשלמותו (לא חתוך) */
 .t-frame-logo { background: linear-gradient(160deg, #fbfbfc, #ecebf0); }
 .t-frame-logo img { inset: 14% 14% 18%; width: 72%; height: 68%; object-fit: contain; }
 .t-act .t-frame-logo img { inset: 10%; width: 80%; height: 80%; }
+.t-frame-logo:has(img.logo-light) { background: linear-gradient(160deg, #2a2a31, #141417); }
 .t-frame-logo::after { background: linear-gradient(180deg, transparent 62%, rgba(0, 0, 0, 0.42)); }
 .t-card:hover .t-frame-logo img, .t-act:hover .t-frame-logo img { transform: scale(1.02); }
 .t-frame-tag { position: absolute; z-index: 1; bottom: 8px; inset-inline-start: 10px; font-size: 12px; font-weight: 700; color: #fff; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6); }
@@ -858,6 +860,7 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
   max-width: min(30%, 260px); max-height: clamp(64px, 12vw, 150px); object-fit: contain;
   background: #fff; padding: 14px 18px; border-radius: 16px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35); margin-inline-end: 4%;
 }
+.ph-art-logo img.logo-light { background: #1c1c21; }
 .ph-word { position: relative; z-index: 1; font-family: 'Poppins', var(--font-body); font-weight: 700; font-size: clamp(34px, 6vw, 72px); color: rgba(255, 255, 255, 0.08); letter-spacing: 0.02em; }
 .ph-body { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: end; padding: 22px 26px; color: #f2f1f4; }
 .ph-main { min-width: 0; display: flex; flex-direction: column; gap: 8px; }

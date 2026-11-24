@@ -24,7 +24,7 @@ import {
 import { describeProviders } from '../providers/registry.js';
 import { dashboard, projectCover, projectState } from '../services/views.js';
 import { usageFor } from '../services/usage.js';
-import { autoLogo } from '../services/logo.js';
+import { autoLogo, hideLogo } from '../services/logo.js';
 import * as rev from '../services/revisions.js';
 import * as hf from '../services/hf-runs.js';
 import * as agent from '../services/agent-tasks.js';
@@ -336,6 +336,11 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     mustProject(id);
     const assetId = await autoLogo(ctx, id, { force: !!((req.body ?? {}) as Body).force });
     return { assetId };
+  });
+  app.post('/api/projects/:id/logo/hide', async (req) => {
+    const { id } = req.params as { id: string };
+    mustProject(id);
+    return { hidden: hideLogo(ctx, id) };
   });
 
   app.get('/api/assets/:aid/file', async (req, reply) => {

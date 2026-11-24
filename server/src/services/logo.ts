@@ -32,6 +32,15 @@ export function projectLogo(ctx: Ctx, projectId: string, clientName = ''): strin
 /** ניסיונות שכבר נעשו בתהליך הזה (פרויקט + אתר) — כדי לא לחזור על אתר שאין בו לוגו */
 const tried = new Set<string>();
 
+/** כתובות של לוגו שאוהד פסל — לא מביאים אותן שוב */
+function rejectedNames(ctx: Ctx, projectId: string, clientName: string) {
+  const ids = sameClient(ctx, projectId, clientName);
+  const rows = ctx.db
+    .prepare(`SELECT filename FROM assets WHERE kind = 'logo-hidden' AND project_id IN (${ids.map(() => '?').join(',')})`)
+    .all(...ids) as Array<{ filename: string }>;
+  return new Set(rows.map((r) => r.filename));
+}
+
 function sourceOf(ctx: Ctx, projectId: string) {
   const p = getProject(ctx.db, projectId);
   if (!p) return null;
@@ -41,11 +50,35 @@ function sourceOf(ctx: Ctx, projectId: string) {
   return { p, key: `${projectId}|${logoUrl}|${site}`, logoUrl, site };
 }
 
-/** האם כדאי לנסות להביא לוגו אוטומטית (אין לוגו, יש מקור, ועוד לא ניסינו) */
+/** פרויקטים של אותו לקוח (כולל הפרויקט עצמו) */
+function sameClient(ctx: Ctx, projectId: string, clientName: string) {
+  const client = norm(clientName);
+  if (!client) return [projectId];
+  const rows = ctx.db.prepare('SELECT id, client_name AS c FROM projects').all() as Array<{ id: string; c: string }>;
+  return [...new Set([projectId, ...rows.filter((r) => norm(r.c) === client).map((r) => r.id)])];
+}
+
+/** האם כדאי לנסות להביא לוגו אוטומטית (אין לוגו, יש מקור, ועוד לא ניסינו, ואוהד לא פסל לוגו שהובא) */
 export function canAutoLogo(ctx: Ctx, projectId: string, clientName: string) {
   if (projectLogo(ctx, projectId, clientName)) return false;
   const s = sourceOf(ctx, projectId);
-  return !!s && !tried.has(s.key);
+  if (!s || tried.has(s.key)) return false;
+  const ids = sameClient(ctx, projectId, clientName);
+  const hidden = ctx.db
+    .prepare(`SELECT 1 FROM assets WHERE kind = 'logo-hidden' AND project_id IN (${ids.map(() => '?').join(',')}) LIMIT 1`)
+    .get(...ids);
+  return !hidden;
+}
+
+/** "זה לא הלוגו": הלוגו יורד מהכרטיסים של הלקוח (הקובץ נשמר, kind=logo-hidden). אחר כך מעלים קובץ או מנסים שוב מהאתר */
+export function hideLogo(ctx: Ctx, projectId: string) {
+  const p = getProject(ctx.db, projectId);
+  if (!p) return 0;
+  const ids = sameClient(ctx, projectId, p.clientName);
+  const r = ctx.db
+    .prepare(`UPDATE assets SET kind = 'logo-hidden' WHERE kind = 'logo' AND project_id IN (${ids.map(() => '?').join(',')})`)
+    .run(...ids);
+  return Number(r.changes);
 }
 
 const attr = (tag: string, name: string) => tag.match(new RegExp(`\\s${name}\\s*=\\s*["']([^"']+)["']`, 'i'))?.[1] ?? '';
@@ -65,12 +98,33 @@ export function logoCandidates(html: string, base: string): string[] {
   };
   // 1. JSON-LD של הארגון: "logo": "..." או "logo": {"url": "..."}
   for (const m of html.matchAll(/"logo"\s*:\s*(?:"([^"]+)"|\{[^}]*?"url"\s*:\s*"([^"]+)")/gi)) add((m[1] || m[2] || '').replace(/\\\//g, '/'));
-  // 2. תמונה שמסומנת כלוגו (class / id / alt / src), עדיפות לראש העמוד
+  // 2. תמונה שמסומנת כלוגו (class / id / alt / src). לוגו של שותפים/לקוחות באתר הוא לא הלוגו של הלקוח:
+  //    עדיפות לתמונה שמקשרת לדף הבית, שנושאת את שם האתר או שנמצאת ב-header; קרוסלת לוגואים — לא.
+  let host = '';
+  try {
+    host = new URL(base).hostname.replace(/^www\./, '');
+  } catch {
+    /* בלי כתובת בסיס */
+  }
+  const brand = host.split('.')[0] ?? '';
+  const homeLink = new RegExp(`<a\\b[^>]*href=["'](?:/|\\./|https?://(?:www\\.)?${host.replace(/\./g, '\\.')}/?)["'][^>]*>\\s*(?:<[^a/][^>]*>\\s*)*$`, 'i');
+  const marked: Array<{ src: string; score: number }> = [];
   for (const m of html.matchAll(/<img\b[^>]*>/gi)) {
     const tag = m[0];
     const src = attr(tag, 'src') || attr(tag, 'data-src') || attr(tag, 'data-lazy-src');
-    if (/logo/i.test(`${attr(tag, 'class')} ${attr(tag, 'id')} ${attr(tag, 'alt')} ${src}`)) add(src);
+    const label = `${attr(tag, 'class')} ${attr(tag, 'id')} ${attr(tag, 'alt')} ${src}`;
+    if (!src || !/logo/i.test(label)) continue;
+    const before = html.slice(Math.max(0, m.index - 600), m.index);
+    const home = !!host && homeLink.test(before);
+    if (!home && /client|partner|customer|carousel|swiper|slick|marquee|sponsor|לקוחות|שותפים/i.test(before.slice(-300) + label)) continue;
+    const pre = html.slice(0, m.index).toLowerCase();
+    let score = 0;
+    if (home) score += 4;
+    if (brand.length >= 3 && label.toLowerCase().includes(brand)) score += 4;
+    if (pre.lastIndexOf('<header') > pre.lastIndexOf('</header>')) score += 3;
+    marked.push({ src, score });
   }
+  marked.filter((x) => x.score > 0).sort((a, b) => b.score - a.score).forEach((x) => add(x.src));
   // 3. אייקונים של האתר — הגדול קודם
   const icons: Array<{ href: string; size: number }> = [];
   for (const m of html.matchAll(/<link\b[^>]*>/gi)) {
@@ -81,6 +135,8 @@ export function logoCandidates(html: string, base: string): string[] {
     icons.push({ href: attr(tag, 'href'), size });
   }
   icons.sort((a, b) => b.size - a.size).filter((i) => i.size >= 64).forEach((i) => add(i.href));
+  // 4. תמונה שמסומנת כלוגו בלי סימן נוסף — רק אם לא נמצא משהו טוב יותר
+  marked.filter((x) => x.score === 0).forEach((x) => add(x.src));
   return out.slice(0, 8);
 }
 
@@ -135,7 +191,15 @@ export async function autoLogo(ctx: Ctx, projectId: string, opts: { force?: bool
       /* האתר לא זמין — נשארים עם התמונה מהסרטון */
     }
   }
+  const rejected = rejectedNames(ctx, projectId, s.p.clientName);
   for (const c of candidates) {
+    let name = '';
+    try {
+      name = path.basename(new URL(c).pathname);
+    } catch {
+      continue;
+    }
+    if (name && rejected.has(name)) continue;
     const f = await download(c, fetcher);
     if (f) return saveLogo(ctx, projectId, f);
   }

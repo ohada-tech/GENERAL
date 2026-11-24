@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { dashboard } from '../src/services/views.js';
-import { autoLogo, logoCandidates } from '../src/services/logo.js';
+import { autoLogo, hideLogo, logoCandidates } from '../src/services/logo.js';
 import * as cmd from '../src/workflow/commands.js';
 import { makeCtx } from './helpers.js';
 
@@ -82,5 +82,36 @@ describe('הלוגו של הלקוח על כרטיס הפרויקט', () => {
     expect(dashboard(ctx).projects[0]!.logoAuto).toBe(false);
     await autoLogo(ctx, p.id, { fetcher, force: true });
     expect(n).toBe(2);
+  });
+
+  it('לוגו של שותף באתר לא נבחר: הלוגו שמקשר לדף הבית קודם, וקרוסלת לקוחות מדולגת', () => {
+    const html = `<section><div class="elementor-widget-container"><img src="/up/Israbar_logo_white.svg" alt=""></div></section>
+      <div class="clients-carousel"><img src="/up/other-logo.png"></div>
+      <div class="elementor-widget-container"><a href="https://techdin.co.il"><img src="/up/logocolor.svg" alt=""></a></div>
+      <link rel="apple-touch-icon" href="/icon.png">`;
+    const c = logoCandidates(html, 'https://techdin.co.il/techdinone');
+    expect(c[0]).toBe('https://techdin.co.il/up/logocolor.svg');
+    expect(c).not.toContain('https://techdin.co.il/up/other-logo.png');
+    expect(c.indexOf('https://techdin.co.il/up/Israbar_logo_white.svg')).toBeGreaterThan(c.indexOf('https://techdin.co.il/icon.png'));
+  });
+
+  it('"זה לא הלוגו": יורד מכל הפרויקטים של הלקוח, לא מובא שוב אוטומטית, ובניסיון ידני מדלגים עליו', async () => {
+    const ctx = makeCtx();
+    const p = cmd.createProject(ctx, { name: 'א', clientName: 'Client X' });
+    const p2 = cmd.createProject(ctx, { name: 'ב', clientName: 'client x' });
+    cmd.updateBrief(ctx, p.id, { website: 'https://x.example.com' });
+    const fetcher = (async (url: string) => {
+      if (url === 'https://x.example.com/') return new Response('<header><img class="logo" src="/wrong.png"></header><a href="/"><img alt="x logo" src="/right.png"></a>', { headers: { 'content-type': 'text/html' } });
+      return new Response(PNG, { headers: { 'content-type': 'image/png' } });
+    }) as unknown as typeof fetch;
+    const first = await autoLogo(ctx, p.id, { fetcher });
+    expect(ctx.db.prepare('SELECT filename FROM assets WHERE id = ?').get(first) as any).toEqual({ filename: 'right.png' });
+    expect(hideLogo(ctx, p2.id)).toBe(1);
+    const byId = () => Object.fromEntries(dashboard(ctx).projects.map((x) => [x.id, x]));
+    expect(byId()[p.id]!.cover ?? null).toBeNull();
+    expect(byId()[p2.id]!.cover ?? null).toBeNull();
+    expect(byId()[p.id]!.logoAuto).toBe(false);
+    const second = await autoLogo(ctx, p.id, { fetcher, force: true });
+    expect(ctx.db.prepare('SELECT filename FROM assets WHERE id = ?').get(second) as any).toEqual({ filename: 'wrong.png' });
   });
 });

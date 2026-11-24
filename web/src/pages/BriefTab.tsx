@@ -13,6 +13,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AiFilledContext, aiLabels, AutoBrief } from '../components/AutoBrief';
 import { ConceptPicker } from '../components/ConceptPicker';
+import { LogoImg } from '../components/LogoImg';
 import { Field, InlineError, Tag } from '../components/ui';
 import { api, ApiError, assetUrl, useAction } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
@@ -370,13 +371,21 @@ function LogoPicker({ projectId, logoId, hasSite, onDone }: { projectId: string;
     if (r?.assetId) await onDone();
     else if (r) setMiss(true);
   };
+  const hide = async () => {
+    if (await act.run(() => api.post(`/api/projects/${projectId}/logo/hide`))) await onDone();
+  };
   return (
     <div className="logo-pick">
-      {logoId && <img src={assetUrl(logoId)} alt="הלוגו של הלקוח" />}
+      {logoId && <LogoImg src={assetUrl(logoId)} alt="הלוגו של הלקוח" />}
       <label className="btn btn-sm">
         {act.busy ? 'רגע…' : logoId ? 'החלף לוגו' : '+ העלה לוגו'}
         <input type="file" accept="image/*" hidden onChange={onFile} disabled={act.busy} />
       </label>
+      {logoId && (
+        <button type="button" className="btn btn-sm btn-ghost" onClick={hide} disabled={act.busy} title="מוריד את הלוגו מהכרטיסים של הלקוח (הקובץ נשמר). אחר כך אפשר להעלות את הנכון">
+          זה לא הלוגו
+        </button>
+      )}
       {!logoId && hasSite && (
         <button type="button" className="btn btn-sm btn-ghost" onClick={fromSite} disabled={act.busy} title="מחפש את הלוגו באתר הלקוח — בלי AI ובלי עלות">
           הבא מהאתר

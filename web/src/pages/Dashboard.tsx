@@ -5,6 +5,7 @@ import { Empty, ErrorBox, Field, InlineError, Loading, Modal, rowLink, StatusBad
 import { api, assetUrl, useAction, useApi } from '../lib/api';
 import { daysUntil, fmtDate, fmtRelative } from '../lib/format';
 import { Icon } from '../components/Icon';
+import { LogoImg } from '../components/LogoImg';
 import { PlanLine, UsageLine } from '../components/UsageLine';
 
 /* מסך "היום": מה מחכה לך למעלה, ואז הפרויקטים ככרטיסים עם תמונה ופס שלבים */
@@ -58,7 +59,7 @@ function Frame({ p, tag }: { p: ProjectSummary; tag?: string }) {
   const word = (p.clientName || p.name).replace(/\(.*?\)/g, '').trim().split(/\s+/)[0]?.slice(0, 12) ?? '';
   return (
     <div className={`t-frame ${p.cover?.logo ? 't-frame-logo' : ''}`} style={{ '--h1': h, '--h2': (h + 48) % 360 } as React.CSSProperties}>
-      {src ? <img src={src} alt="" loading="lazy" /> : <span className="t-initials" dir="auto">{word}</span>}
+      {src && p.cover?.logo ? <LogoImg src={src} /> : src ? <img src={src} alt="" loading="lazy" /> : <span className="t-initials" dir="auto">{word}</span>}
       {tag && <span className="t-frame-tag">{tag}</span>}
     </div>
   );

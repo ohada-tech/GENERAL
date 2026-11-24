@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { assetUrl } from '../lib/api';
 import { StatusBadge } from './ui';
+import { LogoImg } from './LogoImg';
 
 export type Cover = { mediaId?: string; assetId?: string; logo?: boolean } | null | undefined;
 
@@ -78,7 +79,7 @@ export function ProjectHero({
   return (
     <section className="ph" style={{ '--h1': h, '--h2': (h + 48) % 360 } as React.CSSProperties}>
       <div className={`ph-art ${cover?.logo ? 'ph-art-logo' : ''}`} aria-hidden>
-        {src ? <img src={src} alt="" /> : <span className="ph-word">{(client || name).replace(/\(.*?\)/g, '').trim().split(/\s+/)[0]}</span>}
+        {src && cover?.logo ? <LogoImg src={src} /> : src ? <img src={src} alt="" /> : <span className="ph-word">{(client || name).replace(/\(.*?\)/g, '').trim().split(/\s+/)[0]}</span>}
       </div>
       <div className="ph-body">
         <div className="ph-main">
