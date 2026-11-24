@@ -236,9 +236,12 @@ export function BriefTab({ detail, reload }: TabProps) {
           <textarea rows={2} value={draft.inspirations} onChange={(e) => set('inspirations', e.target.value)} />
         </Field>
         <div className="grid-2">
-          <Field label="לוגו" hint="קישור או תיאור. ניתן גם להעלות קובץ למטה.">
-            <input value={draft.brandLogo} onChange={(e) => set('brandLogo', e.target.value)} />
-          </Field>
+          <div>
+            <Field label="לוגו" hint="קישור או תיאור. הלוגו שמועלה כאן מוצג על הפרויקט בדף הראשי.">
+              <input value={draft.brandLogo} onChange={(e) => set('brandLogo', e.target.value)} />
+            </Field>
+            <LogoPicker projectId={project.id} logoId={detail.cover?.logo ? detail.cover.assetId ?? null : null} hasSite={!!draft.website.trim() || /^https?:\/\//i.test(draft.brandLogo.trim())} onDone={reload} />
+          </div>
           <Field label="צבעי מותג">
             <input value={draft.brandColors} onChange={(e) => set('brandColors', e.target.value)} placeholder="#C8A6FF, #7EE6E6…" />
           </Field>
@@ -348,6 +351,40 @@ export function BriefTab({ detail, reload }: TabProps) {
       </section>
     </div>
     </AiFilledContext.Provider>
+  );
+}
+
+/** הלוגו של הלקוח: תצוגה, העלאת קובץ, או הבאה מהאתר שלו */
+function LogoPicker({ projectId, logoId, hasSite, onDone }: { projectId: string; logoId: string | null; hasSite: boolean; onDone: () => Promise<void> }) {
+  const act = useAction();
+  const [miss, setMiss] = useState(false);
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    setMiss(false);
+    if (await act.run(() => api.upload<Asset>(`/api/projects/${projectId}/assets?kind=logo`, f))) await onDone();
+  };
+  const fromSite = async () => {
+    const r = await act.run(() => api.post<{ assetId: string | null }>(`/api/projects/${projectId}/logo/auto`, { force: true }));
+    if (r?.assetId) await onDone();
+    else if (r) setMiss(true);
+  };
+  return (
+    <div className="logo-pick">
+      {logoId && <img src={assetUrl(logoId)} alt="הלוגו של הלקוח" />}
+      <label className="btn btn-sm">
+        {act.busy ? 'רגע…' : logoId ? 'החלף לוגו' : '+ העלה לוגו'}
+        <input type="file" accept="image/*" hidden onChange={onFile} disabled={act.busy} />
+      </label>
+      {!logoId && hasSite && (
+        <button type="button" className="btn btn-sm btn-ghost" onClick={fromSite} disabled={act.busy} title="מחפש את הלוגו באתר הלקוח — בלי AI ובלי עלות">
+          הבא מהאתר
+        </button>
+      )}
+      {miss && <span className="muted small">לא נמצא לוגו באתר — אפשר להעלות קובץ</span>}
+      <InlineError error={act.error} onClose={act.clearError} />
+    </div>
   );
 }
 

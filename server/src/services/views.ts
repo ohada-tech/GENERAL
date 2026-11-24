@@ -18,6 +18,7 @@ import { lastShareFor } from './share.js';
 import { productionOverview } from '../workflow/production.js';
 import { planUsage, usageFor } from './usage.js';
 import { revisionSummary } from './revisions.js';
+import { canAutoLogo, projectLogo } from './logo.js';
 
 export function projectState(ctx: Ctx, project: Project) {
   const storyboard = currentStoryboard(ctx.db, project.id);
@@ -60,7 +61,8 @@ export function dashboard(ctx: Ctx): DashboardData {
     updatedAt: p.updatedAt,
     state: projectState(ctx, p),
     trackedSec: time.byProject[p.id] ?? 0,
-    cover: projectCover(ctx, p.id),
+    cover: projectCover(ctx, p.id, p.clientName),
+    logoAuto: canAutoLogo(ctx, p.id, p.clientName),
     lastUpdate: lastProgressUpdate(ctx, p.id),
     lastShare: lastShareFor(ctx, p.id),
     usage: usageFor(ctx, p.id),
@@ -70,8 +72,10 @@ export function dashboard(ctx: Ctx): DashboardData {
   return { projects, unreadNotifications: Number(unread.n), weekTrackedSec: time.weekSec, planUsage: planUsage(ctx) };
 }
 
-/** תמונת שער: הפריים הראשון בסטורי בורד (מאושר קודם), ואם אין — תמונה שהועלתה לשוט */
-export function projectCover(ctx: Ctx, projectId: string): ProjectSummary['cover'] {
+/** תמונת שער: הלוגו של הלקוח; אם אין — הפריים הראשון בסטורי בורד (מאושר קודם), ואם אין — תמונה שהועלתה לשוט */
+export function projectCover(ctx: Ctx, projectId: string, clientName = ''): ProjectSummary['cover'] {
+  const logo = projectLogo(ctx, projectId, clientName);
+  if (logo) return { assetId: logo, logo: true };
   const m = ctx.db
     .prepare(
       `SELECT m.id FROM media m LEFT JOIN shots s ON s.id = m.shot_id

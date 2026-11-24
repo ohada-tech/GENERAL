@@ -24,6 +24,7 @@ import {
 import { describeProviders } from '../providers/registry.js';
 import { dashboard, projectCover, projectState } from '../services/views.js';
 import { usageFor } from '../services/usage.js';
+import { autoLogo } from '../services/logo.js';
 import * as rev from '../services/revisions.js';
 import * as hf from '../services/hf-runs.js';
 import * as agent from '../services/agent-tasks.js';
@@ -73,7 +74,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
       state: projectState(ctx, project),
       approvals: listApprovals(ctx.db, id),
       assets: listAssets(ctx.db, id),
-      cover: projectCover(ctx, id),
+      cover: projectCover(ctx, id, project.clientName),
       usage: usageFor(ctx, id),
       revisions: rev.listRevisions(ctx, id),
     };
@@ -299,6 +300,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     const file = await req.file();
     if (!file) throw new GateError('לא נשלח קובץ', 400);
     const kind = String((req.query as any).kind ?? 'file');
+    if (kind === 'logo' && !String(file.mimetype).startsWith('image/')) throw new GateError('הלוגו צריך להיות קובץ תמונה (PNG, SVG, JPG, WEBP)', 400);
     const assetId = uid();
     const dir = path.join(ctx.config.dataDir, 'uploads', id);
     fs.mkdirSync(dir, { recursive: true });
@@ -328,10 +330,20 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     return { id: assetId, filename: file.filename, mime: file.mimetype, size, kind };
   });
 
+  /** ניסיון להביא את הלוגו של הלקוח מהאתר שלו (או מקישור ללוגו באפיון) — פעם אחת, בלי עלות */
+  app.post('/api/projects/:id/logo/auto', async (req) => {
+    const { id } = req.params as { id: string };
+    mustProject(id);
+    const assetId = await autoLogo(ctx, id, { force: !!((req.body ?? {}) as Body).force });
+    return { assetId };
+  });
+
   app.get('/api/assets/:aid/file', async (req, reply) => {
     const row = getAssetRow(ctx.db, (req.params as any).aid);
     if (!row || !fs.existsSync(row.stored_path)) throw new NotFoundError('קובץ');
     reply.header('Content-Type', row.mime);
+    // SVG (למשל לוגו שהגיע מאתר) — בלי סקריפטים, גם אם פותחים אותו ישירות
+    if (/svg/i.test(row.mime)) reply.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox");
     reply.header('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(row.filename)}`);
     return reply.send(fs.createReadStream(row.stored_path));
   });

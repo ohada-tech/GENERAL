@@ -8,7 +8,7 @@ import { Link } from 'react-router-dom';
 import { assetUrl } from '../lib/api';
 import { StatusBadge } from './ui';
 
-export type Cover = { mediaId?: string; assetId?: string } | null | undefined;
+export type Cover = { mediaId?: string; assetId?: string; logo?: boolean } | null | undefined;
 
 /** צבע קבוע לפרויקט (כמו בכרטיס בדשבורד) */
 export function hueOf(id: string) {
@@ -77,7 +77,7 @@ export function ProjectHero({
   const next = state.nextAction;
   return (
     <section className="ph" style={{ '--h1': h, '--h2': (h + 48) % 360 } as React.CSSProperties}>
-      <div className="ph-art" aria-hidden>
+      <div className={`ph-art ${cover?.logo ? 'ph-art-logo' : ''}`} aria-hidden>
         {src ? <img src={src} alt="" /> : <span className="ph-word">{(client || name).replace(/\(.*?\)/g, '').trim().split(/\s+/)[0]}</span>}
       </div>
       <div className="ph-body">

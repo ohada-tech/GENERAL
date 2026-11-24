@@ -243,8 +243,10 @@ export interface ProjectSummary {
   state: ProjectState;
   /** זמן עבודה מתועד בשניות (כולל טיימר רץ) */
   trackedSec: number;
-  /** תמונת שער לכרטיס בדשבורד: פריים שנוצר (media) או תמונה שהועלתה לשוט (asset). null = אין */
-  cover?: { mediaId?: string; assetId?: string } | null;
+  /** תמונת שער לכרטיס בדשבורד: הלוגו של הלקוח (logo=true), ואם אין — פריים שנוצר (media) או תמונה שהועלתה לשוט (asset). null = אין */
+  cover?: { mediaId?: string; assetId?: string; logo?: boolean } | null;
+  /** אין לוגו אבל יש אתר / קישור ללוגו באפיון — הדשבורד מבקש מהשרת לנסות להביא אותו */
+  logoAuto?: boolean;
   /** עדכון ההתקדמות האחרון (מאוהד או מסשן Claude שעבד על הפרויקט) */
   lastUpdate?: { text: string; by: string; at: string } | null;
   /** הקישור האחרון שנשלח ללקוח: מתי, ואם/מתי הלקוח פתח */

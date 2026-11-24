@@ -32,7 +32,7 @@ export interface ProjectDetail {
   state: ProjectState;
   approvals: Approval[];
   assets: Asset[];
-  cover?: { mediaId?: string; assetId?: string } | null;
+  cover?: { mediaId?: string; assetId?: string; logo?: boolean } | null;
   usage?: import('@apos/shared').ProjectUsage | null;
   revisions?: RevisionRound[];
 }

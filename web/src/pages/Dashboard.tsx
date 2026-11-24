@@ -1,5 +1,5 @@
 import { formatDuration, STAGE_BY_KEY, type DashboardData, type Project, type ProjectSummary } from '@apos/shared';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Empty, ErrorBox, Field, InlineError, Loading, Modal, rowLink, StatusBadge, Tag } from '../components/ui';
 import { api, assetUrl, useAction, useApi } from '../lib/api';
@@ -57,7 +57,7 @@ function Frame({ p, tag }: { p: ProjectSummary; tag?: string }) {
   // שם הלקוח (המילה הראשונה, בלי סוגריים) — מזהה מהר יותר מראשי תיבות
   const word = (p.clientName || p.name).replace(/\(.*?\)/g, '').trim().split(/\s+/)[0]?.slice(0, 12) ?? '';
   return (
-    <div className="t-frame" style={{ '--h1': h, '--h2': (h + 48) % 360 } as React.CSSProperties}>
+    <div className={`t-frame ${p.cover?.logo ? 't-frame-logo' : ''}`} style={{ '--h1': h, '--h2': (h + 48) % 360 } as React.CSSProperties}>
       {src ? <img src={src} alt="" loading="lazy" /> : <span className="t-initials" dir="auto">{word}</span>}
       {tag && <span className="t-frame-tag">{tag}</span>}
     </div>
@@ -96,6 +96,23 @@ export function Dashboard() {
   const [filter, setFilter] = useState<FilterKey>('active');
 
   const projects = data?.projects ?? [];
+
+  // לקוח בלי לוגו אבל עם אתר — השרת מנסה להביא את הלוגו מהאתר (פעם אחת לפרויקט, ברקע)
+  const asked = useRef(new Set<string>());
+  useEffect(() => {
+    const todo = projects.filter((p) => p.logoAuto && !asked.current.has(p.id));
+    if (!todo.length) return;
+    todo.forEach((p) => asked.current.add(p.id));
+    void (async () => {
+      let found = false;
+      for (const p of todo) {
+        const r = await api.post<{ assetId: string | null }>(`/api/projects/${p.id}/logo/auto`).catch(() => null);
+        if (r?.assetId) found = true;
+      }
+      if (found) await reload();
+    })();
+  }, [projects, reload]);
+
   const myActions = useMemo(
     () =>
       projects

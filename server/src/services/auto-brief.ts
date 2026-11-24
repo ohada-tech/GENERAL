@@ -51,7 +51,7 @@ type Extracted = {
 };
 
 /** כתובת שמותר לשרת לקרוא: http(s) לאתר ציבורי בלבד */
-function safeUrl(raw: string) {
+export function safeUrl(raw: string) {
   let u: URL;
   try {
     u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
