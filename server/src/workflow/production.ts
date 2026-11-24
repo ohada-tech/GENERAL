@@ -95,6 +95,33 @@ export function frameSignature(shot: Shot) {
   return shotPrompt(shot);
 }
 
+/**
+ * שוטים שהתמונה הנוכחית שלהם כבר לא תואמת לשוט (שונה בעריכה אחרי אישור, למשל ב"תיקון" של Claude).
+ * התמונה החדשה נוצרת רק ב"סגור עריכה" — עד אז מסמנים אותם כדי שלא ייראה שהתיקון "לא קרה".
+ */
+export function outdatedFrameShots(ctx: Ctx, projectId: string): Set<string> {
+  const out = new Set<string>();
+  const sb = currentStoryboard(ctx.db, projectId);
+  if (!sb || sb.status !== 'draft') return out;
+  const row = ctx.db
+    .prepare(
+      "SELECT payload FROM events WHERE project_id = ? AND type = 'storyboard.reopened' AND json_extract(payload, '$.storyboardId') = ? ORDER BY created_at DESC LIMIT 1",
+    )
+    .get(projectId, sb.id) as { payload: string } | undefined;
+  if (!row) return out;
+  const snapshot = (JSON.parse(row.payload).snapshot ?? {}) as Record<string, string>;
+  const { latest } = latestMedia(ctx, projectId);
+  for (const s of listShots(ctx.db, sb.id)) {
+    const m = latest.get(`frame:${s.id}`);
+    if (!m || m.status === 'failed' || m.status === 'rejected') continue;
+    const sig = frameSignature(s);
+    const madeFor = (m.params as { shotSignature?: string | null }).shotSignature;
+    const stale = madeFor ? madeFor !== sig : snapshot[s.id] !== undefined && snapshot[s.id] !== sig;
+    if (stale) out.add(s.id);
+  }
+  return out;
+}
+
 function approvedShots(ctx: Ctx, projectId: string): Shot[] {
   const sb = currentStoryboard(ctx.db, projectId);
   if (!sb) return [];

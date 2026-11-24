@@ -58,6 +58,17 @@ describe('פתיחת הסטורי בורד לעריכה אחרי שהתמונו�
     expect(frames.filter((m) => m.status === 'approved')).toHaveLength(shots.length - 1);
   });
 
+  it('שוט שתוקן בזמן העריכה מסומן כ"תמונה ישנה" עד שמעלים לו תמונה חדשה', async () => {
+    const ctx = makeCtx();
+    const { p, shots } = await withImages(ctx);
+    cmd.reopenStoryboard(ctx, p.id);
+    expect(prod.outdatedFrameShots(ctx, p.id).size).toBe(0);
+    cmd.updateShot(ctx, shots[1].id, { imagePrompt: 'A totally different frame' });
+    expect([...prod.outdatedFrameShots(ctx, p.id)]).toEqual([shots[1].id]);
+    prod.addExternalMedia(ctx, p.id, { kind: 'frame', shotId: shots[1].id, data: sampleMedia().png, mime: 'image/png', filename: 'n.png', source: 'higgsfield-unlimited' });
+    expect(prod.outdatedFrameShots(ctx, p.id).size).toBe(0);
+  });
+
   it('תמונה שהועלתה לשוט אחרי ששינו אותו (בזמן העריכה) נשארת בסגירה', async () => {
     const ctx = makeCtx();
     const { p, shots } = await withImages(ctx);

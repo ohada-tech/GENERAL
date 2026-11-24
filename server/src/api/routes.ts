@@ -178,6 +178,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
     const q = req.query as { version?: string };
     const versions = listStoryboards(ctx.db, id);
     const storyboard = q.version ? (versions.find((v) => String(v.version) === q.version) ?? null) : currentStoryboard(ctx.db, id);
+    const outdated = prod.outdatedFrameShots(ctx, id);
     return {
       versions,
       storyboard,
@@ -187,7 +188,8 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
       frames: Object.fromEntries(
         [...prod.latestMedia(ctx, id).latest.values()]
           .filter((m) => m.kind === 'frame' && m.shotId && m.assetId)
-          .map((m) => [m.shotId!, { mediaId: m.id, status: m.status, version: m.version }]),
+          // outdated: השוט שונה אחרי שהתמונה נוצרה — תמונה חדשה תיווצר ב"סגור עריכה"
+          .map((m) => [m.shotId!, { mediaId: m.id, status: m.status, version: m.version, outdated: outdated.has(m.shotId!) }]),
       ),
       // שוטים ש-Claude מתקן עכשיו לפי ההערה
       fixing: [...cmd.activeShotFixes(ctx, id)],

@@ -28,7 +28,7 @@ interface StoryboardData {
   shots: Shot[];
   references: Reference[];
   /** התמונה של כל שוט מההפקה (shotId → טייק) */
-  frames?: Record<string, { mediaId: string; status: string; version: number }>;
+  frames?: Record<string, { mediaId: string; status: string; version: number; outdated?: boolean }>;
   /** שוטים ש-Claude מתקן עכשיו לפי ההערה */
   fixing?: string[];
   /** נפתח לעריכה אחרי שאושר — "סגור עריכה" משאיר את התמונות של שוטים שלא השתנו */
@@ -73,10 +73,11 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
   const fixing = new Set(data?.fixing ?? []);
   const unfixed = shots.filter((s) => s.approval === 'needs_revision' && s.revisionNote && !fixing.has(s.id)).length;
   const editing = !!data?.editingAfterApproval && sb?.status === 'draft';
-  // שוטים שעוד אין להם תמונה — רק להם תיווצר תמונה באישור
+  // שוטים שעוד אין להם תמונה, או שהתמונה שלהם ישנה כי השוט תוקן — רק להם תיווצר תמונה באישור
+  const outdatedCount = shots.filter((s) => data?.frames?.[s.id]?.outdated).length;
   const needImage = shots.filter((s) => {
     const f = data?.frames?.[s.id];
-    return !f || f.status === 'failed' || f.status === 'rejected';
+    return !f || f.status === 'failed' || f.status === 'rejected' || !!f.outdated;
   }).length;
 
   if (!sb) {
@@ -219,6 +220,16 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
         <div className="notice warn">
           ✏️ מצב עריכה. התמונות שכבר נוצרו נשמרות. כשתסיים לחץ "🔒 סגור עריכה": שוט שלא שינית נשאר עם התמונה שלו, ורק שוט ששינית בו את התמונה יצטרך
           תמונה חדשה.
+          {outdatedCount > 0 && (
+            <>
+              {' '}
+              <strong>
+                {outdatedCount === 1 ? 'שוט אחד תוקן ומחכה' : `${outdatedCount} שוטים תוקנו ומחכים`} לתמונה חדשה (
+                {shots.filter((s) => data?.frames?.[s.id]?.outdated).map((s) => `#${s.number}`).join(', ')}). התיקון משנה את הפרומפט מיד; התמונה עצמה
+                נוצרת כשמאשרים את השוטים ולוחצים "🔒 סגור עריכה".
+              </strong>
+            </>
+          )}
         </div>
       )}
       {sb.status === 'approved' && (
@@ -243,6 +254,11 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
                 <button type="button" className="shot-open" onClick={() => setOpenShot(s.id)} title="פתח את השוט לעריכה">
                 <div className={`shot-thumb ar-${project.brief.aspectRatio.replace(':', 'x') || '16x9'}`}>
                   {preview ? <img src={preview} alt={`שוט ${s.number}`} loading="lazy" referrerPolicy="no-referrer" /> : <span>שוט {s.number}</span>}
+                  {frame?.outdated && (
+                    <span className="shot-thumb-flag" title="השוט תוקן אחרי שהתמונה נוצרה. תמונה חדשה לפי התיקון תיווצר בלחיצה על &quot;סגור עריכה&quot;">
+                      ⟳ תמונה ישנה · חדשה בסגירת העריכה
+                    </span>
+                  )}
                 </div>
                 <div className="shot-meta">
                   <div className="row between">
