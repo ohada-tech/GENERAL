@@ -21,6 +21,7 @@ import { fmtDateTime } from '../lib/format';
 import type { TabProps } from './ProjectPage';
 import { Icon } from '../components/Icon';
 import { HfRouteToggle, hfRouteCost } from '../components/HfRoute';
+import { ImagesStageBar, ShotFrameControls, useProduction } from './ProductionTab';
 
 interface StoryboardData {
   versions: Storyboard[];
@@ -53,9 +54,11 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
   useEffect(() => setFixingNow((data?.fixing?.length ?? 0) > 0), [data]);
   const [openShot, setOpenShot] = useState<string | null>(null);
   const act = useAction();
+  // שלב 05 — יצירת תמונות — מאוחד לסטורי בורד: כפתורי השלב למעלה, ופעולות כל תמונה מתחת לשוט שלה
+  const prod = useProduction(detail, reloadProject);
 
   const refresh = async () => {
-    await Promise.all([reload(), reloadProject()]);
+    await Promise.all([reload(), reloadProject(), prod.prod.reload()]);
   };
   const post = async (url: string, body?: object) => {
     const r = await act.run(() => api.post(url, body));
@@ -232,12 +235,7 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
           )}
         </div>
       )}
-      {sb.status === 'approved' && (
-        <div className="notice ok">
-          הסטורי בורד אושר. שלב יצירת התמונות (Higgsfield / Nano Banana) עדיין לא מחובר במערכת — השתמש בפרומפטים המוכנים (כפתור "העתק")
-          ובהמשך תוכל להעלות את התמונות לכל שוט.
-        </div>
-      )}
+      {sb.status !== 'superseded' && <ImagesStageBar p={prod} detail={detail} />}
       {sbStage.detail.includes('גרסת תסריט קודמת') && <div className="notice warn">{sbStage.detail}</div>}
 
       {shots.length === 0 ? (
@@ -281,6 +279,7 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
                   {!s.imagePrompt && <div className="small warn-text">חסר פרומפט תמונה</div>}
                 </div>
                 </button>
+                {sb.status !== 'superseded' && <ShotFrameControls p={prod} shotId={s.id} />}
                 <ShotFixBox shot={s} fixing={fixing.has(s.id)} readOnly={readOnly} onChanged={refresh} />
                 {!readOnly && (
                   <div className="row end">

@@ -1094,3 +1094,10 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .agent-result { white-space: pre-wrap; }
 .qa-badge { margin: 2px 0; }
 .compare-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+
+/* סטורי בורד: התמונה של השוט ופעולותיה (שלב 05 מאוחד לסטורי בורד) */
+.shot-frame { padding: 8px 12px; margin: 0 12px 10px; display: flex; flex-direction: column; gap: 6px; cursor: default; border: 1px solid var(--border); border-radius: var(--r-md, 8px); background: var(--surface-2, transparent); }
+.shot-frame.st-ready { border-color: color-mix(in srgb, var(--warn, #d9a400) 55%, transparent); }
+.shot-frame.st-approved { border-color: color-mix(in srgb, var(--ok) 55%, transparent); }
+.shot-frame.st-failed { border-color: color-mix(in srgb, var(--danger, #d33) 55%, transparent); }
+.shot-frame form input { width: 100%; }

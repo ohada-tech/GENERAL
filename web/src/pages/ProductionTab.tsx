@@ -1,5 +1,6 @@
 import { VIDEO_MODELS, hfCostLabel, hfVideoCredits, isFaceShot, type CostEstimate, type Media, type MediaKind, type Shot } from '@apos/shared';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ConfirmButton, Empty, ErrorBox, InlineError, Loading, Modal, Tag } from '../components/ui';
 import { api, useAction, useApi } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
@@ -54,23 +55,121 @@ const STATUS: Record<Media['status'], [string, string]> = {
 const usd = (n: number) => `$${n.toFixed(2)}`;
 const fileUrl = (m: Media) => `/api/media/${m.id}/file`;
 
-export function ProductionTab({ detail, reload }: TabProps) {
+/** נתוני ההפקה והפעולות עליהם — משותף ללשונית ההפקה ולסטורי בורד (שבו נמצא שלב יצירת התמונות) */
+export function useProduction(detail: TabProps['detail'], reload: TabProps['reload']) {
   const { project } = detail;
-  const { data, error, loading, reload: reloadProd } = useApi<Overview>(`/api/projects/${project.id}/production`, { pollMs: 4000 });
+  const prod = useApi<Overview>(`/api/projects/${project.id}/production`, { pollMs: 4000 });
   const agent = useAgentTasks(project.id);
   const act = useAction();
-  if (loading && !data) return <Loading />;
-  if (error && !data) return <ErrorBox error={error} onRetry={reloadProd} />;
-  const o = data!;
   const refresh = async () => {
-    await Promise.all([reloadProd(), reload()]);
+    await Promise.all([prod.reload(), reload()]);
   };
   const run = async (fn: () => Promise<unknown>) => {
     await act.run(fn);
     await refresh();
   };
+  const o = prod.data;
+  const upload = (kind: MediaKind, shotId: string | null, file: File) =>
+    run(() => api.upload(`/api/projects/${project.id}/media/upload?kind=${kind}${shotId ? `&shotId=${shotId}` : ''}&source=${o?.generator === 'higgsfield' ? 'higgsfield-unlimited' : 'manual'}`, file));
+  const onItem = (path: string, body?: unknown) => run(() => api.post(path, body));
+  return { prod, agent, act, refresh, run, upload, onItem };
+}
+
+type Production = ReturnType<typeof useProduction>;
+
+/** כרטיס שלב (בלי רשת התוצרים) עם כל כפתורי השלב — לשימוש בסטורי בורד לשלב התמונות */
+function stageCardProps(st: Stage, o: Overview, p: Production, detail: TabProps['detail']) {
+  const { project } = detail;
   const byStage = Object.fromEntries(o.stages.map((s) => [s.stage, s])) as Record<Stage, StageView>;
-  const shotNo = (id: string | null) => o.shots.find((s) => s.id === id)?.number;
+  return {
+    view: byStage[st],
+    next: NEXT[st] ? byStage[NEXT[st]!] : undefined,
+    autoAdvance: o.autoAdvance,
+    aspect: o.aspect.image,
+    busy: p.act.busy,
+    shotNo: (id: string | null) => o.shots.find((s) => s.id === id)?.number,
+    shots: o.shots,
+    finalMedia: byStage.editing?.items[0]?.media ?? null,
+    onStart: () => p.run(() => api.post(`/api/projects/${project.id}/production/${st}/start`)),
+    onApprove: () => p.run(() => api.post(`/api/projects/${project.id}/production/${st}/approve`, {})),
+    onReopen: () => p.run(() => api.post(`/api/projects/${project.id}/production/${st}/reopen`)),
+    onDoneExternally: () => p.run(() => api.post(`/api/projects/${project.id}/production/${st}/done-externally`, {})),
+    onItem: p.onItem,
+    onUpload: p.upload,
+    external: o.generator === 'higgsfield',
+    hfRoute: o.hfRoute,
+    projectId: project.id,
+    agentTasks: p.agent.data ?? [],
+    onAgentChanged: async () => {
+      await p.agent.reload();
+      await p.refresh();
+    },
+    onHfRun: (scope: 'pilot' | 'all', extra?: { faces: true; model: string }) => p.run(() => api.post(`/api/projects/${project.id}/production/${st}/hf-run`, { scope, ...extra })),
+  };
+}
+
+/** שלב 05 — יצירת תמונות, בתוך הסטורי בורד: כותרת השלב וכפתוריו. התמונות עצמן בכרטיסי השוטים */
+export function ImagesStageBar({ p, detail }: { p: Production; detail: TabProps['detail'] }) {
+  const o = p.prod.data;
+  if (!o) return null;
+  return (
+    <>
+      <StageCard {...stageCardProps('images', o, p, detail)} hideGrid />
+      <InlineError error={p.act.error} onClose={p.act.clearError} />
+    </>
+  );
+}
+
+/** מתחת לתמונה של כל שוט בסטורי בורד: סטטוס התמונה וכל הפעולות עליה (אשר, תקן, וריאציות, השוואה, העלאה) */
+export function ShotFrameControls({ p, shotId }: { p: Production; shotId: string }) {
+  const o = p.prod.data;
+  const view = o?.stages.find((s) => s.stage === 'images');
+  const it = view?.items.find((i) => i.shotId === shotId);
+  if (!o || !view || !it) return null;
+  const approved = !!view.gate?.approvedAt;
+  const canUpload = view.canStart && !approved;
+  const external = o.generator === 'higgsfield';
+  if (!it.media)
+    return view.canStart ? (
+      <div className="shot-frame row between gap-s wrap">
+        <span className="small muted">תמונה: {external ? 'ממתין ל-Higgsfield' : 'טרם נוצרה'}</span>
+        {canUpload && <UploadButton kind="frame" onFile={(f) => void p.upload('frame', shotId, f)} />}
+      </div>
+    ) : null;
+  const m = it.media;
+  const [tone, text] = STATUS[m.status];
+  return (
+    <div className={`shot-frame st-${m.status}`}>
+      <div className="row between gap-s">
+        <strong className="small">
+          תמונה <span className="muted">v{m.version}</span>
+        </strong>
+        <Tag tone={tone}>{text}</Tag>
+      </div>
+      {m.status === 'failed' && <div className="small error-text">{m.error}</div>}
+      <QaBadge qa={(m.params as { qa?: { verdict: 'pass' | 'fail'; note: string } } | undefined)?.qa} />
+      <MediaControls
+        m={m}
+        aspect={o.aspect.image}
+        locked={approved}
+        busy={p.act.busy}
+        onItem={(path, body) => void p.onItem(path, body)}
+        onUpload={canUpload ? (f) => void p.upload('frame', shotId, f) : undefined}
+      />
+    </div>
+  );
+}
+
+export function ProductionTab({ detail, reload }: TabProps) {
+  const { project } = detail;
+  const p = useProduction(detail, reload);
+  const { data, error, loading, reload: reloadProd } = p.prod;
+  const act = p.act;
+  if (loading && !data) return <Loading />;
+  if (error && !data) return <ErrorBox error={error} onRetry={reloadProd} />;
+  const o = data!;
+  const byStage = Object.fromEntries(o.stages.map((s) => [s.stage, s])) as Record<Stage, StageView>;
+  const imagesView = byStage.images;
   const pct = o.budgetUsd > 0 ? Math.min(100, Math.round((o.spentUsd / o.budgetUsd) * 100)) : 0;
 
   return (
@@ -111,32 +210,23 @@ export function ProductionTab({ detail, reload }: TabProps) {
         <InlineError error={act.error} onClose={act.clearError} />
       </section>
 
-      {(['images', 'animation', 'audio', 'editing', 'delivery'] as Stage[]).map((st) => (
-        <StageCard
-          key={st}
-          view={byStage[st]}
-          next={NEXT[st] ? byStage[NEXT[st]!] : undefined}
-          autoAdvance={o.autoAdvance}
-          aspect={o.aspect.image}
-          busy={act.busy}
-          shotNo={shotNo}
-          shots={o.shots}
-          finalMedia={byStage.editing.items[0]?.media ?? null}
-          onStart={() => run(() => api.post(`/api/projects/${project.id}/production/${st}/start`))}
-          onApprove={() => run(() => api.post(`/api/projects/${project.id}/production/${st}/approve`, {}))}
-          onReopen={() => run(() => api.post(`/api/projects/${project.id}/production/${st}/reopen`))}
-          onDoneExternally={() => run(() => api.post(`/api/projects/${project.id}/production/${st}/done-externally`, {}))}
-          onItem={(path, body) => run(() => api.post(path, body))}
-          onUpload={(kind, shotId, file) =>
-            run(() => api.upload(`/api/projects/${project.id}/media/upload?kind=${kind}${shotId ? `&shotId=${shotId}` : ''}&source=${o.generator === 'higgsfield' ? 'higgsfield-unlimited' : 'manual'}`, file))
-          }
-          external={o.generator === 'higgsfield'}
-          hfRoute={o.hfRoute}
-          projectId={project.id}
-          agentTasks={agent.data ?? []}
-          onAgentChanged={async () => { await agent.reload(); await refresh(); }}
-          onHfRun={(scope, extra) => run(() => api.post(`/api/projects/${project.id}/production/${st}/hf-run`, { scope, ...extra }))}
-        />
+      {/* שלב 05 (יצירת תמונות) עבר לסטורי בורד: כל תמונה ופעולותיה מתחת לשוט שלה */}
+      <section className={`card prod-stage ${imagesView?.gate?.approvedAt ? 'prod-done' : ''}`}>
+        <div className="row between wrap gap-s">
+          <div>
+            <h2>
+              <span className="muted">05</span> יצירת תמונות {imagesView?.gate?.approvedAt && <Tag tone="ok">אושר ✓</Tag>}
+            </h2>
+            <p className="small muted">יצירת התמונות, האישור והתיקונים של כל שוט נמצאים עכשיו בסטורי בורד — מתחת לתמונה של כל שוט.</p>
+          </div>
+          <Link className="btn" to={`/projects/${project.id}/storyboard`}>
+            <Icon n="image" /> לתמונות בסטורי בורד
+          </Link>
+        </div>
+      </section>
+
+      {(['animation', 'audio', 'editing', 'delivery'] as Stage[]).map((st) => (
+        <StageCard key={st} {...stageCardProps(st, o, p, detail)} />
       ))}
     </div>
   );
@@ -234,6 +324,8 @@ function StageCard(props: {
   projectId: string;
   agentTasks: AgentTask[];
   onAgentChanged: () => Promise<void> | void;
+  /** בסטורי בורד: בלי רשת התוצרים — התמונות מוצגות בכרטיסי השוטים */
+  hideGrid?: boolean;
 }) {
   const { view: v, next } = props;
   const t = TITLE[v.stage];
@@ -338,7 +430,7 @@ function StageCard(props: {
         </div>
       )}
 
-      {v.stage === 'delivery' ? (
+      {props.hideGrid ? null : v.stage === 'delivery' ? (
         props.finalMedia?.status === 'approved' || approved ? (
           <div className="small muted">{approved ? `נמסר ואושר ${fmtDateTime(v.gate!.approvedAt!)}` : 'הסרטון הערוך אושר — שלח ללקוח.'}</div>
         ) : null
@@ -410,13 +502,6 @@ function MediaCard({
   onItem: (p: string, b?: unknown) => void;
   onUpload?: (f: File) => void;
 }) {
-  const [redo, setRedo] = useState(false);
-  const [feedback, setFeedback] = useState('');
-  const [comparing, setComparing] = useState(false);
-  // תוצר מהיגספילד: תיקון שנשלח לריצה בעצמו, וריאציות והשוואת טייקים
-  const hfItem = m.provider === 'higgsfield' && (m.kind === 'frame' || m.kind === 'clip');
-  const qaNote = (m.params as { qa?: { verdict?: string; note?: string } }).qa?.verdict === 'fail' ? ((m.params as { qa?: { note?: string } }).qa?.note ?? '') : '';
-  const [showPrompt, setShowPrompt] = useState(false);
   const [tone, text] = STATUS[m.status];
   const ratio = aspect.replace(':', ' / ');
   const hasFile = !!m.assetId && m.status !== 'generating';
@@ -448,6 +533,37 @@ function MediaCard({
           <audio src={fileUrl(m)} controls preload="metadata" />
         )}
       </div>
+      <MediaControls m={m} aspect={aspect} locked={locked} busy={busy} onItem={onItem} onUpload={onUpload} />
+    </div>
+  );
+}
+
+/** פרטי התוצר וכל הפעולות עליו — בכרטיס ההפקה ומתחת לתמונה של כל שוט בסטורי בורד */
+function MediaControls({
+  m,
+  aspect,
+  locked,
+  busy,
+  onItem,
+  onUpload,
+}: {
+  m: Media;
+  aspect: string;
+  locked: boolean;
+  busy: boolean;
+  onItem: (p: string, b?: unknown) => void;
+  onUpload?: (f: File) => void;
+}) {
+  const [redo, setRedo] = useState(false);
+  const [feedback, setFeedback] = useState('');
+  const [comparing, setComparing] = useState(false);
+  // תוצר מהיגספילד: תיקון שנשלח לריצה בעצמו, וריאציות והשוואת טייקים
+  const hfItem = m.provider === 'higgsfield' && (m.kind === 'frame' || m.kind === 'clip');
+  const qaNote = (m.params as { qa?: { verdict?: string; note?: string } }).qa?.verdict === 'fail' ? ((m.params as { qa?: { note?: string } }).qa?.note ?? '') : '';
+  const [showPrompt, setShowPrompt] = useState(false);
+  const hasFile = !!m.assetId && m.status !== 'generating';
+  return (
+    <>
       <div className="small muted">
         {m.model || '—'}
         {m.durationSec ? ` · ${m.durationSec.toFixed(1)} ש׳` : ''}
@@ -530,7 +646,7 @@ function MediaCard({
         </form>
       )}
       {comparing && <CompareTakes media={m} aspect={aspect} onPick={(id) => { onItem(`/api/media/${id}/pick`); setComparing(false); }} onClose={() => setComparing(false)} />}
-    </div>
+    </>
   );
 }
 
