@@ -38,6 +38,11 @@ export const projectSettingsSchema = z.object({
   includedRevisionRounds: z.number().int().min(0).max(20).default(2),
   /** מיתוג הקבצים שיוצאים ללקוח: genesis = לוגו Genesis בגדול והשם שלך בקטן; studio = הסטודיו שלך */
   brand: z.enum(['genesis', 'studio']).default('genesis'),
+  /** איש הקשר אצל הלקוח — לתזכורת בוואטסאפ */
+  contactName: z.string().default(''),
+  contactPhone: z.string().default(''),
+  /** מתי הוזכר ללקוח בפעם האחרונה (ISO) — התזכורת חוזרת רק 3 ימים אחרי */
+  nudgedAt: z.string().default(''),
 });
 
 export type ProjectSettings = z.infer<typeof projectSettingsSchema>;
@@ -252,7 +257,9 @@ export interface ProjectSummary {
   /** עדכון ההתקדמות האחרון (מאוהד או מסשן Claude שעבד על הפרויקט) */
   lastUpdate?: { text: string; by: string; at: string } | null;
   /** הקישור האחרון שנשלח ללקוח: מתי, ואם/מתי הלקוח פתח */
-  lastShare?: { label: string; sentAt: string; viewedAt: string | null; views: number } | null;
+  lastShare?: { label: string; sentAt: string; viewedAt: string | null; views: number; token?: string } | null;
+  /** איש הקשר ומתי הוזכר לו לאחרונה */
+  contact?: { name: string; phone: string; nudgedAt: string };
   /** סבבי תיקונים אחרי מסירה: כמה היו, כמה כלולים, והסבב הפתוח */
   revisions?: { count: number; included: number; open: { id: string; number: number; total: number; done: number } | null } | null;
   /** עלות: קרדיטים בהיגספילד, טוקנים של Claude Code וחלק מהמגבלה השבועית. null = עוד לא נמדד */

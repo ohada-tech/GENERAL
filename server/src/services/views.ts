@@ -66,6 +66,7 @@ export function dashboard(ctx: Ctx): DashboardData {
     logoAuto: canAutoLogo(ctx, p.id, p.clientName),
     lastUpdate: lastProgressUpdate(ctx, p.id),
     lastShare: lastShareFor(ctx, p.id),
+    contact: { name: p.settings.contactName, phone: p.settings.contactPhone, nudgedAt: p.settings.nudgedAt },
     usage: usageFor(ctx, p.id),
     revisions: revisionSummary(ctx, p.id, p.settings.includedRevisionRounds),
   }));

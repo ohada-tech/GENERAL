@@ -1,4 +1,4 @@
-import { formatDuration, STAGE_BY_KEY, type DashboardData, type Project, type ProjectSummary } from '@apos/shared';
+import { formatDuration, nudgeText, NUDGE_AFTER_DAYS, waLink, STAGE_BY_KEY, type DashboardData, type Project, type ProjectSummary } from '@apos/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Empty, ErrorBox, Field, InlineError, Loading, Modal, rowLink, StatusBadge, Tag } from '../components/ui';
@@ -85,16 +85,36 @@ function Frame({ p, tag }: { p: ProjectSummary; tag?: string }) {
 }
 
 /** "נשלח ללקוח לפני X ימים · נפתח ✓" — ואחרי 3 ימים בלי אישור: תזכורת */
-function ShareLine({ share, waiting }: { share: NonNullable<ProjectSummary['lastShare']>; waiting: boolean }) {
-  const days = Math.floor((Date.now() - new Date(share.sentAt).getTime()) / 86_400_000);
-  const nudge = waiting && days >= 3;
+const daysSince = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+/** הלקוח לא הגיב 3 ימים על מה שנשלח, ולא הזכרנו לו ב-3 הימים האחרונים */
+function needsNudge(p: ProjectSummary) {
+  if (!p.lastShare || p.state.overallStatus !== 'waiting_client') return false;
+  if (daysSince(p.lastShare.sentAt) < NUDGE_AFTER_DAYS) return false;
+  const at = p.contact?.nudgedAt;
+  return !at || daysSince(at) >= NUDGE_AFTER_DAYS;
+}
+
+function ShareLine({ share, waiting, nudge: canNudge, onNudge }: { share: NonNullable<ProjectSummary['lastShare']>; waiting: boolean; nudge?: boolean; onNudge?: () => void }) {
+  const days = daysSince(share.sentAt);
+  const nudge = waiting && days >= 3 && canNudge !== false;
   return (
     <div className={`t-share ${nudge ? 't-share-nudge' : ''}`}>
       <span>
         <Icon n="send" /> v{share.label} נשלח {days === 0 ? 'היום' : days === 1 ? 'אתמול' : `לפני ${days} ימים`}
       </span>
       <span>{share.views > 0 ? '· נפתח ✓' : '· עוד לא נפתח'}</span>
-      {nudge && <span className="t-share-hint"><Icon n="alarm" /> זמן להזכיר ללקוח</span>}
+      {nudge && (
+        <button
+          className="btn-link t-share-hint"
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            onNudge?.();
+          }}
+        >
+          <Icon n="alarm" /> זמן להזכיר ללקוח · נוסח מוכן
+        </button>
+      )}
     </div>
   );
 }
@@ -113,6 +133,7 @@ export function Dashboard() {
   const navigate = useNavigate();
   const { data, error, loading, reload } = useApi<DashboardData>('/api/dashboard', { pollMs: 5000 });
   const [creating, setCreating] = useState(false);
+  const [nudgeFor, setNudgeFor] = useState<ProjectSummary | null>(null);
   const [filter, setFilter] = useState<FilterKey>('active');
   const [space, setSpaceState] = useState<SpaceKey>(savedSpace);
   const setSpace = (s: SpaceKey) => {
@@ -224,6 +245,23 @@ export function Dashboard() {
 
       <RunningNow />
 
+      {projects.some((p) => !isDone(p) && needsNudge(p)) && (
+        <section className="t-section">
+          <div className="t-section-head">
+            <h2>להזכיר ללקוח</h2>
+            <span className="muted small">לא הגיבו {NUDGE_AFTER_DAYS}+ ימים · נוסח מוכן לוואטסאפ</span>
+          </div>
+          <div className="row gap-s wrap">
+            {projects.filter((p) => !isDone(p) && needsNudge(p)).map((p) => (
+              <button key={p.id} className="btn" onClick={() => setNudgeFor(p)}>
+                <Icon n="send" /> {p.name} · {daysSince(p.lastShare!.sentAt)} ימים{p.lastShare!.views ? '' : ' · לא נפתח'}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+      {nudgeFor && <NudgeModal p={nudgeFor} onClose={() => setNudgeFor(null)} onDone={reload} />}
+
       {myActions.length > 0 && (
         <section className="t-section">
           <div className="t-section-head">
@@ -305,7 +343,7 @@ export function Dashboard() {
                         <span className="clamp-2">{p.lastUpdate.text}</span>
                       </div>
                     )}
-                    {p.lastShare && !done && <ShareLine share={p.lastShare} waiting={p.state.overallStatus === 'waiting_client'} />}
+                    {p.lastShare && !done && <ShareLine share={p.lastShare} waiting={p.state.overallStatus === 'waiting_client'} nudge={needsNudge(p)} onNudge={() => setNudgeFor(p)} />}
                     <Track p={p} />
                     <div className="row between small">
                       <span className="t-stage">{cur.label}</span>
@@ -400,6 +438,98 @@ function DoneToggle({ p, done, onDone }: { p: ProjectSummary; done: boolean; onD
 }
 
 /** "הבא": מריץ את הצעד בעצמו כשאפשר (תסריט, סטורי בורד, פיילוט אנלימיטד), אחרת פותח את המקום הנכון */
+/** תזכורת ללקוח: נוסח בסגנון של אוהד, עריכה, העתקה או פתיחה בוואטסאפ. Claude לא שולח — אתה לוחץ */
+function NudgeModal({ p, onClose, onDone }: { p: ProjectSummary; onClose: () => void; onDone: () => Promise<void> | void }) {
+  const share = p.lastShare!;
+  const [name, setName] = useState(p.contact?.name ?? '');
+  const [phone, setPhone] = useState(p.contact?.phone ?? '');
+  const url = share.token ? `${window.location.origin}/s/${share.token}` : undefined;
+  const make = (n: string) => nudgeText({ contactName: n, what: 'התסריט', sentAt: share.sentAt, viewed: share.views > 0, url });
+  const [text, setText] = useState(make(name));
+  const [touched, setTouched] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const act = useAction();
+  const wa = waLink(phone, text);
+  const save = (nudged: boolean) =>
+    act.run(() =>
+      api.patch(`/api/projects/${p.id}`, { settings: { contactName: name.trim(), contactPhone: phone.trim(), ...(nudged ? { nudgedAt: new Date().toISOString() } : {}) } }),
+    );
+  return (
+    <Modal title={`תזכורת ל${p.clientName || p.name}`} onClose={onClose}>
+      <div className="stack gap-s" dir="rtl">
+        <div className="small muted">
+          נשלח לפני {daysSince(share.sentAt)} ימים · {share.views ? 'הלקוח פתח ועוד לא הגיב' : 'הקישור עוד לא נפתח'}
+        </div>
+        <div className="row gap-s wrap">
+          <Field label="שם איש הקשר">
+            <input
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (!touched) setText(make(e.target.value));
+              }}
+            />
+          </Field>
+          <Field label="טלפון (וואטסאפ)">
+            <input dir="ltr" value={phone} placeholder="050-0000000" onChange={(e) => setPhone(e.target.value)} />
+          </Field>
+        </div>
+        <textarea
+          rows={7}
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            setTouched(true);
+          }}
+        />
+        <div className="row gap-s wrap">
+          {wa && (
+            <a
+              className="btn btn-primary"
+              href={wa}
+              target="_blank"
+              rel="noreferrer"
+              onClick={async () => {
+                await save(true);
+                await onDone();
+              }}
+            >
+              <Icon n="send" /> פתח בוואטסאפ
+            </a>
+          )}
+          <button
+            className={wa ? 'btn' : 'btn btn-primary'}
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(text);
+                setCopied(true);
+              } catch {
+                /* בלי הרשאה ללוח — אפשר לסמן ולהעתיק ידנית */
+              }
+              await save(true);
+              await onDone();
+            }}
+          >
+            {copied ? '✓ הועתק' : 'העתק'}
+          </button>
+          <button
+            className="btn btn-ghost"
+            onClick={async () => {
+              await save(true);
+              await onDone();
+              onClose();
+            }}
+          >
+            הזכרתי, להסתיר ל-{NUDGE_AFTER_DAYS} ימים
+          </button>
+        </div>
+        {!wa && <div className="small muted">הוסף טלפון כדי לפתוח ישר בוואטסאפ. השם והטלפון נשמרים לפרויקט.</div>}
+        <InlineError error={act.error} onClose={act.clearError} />
+      </div>
+    </Modal>
+  );
+}
+
 interface RunningItem { id: string; kind: 'job' | 'agent' | 'hf'; projectId: string; projectName: string; label: string; status: 'queued' | 'running'; since: string; cancel: string | null; tab: string }
 
 /** "מה רץ עכשיו": כל מה שהמערכת והמחשב עובדים עליו, בכל הפרויקטים, עם עצירה */

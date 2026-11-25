@@ -93,5 +93,5 @@ export function lastShareFor(ctx: Ctx, projectId: string) {
     .get(projectId);
   if (!r) return null;
   const l = map(r);
-  return { label: l.label, sentAt: l.createdAt, viewedAt: l.lastViewedAt, views: l.viewCount };
+  return { label: l.label, sentAt: l.createdAt, viewedAt: l.lastViewedAt, views: l.viewCount, token: l.token };
 }
