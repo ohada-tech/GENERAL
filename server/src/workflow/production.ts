@@ -460,6 +460,21 @@ export function pickVersion(ctx: Ctx, mediaId: string) {
   });
 }
 
+/** אישור בבת אחת של כל הטייקים שעברו את בדיקת האיכות של Claude ומחכים לאישור (נפסלים נשארים לך) */
+export function approveQaPassed(ctx: Ctx, projectId: string, stage: ProductionStage) {
+  mustProject(ctx, projectId);
+  const kinds = STAGE_KINDS[stage] ?? [];
+  const { latest } = latestMedia(ctx, projectId);
+  const pass = [...latest.values()].filter((m) => kinds.includes(m.kind) && m.status === 'ready' && (m.params as { qa?: { verdict?: string } }).qa?.verdict === 'pass');
+  if (!pass.length) throw new GateError('אין טייקים שעברו QA ומחכים לאישור');
+  const at = ts(ctx);
+  tx(ctx.db, () => {
+    for (const m of pass) ctx.db.prepare("UPDATE media SET status = 'approved', updated_at = ? WHERE id = ?").run(at, m.id);
+    emit(ctx, { projectId, type: 'media.approved', actor: ctx.config.ownerName, message: `אושרו ${pass.length} טייקים שעברו QA`, payload: { count: pass.length } });
+  });
+  return { approved: pass.length };
+}
+
 export function setItemApproval(ctx: Ctx, mediaId: string, approved: boolean) {
   const m = getMedia(ctx.db, mediaId);
   if (!m) throw new NotFoundError('פריט');

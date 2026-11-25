@@ -401,6 +401,7 @@ function StageCard(props: {
           canRun={v.canStart && !approved && missing > 0}
           hasReady={medias.some((m) => m?.status === 'ready')}
           qaFailed={medias.filter((m) => m?.status === 'ready' && (m.params as { qa?: { verdict?: string } }).qa?.verdict === 'fail').length}
+          qaPassed={medias.filter((m) => m?.status === 'ready' && (m.params as { qa?: { verdict?: string } }).qa?.verdict === 'pass').length}
           onChanged={props.onAgentChanged}
         />
       )}

@@ -222,6 +222,8 @@ export function Dashboard() {
         })}
       </div>
 
+      <RunningNow />
+
       {myActions.length > 0 && (
         <section className="t-section">
           <div className="t-section-head">
@@ -398,6 +400,49 @@ function DoneToggle({ p, done, onDone }: { p: ProjectSummary; done: boolean; onD
 }
 
 /** "הבא": מריץ את הצעד בעצמו כשאפשר (תסריט, סטורי בורד, פיילוט אנלימיטד), אחרת פותח את המקום הנכון */
+interface RunningItem { id: string; kind: 'job' | 'agent' | 'hf'; projectId: string; projectName: string; label: string; status: 'queued' | 'running'; since: string; cancel: string | null; tab: string }
+
+/** "מה רץ עכשיו": כל מה שהמערכת והמחשב עובדים עליו, בכל הפרויקטים, עם עצירה */
+function RunningNow() {
+  const { data, reload } = useApi<RunningItem[]>('/api/running', { pollMs: 8000 });
+  const act = useAction();
+  if (!data?.length) return null;
+  const running = data.filter((r) => r.status === 'running').length;
+  return (
+    <section className="t-section">
+      <div className="t-section-head">
+        <h2>רץ עכשיו</h2>
+        <span className="muted small">{running} בעבודה · {data.length - running} בתור</span>
+      </div>
+      <div className="stack gap-s">
+        {data.map((r) => (
+          <div key={r.id} className="row between gap-s wrap running-row">
+            <Link to={`/projects/${r.projectId}/${r.tab}`} className="small">
+              <Tag tone={r.status === 'running' ? 'info' : 'neutral'}>{r.status === 'running' ? 'עובד' : 'בתור'}</Tag> <b>{r.projectName}</b> · {r.label}
+            </Link>
+            <span className="row gap-s small muted">
+              {fmtRelative(r.since)}
+              {r.cancel && (
+                <button
+                  className="btn btn-sm btn-ghost"
+                  disabled={act.busy}
+                  onClick={async () => {
+                    await act.run(() => api.post(r.cancel!));
+                    await reload();
+                  }}
+                >
+                  עצור
+                </button>
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
+      <InlineError error={act.error} onClose={act.clearError} />
+    </section>
+  );
+}
+
 function NextStep({ p, onDone }: { p: ProjectSummary; onDone: () => Promise<void> | void }) {
   const act = useAction();
   const navigate = useNavigate();

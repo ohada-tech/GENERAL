@@ -30,6 +30,7 @@ import * as hf from '../services/hf-runs.js';
 import * as agent from '../services/agent-tasks.js';
 import * as act from '../services/actions.js';
 import { runNextStep } from '../services/next-step.js';
+import { runningNow } from '../services/running.js';
 import * as secrets from '../services/secrets.js';
 import * as learning from '../services/learning.js';
 import * as knowledge from '../services/knowledge.js';
@@ -60,6 +61,7 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
 
   app.get('/api/dashboard', async () => dashboard(ctx));
   // "הבא" שמבצע את הצעד הבא בעצמו (או מחזיר לאן לעבור)
+  app.get('/api/running', async () => runningNow(ctx));
   app.post('/api/projects/:id/next', async (req) => runNextStep(ctx, (req.params as any).id));
 
   /* ---------- projects ---------- */
@@ -389,6 +391,9 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
   app.get('/api/projects/:id/production', async (req) => prod.productionOverview(ctx, (req.params as any).id));
   app.post('/api/projects/:id/production/:stage/start', async (req) =>
     prod.startStage(ctx, (req.params as any).id, mustStage((req.params as any).stage)),
+  );
+  app.post('/api/projects/:id/production/:stage/approve-qa-passed', async (req) =>
+    prod.approveQaPassed(ctx, (req.params as any).id, mustStage((req.params as any).stage)),
   );
   app.post('/api/projects/:id/production/:stage/approve', async (req) =>
     prod.approveStage(ctx, (req.params as any).id, mustStage((req.params as any).stage), ((req.body ?? {}) as Body).note ?? ''),

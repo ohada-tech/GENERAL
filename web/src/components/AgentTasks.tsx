@@ -42,6 +42,8 @@ export function AgentStageControls(props: {
   hasReady: boolean;
   /** כמה טייקים נפסלו בבדיקת האיכות ועוד לא תוקנו */
   qaFailed?: number;
+  /** כמה טייקים עברו QA ומחכים לאישור שלך */
+  qaPassed?: number;
   /** בהנפשה: כפתורי ההרצה נמצאים בפאנל ההנפשה המותאמת */
   hideRun?: boolean;
   onChanged: () => Promise<void> | void;
@@ -79,6 +81,19 @@ export function AgentStageControls(props: {
             }}
           >
             ↻ תקן את כל מה שנפסל ({props.qaFailed})
+          </button>
+        )}
+        {!!props.qaPassed && !active && (
+          <button
+            className="btn btn-primary"
+            disabled={act.busy}
+            title="מאשר רק את מה שעבר את בדיקת האיכות. מה שנפסל נשאר לך"
+            onClick={async () => {
+              await act.run(() => api.post(`/api/projects/${props.projectId}/production/${props.stage}/approve-qa-passed`));
+              await props.onChanged();
+            }}
+          >
+            ✓ אשר את כל מה שעבר QA ({props.qaPassed})
           </button>
         )}
         {props.hasReady && !active && (
