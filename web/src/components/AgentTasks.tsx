@@ -42,6 +42,8 @@ export function AgentStageControls(props: {
   hasReady: boolean;
   /** כמה טייקים נפסלו בבדיקת האיכות ועוד לא תוקנו */
   qaFailed?: number;
+  /** בהנפשה: כפתורי ההרצה נמצאים בפאנל ההנפשה המותאמת */
+  hideRun?: boolean;
   onChanged: () => Promise<void> | void;
 }) {
   const act = useAction();
@@ -57,7 +59,7 @@ export function AgentStageControls(props: {
   return (
     <div className="stack agent-controls">
       <div className="row gap-s wrap">
-        {props.route === 'unlimited' && props.canRun && !active && (
+        {props.route === 'unlimited' && props.canRun && !active && !props.hideRun && (
           <>
             <button className="btn btn-primary" disabled={act.busy} onClick={() => send('hf_unlimited', 'pilot', `Claude ייצר בהיגספילד באנלימיטד (0 קרדיטים) — שוט אחד לפיילוט. להתחיל?`)}>
               <Icon n="play" /> פיילוט באנלימיטד: שוט אחד

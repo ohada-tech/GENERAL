@@ -1,4 +1,4 @@
-import { VIDEO_MODELS, hfCostLabel, hfVideoCredits, isFaceShot, type CostEstimate, type Media, type MediaKind, type Shot } from '@apos/shared';
+import { hfCostLabel, type CostEstimate, type Media, type MediaKind, type Shot } from '@apos/shared';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ConfirmButton, Empty, ErrorBox, InlineError, Loading, Modal, Tag } from '../components/ui';
@@ -8,6 +8,7 @@ import type { TabProps } from './ProjectPage';
 import { Icon } from '../components/Icon';
 import { HfRouteToggle, hfRouteCost } from '../components/HfRoute';
 import { AgentStageControls, QaBadge, useAgentTasks, type AgentTask } from '../components/AgentTasks';
+import { AnimationRunPanel } from '../components/AnimationRunPanel';
 
 type Stage = 'images' | 'animation' | 'audio' | 'editing' | 'delivery';
 
@@ -232,49 +233,17 @@ export function ProductionTab({ detail, reload }: TabProps) {
   );
 }
 
-const FACE_MODEL_KEY = 'apos.faceAnimModel';
-
-/** הנפשת שוטי הפנים לחוד, בקרדיטים (גם כשהפרויקט על אנלימיטד), עם בחירת מודל הנפשה */
-function FaceRunControls(props: { view: StageView; shots: Shot[]; busy: boolean; onRun: (model: string) => void }) {
-  const [model, setModel] = useState(() => {
-    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(FACE_MODEL_KEY) : null;
-    return VIDEO_MODELS.some((m) => m.id === saved) ? saved! : 'seedance-2';
-  });
-  const r = props.view.hfRun;
-  if (r && (r.status === 'queued' || r.status === 'running')) return null; // ההרצה הפעילה מוצגת ב-HfRunControls
-  const byId = new Map(props.shots.map((s) => [s.id, s]));
-  const waiting = props.view.items
-    .filter((i) => i.shotId && (!i.media || i.media.status === 'failed' || i.media.status === 'rejected'))
-    .map((i) => byId.get(i.shotId!))
-    .filter((s): s is Shot => !!s && isFaceShot(s));
-  if (!waiting.length) return null;
-  const credits = waiting.reduce((a, s) => a + hfVideoCredits(model, s.durationSec || 5), 0);
-  const pick = (id: string) => {
-    setModel(id);
-    try {
-      localStorage.setItem(FACE_MODEL_KEY, id);
-    } catch {
-      /* פרטי */
-    }
-  };
-  return (
-    <span className="row gap-s wrap" title={`שוטי פנים: ${waiting.map((s) => s.number).join(', ')}`}>
-      <select aria-label="מודל הנפשה לשוטי פנים" value={model} disabled={props.busy} onChange={(e) => pick(e.target.value)}>
-        {VIDEO_MODELS.map((m) => (
-          <option key={m.id} value={m.id}>
-            {m.label}
-          </option>
-        ))}
-      </select>
-      <ConfirmButton className="btn" disabled={props.busy} onConfirm={() => props.onRun(model)} confirmLabel={`לחץ שוב להרצה בקרדיטים · ~${hfCostLabel(credits)}`}>
-        <Icon n="play" /> הנפש שוטי פנים לחוד ({waiting.length}) · ~{hfCostLabel(credits)}
-      </ConfirmButton>
-    </span>
-  );
-}
-
 /** הרצה בהיגספילד בלחיצה: פיילוט (שוט אחד) ואז הכל. במסלול אנלימיטד — הסבר איך להריץ */
-function HfRunControls(props: { view: StageView; route: 'unlimited' | 'credits'; busy: boolean; missing: number; approved: boolean; onRun: (scope: 'pilot' | 'all') => void }) {
+function HfRunControls(props: {
+  view: StageView;
+  route: 'unlimited' | 'credits';
+  busy: boolean;
+  missing: number;
+  approved: boolean;
+  onRun: (scope: 'pilot' | 'all') => void;
+  /** בהנפשה: רק הסטטוס — הכפתורים בפאנל ההנפשה המותאמת */
+  statusOnly?: boolean;
+}) {
   const { view: v, route } = props;
   const r = v.hfRun;
   if (r && (r.status === 'queued' || r.status === 'running'))
@@ -284,6 +253,7 @@ function HfRunControls(props: { view: StageView; route: 'unlimited' | 'credits';
       </Tag>
     );
   if (props.approved || !v.canStart || props.missing <= 0) return r?.status === 'failed' ? <Tag tone="danger">ההרצה נכשלה: {r.error.slice(0, 80)}</Tag> : null;
+  if (props.statusOnly) return r?.status === 'failed' ? <Tag tone="danger">ההרצה הקודמת נכשלה: {r.error.slice(0, 80)}</Tag> : null;
   if (route !== 'credits') return null; // אנלימיטד — Claude מריץ בדפדפן (AgentStageControls)
   const per = v.items.length ? (v.hfCredits ?? 0) / v.items.length : 0;
   const all = per * props.missing;
@@ -366,10 +336,7 @@ function StageCard(props: {
         </div>
         <div className="row gap-s wrap">
           {props.external && (v.stage === 'images' || v.stage === 'animation') && (
-            <HfRunControls view={v} route={props.hfRoute} busy={props.busy} missing={missing} approved={approved} onRun={props.onHfRun} />
-          )}
-          {props.external && v.stage === 'animation' && v.canStart && !approved && missing > 0 && (
-            <FaceRunControls view={v} shots={props.shots} busy={props.busy} onRun={(model) => props.onHfRun('all', { faces: true, model })} />
+            <HfRunControls view={v} route={props.hfRoute} busy={props.busy} missing={missing} approved={approved} onRun={props.onHfRun} statusOnly={v.stage === 'animation'} />
           )}
           {v.stage !== 'delivery' && v.canStart && !approved && missing > 0 && !generating && !(props.external && (v.stage === 'images' || v.stage === 'animation')) && (
             <button className="btn btn-primary" disabled={props.busy} onClick={props.onStart}>
@@ -411,8 +378,22 @@ function StageCard(props: {
         </div>
       </div>
 
+      {props.external && v.stage === 'animation' && v.canStart && !approved && missing > 0 && (
+        <AnimationRunPanel
+          projectId={props.projectId}
+          items={v.items}
+          shots={props.shots}
+          defaultRoute={props.hfRoute}
+          hfActive={!!v.hfRun && (v.hfRun.status === 'queued' || v.hfRun.status === 'running')}
+          agentActive={props.agentTasks.some((t) => t.stage === 'animation' && t.kind === 'hf_unlimited' && (t.status === 'queued' || t.status === 'running'))}
+          busy={props.busy}
+          onChanged={props.onAgentChanged}
+        />
+      )}
+
       {props.external && (v.stage === 'images' || v.stage === 'animation') && (
         <AgentStageControls
+          hideRun={v.stage === 'animation'}
           projectId={props.projectId}
           stage={v.stage}
           tasks={props.agentTasks}

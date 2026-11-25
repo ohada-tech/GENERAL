@@ -415,11 +415,19 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/api/projects/:id/production/:stage/hf-run', async (req, reply) => {
     const stage = (req.params as any).stage;
     if (stage !== 'images' && stage !== 'animation') throw new GateError('אפשר להריץ בהיגספילד רק תמונות או הנפשה', 400);
-    const b = (req.body ?? {}) as { scope?: string; faces?: boolean; model?: string };
+    const b = (req.body ?? {}) as { scope?: string; faces?: boolean; model?: string; group?: string; faceModel?: string; otherModel?: string; custom?: boolean };
     const scope = b.scope === 'pilot' ? 'pilot' : 'all';
+    const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
     reply.code(201);
-    // faces: רק שוטי הפנים, בקרדיטים (גם כשהפרויקט על אנלימיטד), עם מודל ההנפשה שנבחר
-    return hf.requestHfRun(ctx, (req.params as any).id, stage, scope, { faces: !!b.faces, model: typeof b.model === 'string' && b.model ? b.model : undefined });
+    // הנפשה מותאמת: group (הכל / פנים / שאר) ומודל לכל קבוצה, בקרדיטים גם כשהפרויקט על אנלימיטד
+    return hf.requestHfRun(ctx, (req.params as any).id, stage, scope, {
+      faces: !!b.faces,
+      group: b.group === 'faces' || b.group === 'others' || b.group === 'all' ? b.group : undefined,
+      model: str(b.model),
+      faceModel: str(b.faceModel),
+      otherModel: str(b.otherModel),
+      custom: !!b.custom,
+    });
   });
   // העובד המקומי (~/.apos/hf-worker.cjs)
   app.get('/api/hf/next', async (_req, reply) => {
@@ -492,7 +500,11 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
   app.get('/api/projects/:id/agent', async (req) => agent.listTasks(ctx, (req.params as any).id));
   app.post('/api/projects/:id/agent', async (req, reply) => {
     reply.code(201);
-    return agent.requestAgentTask(ctx, (req.params as any).id, (req.body ?? {}) as { kind?: string; stage?: string; scope?: string; note?: string });
+    return agent.requestAgentTask(
+      ctx,
+      (req.params as any).id,
+      (req.body ?? {}) as { kind?: string; stage?: string; scope?: string; note?: string; group?: string; model?: string; faceModel?: string; otherModel?: string },
+    );
   });
   app.post('/api/agent/:tid/cancel', async (req) => agent.cancelTask(ctx, (req.params as any).tid));
   app.get('/api/agent/next', async (_req, reply) => {

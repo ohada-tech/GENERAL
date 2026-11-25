@@ -132,6 +132,39 @@ describe('Higgsfield mode (Claude / manual uploads)', () => {
     expect(next.items[0].startImage).toMatch(/^\/api\/media\//);
   });
 
+  it('הנפשה מותאמת: חלוקה לפנים / שאר עם מודל לכל קבוצה, בקרדיטים או באנלימיטד, בכל מסלול פרויקט', async () => {
+    const ctx = makeCtx();
+    const { p, shots } = await readyProject(ctx);
+    for (const s of shots) cmd.updateShot(ctx, s.id, { character: '', imagePrompt: 'Product on a table', animationPrompt: 'slow push in', action: 'product', shotType: 'wide' });
+    cmd.updateShot(ctx, shots[0].id, { character: 'Dana, 30, the customer' });
+    for (const s of shots) cmd.setShotApproval(ctx, s.id, 'approved');
+    cmd.approveStoryboard(ctx, p.id);
+    const png = sampleMedia().png;
+    for (const s of shots) prod.addExternalMedia(ctx, p.id, { kind: 'frame', shotId: s.id, data: png, mime: 'image/png', filename: 'f.png', source: 'higgsfield-unlimited' });
+    prod.approveStage(ctx, p.id, 'images');
+    const app = await buildApp(ctx);
+    // קרדיטים, שתי הקבוצות במודלים שונים — הפרויקט על אנלימיטד
+    const r = (
+      await app.inject({ method: 'POST', url: `/api/projects/${p.id}/production/animation/hf-run`, payload: { scope: 'all', custom: true, group: 'all', faceModel: 'seedance-2', otherModel: 'kling-3.0' } })
+    ).json();
+    expect(r).toMatchObject({ status: 'queued', total: shots.length, group: 'all', faceModel: 'seedance-2', otherModel: 'kling-3.0' });
+    const next = (await app.inject({ url: '/api/hf/next' })).json();
+    const jobs = Object.fromEntries(next.items.map((i: { shotId: string; job: string }) => [i.shotId, i.job]));
+    expect(jobs[shots[0].id]).toBe('seedance_2_0');
+    expect(jobs[shots[1].id]).toBe('kling3_0');
+    await app.inject({ method: 'POST', url: `/api/hf/runs/${r.id}`, payload: { done: 0, status: 'failed', error: 'test' } });
+    // רק השוטים בלי פנים, במודל אחד
+    const o = (await app.inject({ method: 'POST', url: `/api/projects/${p.id}/production/animation/hf-run`, payload: { scope: 'all', custom: true, group: 'others', model: 'seedance-2-mini' } })).json();
+    expect(o).toMatchObject({ total: shots.length - 1, group: 'others' });
+    // אנלימיטד: שוטי הפנים במודל שנבחר — ההוראות ל-Claude כוללות את השוט והמודל
+    const t = (await app.inject({ method: 'POST', url: `/api/projects/${p.id}/agent`, payload: { kind: 'hf_unlimited', stage: 'animation', scope: 'all', group: 'faces', model: 'kling-3.0' } })).json();
+    expect(t.title).toContain('שוטי פנים');
+    const task = (await app.inject({ url: '/api/agent/next' })).json();
+    expect(task.prompt).toContain(`id ${shots[0].id}, face shot) → Kling 3.0`);
+    expect(task.prompt).not.toContain(shots[1].id);
+    expect((await app.inject({ method: 'POST', url: `/api/projects/${p.id}/agent`, payload: { kind: 'hf_unlimited', stage: 'animation', group: 'others', model: 'nope' } })).statusCode).toBe(400);
+  });
+
   it('משימה ל-Claude מכפתור: אנלימיטד פיילוט ובדיקת איכות, העובד מקבל הוראות ומדווח', async () => {
     const ctx = makeCtx();
     const { p } = await readyProject(ctx);

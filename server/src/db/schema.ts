@@ -420,4 +420,9 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE hf_runs ADD COLUMN faces INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE hf_runs ADD COLUMN model TEXT;
   `,
+  /* v23 — הנפשה מותאמת: קבוצת שוטים (הכל / פנים / שאר) ומודל נפרד לשוטי פנים ולשאר */ `
+  ALTER TABLE hf_runs ADD COLUMN shot_group TEXT;
+  ALTER TABLE hf_runs ADD COLUMN face_model TEXT;
+  ALTER TABLE hf_runs ADD COLUMN other_model TEXT;
+  `,
 ];

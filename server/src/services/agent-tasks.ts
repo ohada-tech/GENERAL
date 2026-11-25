@@ -3,10 +3,11 @@
  * (~/.apos/agent-worker.cjs) מריץ אותה ב-Claude Code (מנוי Max, עם Chrome והסקילים שלו) ומחזיר תוצאה למסך.
  * סוגי משימות קבועים — ההוראות נבנות כאן, לא נכתבות בצ'אט.
  */
+import { VIDEO_MODELS, isFaceShot, videoModel, videoModelForShot } from '@apos/shared';
 import type { Ctx } from '../context.js';
 import { GateError, NotFoundError } from '../context.js';
 import { uid } from '../db/db.js';
-import { getProject } from '../db/repo.js';
+import { currentStoryboard, getProject, listShots } from '../db/repo.js';
 import { emit } from '../workflow/events.js';
 import { externalRequests } from '../workflow/production.js';
 
@@ -66,8 +67,58 @@ function title(kind: AgentKind, stage: AgentStage, scope: 'pilot' | 'all') {
   return `היגספילד אנלימיטד · ${STAGE_HE[stage]} · ${scope === 'pilot' ? 'פיילוט (שוט אחד)' : 'כל השוטים'}`;
 }
 
+/** הנפשה מותאמת: אילו שוטים ובאיזה מודל — Ohad בחר בכפתור */
+export interface AnimPlanItem {
+  shotId: string;
+  shotNumber: number;
+  face: boolean;
+  model: string;
+}
+type Group = 'all' | 'faces' | 'others';
+const GROUP_HE: Record<Group, string> = { all: 'כל השוטים', faces: 'שוטי פנים', others: 'שוטים בלי פנים' };
+
+function animationPlan(
+  ctx: Ctx,
+  projectId: string,
+  scope: 'pilot' | 'all',
+  sel: { group: Group; model?: string; faceModel?: string; otherModel?: string },
+): AnimPlanItem[] {
+  for (const id of [sel.model, sel.faceModel, sel.otherModel]) if (id && !VIDEO_MODELS.some((m) => m.id === id)) throw new GateError('מודל הנפשה לא מוכר', 400);
+  const p = getProject(ctx.db, projectId)!;
+  const sb = currentStoryboard(ctx.db, projectId);
+  const shots = new Map((sb ? listShots(ctx.db, sb.id) : []).map((x) => [x.id, x]));
+  const req = externalRequests(ctx, projectId);
+  let items = (req.animation as Array<{ shotId: string; shotNumber: number; approvedFrame?: unknown }>)
+    .filter((i) => i.approvedFrame)
+    .map((i) => {
+      const s = shots.get(i.shotId);
+      const face = !!s && isFaceShot(s);
+      const chosen = (face ? sel.faceModel : sel.otherModel) || sel.model;
+      const m = chosen ? videoModel(chosen) : videoModelForShot(s?.animationModel ?? '', p.settings.videoModel);
+      return { shotId: i.shotId, shotNumber: i.shotNumber, face, model: m.id };
+    })
+    .filter((i) => sel.group === 'all' || i.face === (sel.group === 'faces'));
+  if (!items.length)
+    throw new GateError(
+      sel.group === 'faces' ? 'אין שוטי פנים עם תמונה מאושרת שמחכים להנפשה' : sel.group === 'others' ? 'אין שוטים בלי פנים עם תמונה מאושרת שמחכים להנפשה' : 'אין שוטים עם תמונה מאושרת שמחכים להנפשה',
+      409,
+    );
+  if (scope === 'pilot') items = items.slice(0, 1);
+  return items;
+}
+
+const modelName = (id: string) => videoModel(id).label.split(' · ')[0];
+
 /** ההוראות ל-Claude Code. באנגלית לדיוק; התוצאה לאוהד — בעברית */
-function buildPrompt(ctx: Ctx, projectId: string, kind: AgentKind, stage: AgentStage, scope: 'pilot' | 'all', note: string, target: { shotIds?: string[]; variants?: number } = {}) {
+function buildPrompt(
+  ctx: Ctx,
+  projectId: string,
+  kind: AgentKind,
+  stage: AgentStage,
+  scope: 'pilot' | 'all',
+  note: string,
+  target: { shotIds?: string[]; variants?: number; plan?: AnimPlanItem[] } = {},
+) {
   const p = getProject(ctx.db, projectId)!;
   const api = `API base: ${process.env.PUBLIC_URL || 'https://ai-production-ap.onrender.com'} — every request needs the header "Authorization: Bearer <token>", token = contents of ~/.apos-operator-token (strip whitespace; never print it).`;
   const common = [
@@ -85,13 +136,19 @@ function buildPrompt(ctx: Ctx, projectId: string, kind: AgentKind, stage: AgentS
       ...common,
       `TASK: generate ${STAGE_HE[stage]} in Higgsfield (higgsfield.ai) in Ohad's Chrome, UNLIMITED ONLY.`,
       what,
-      target.shotIds
+      target.plan
+        ? `ONLY these shots, each in the animation model Ohad chose for it (do NOT switch models): ${target.plan
+            .map((i) => `shot ${i.shotNumber} (id ${i.shotId}, ${i.face ? 'face shot' : 'no face'}) → ${modelName(i.model)}`)
+            .join('; ')}. If Unlimited is not available for a listed model, skip those shots and report it — never fall back to credits.`
+        : target.shotIds
         ? `ONLY these shots (ids): ${target.shotIds.join(', ')} — call GET /api/projects/:id/production/requests?shotIds=${target.shotIds.join(',')} to get them even if they already have a take. "feedback" is what must be fixed — fix only that and keep everything else.`
         : scope === 'pilot'
           ? 'PILOT: do only the FIRST pending shot, then stop.'
           : 'Do ALL pending shots, one after another (open Unlimited slots in parallel when Higgsfield allows).',
       (target.variants ?? 1) > 1 ? `Make ${target.variants} different takes per shot and upload ALL of them with "variant": true (Ohad compares and picks).` : '',
-      `Model: images — Nano Banana Pro at 2K unless the project says otherwise (project imageModel: ${p.settings.imageModel}); animation — the shot's animation model (Kling 3.0 default). Aspect ratio from the requests response.`,
+      target.plan
+        ? ''
+        : `Model: images — Nano Banana Pro at 2K unless the project says otherwise (project imageModel: ${p.settings.imageModel}); animation — the shot's animation model (Kling 3.0 default). Aspect ratio from the requests response.`,
       'HARD RULES: before every click on Generate, read the button — it must say "Unlimited". NEVER click a button that shows credits. If Unlimited is not available for this model, stop and report it. Use approved references attached to the shot when there are any.',
       'For each result: QA it at full resolution (anatomy, hands, faces/eyes, product text read letter by letter, matches the shot prompt). Upload every take you keep with POST /api/projects/:id/media/from-url {"url": <result url>, "kind": "' +
         (stage === 'images' ? 'frame' : 'clip') +
@@ -113,28 +170,43 @@ function buildPrompt(ctx: Ctx, projectId: string, kind: AgentKind, stage: AgentS
     .join('\n');
 }
 
-export function requestAgentTask(ctx: Ctx, projectId: string, input: { kind?: string; stage?: string; scope?: string; note?: string; shotIds?: string[]; variants?: number }) {
+export function requestAgentTask(
+  ctx: Ctx,
+  projectId: string,
+  input: { kind?: string; stage?: string; scope?: string; note?: string; shotIds?: string[]; variants?: number; group?: string; model?: string; faceModel?: string; otherModel?: string },
+) {
   const p = getProject(ctx.db, projectId);
   if (!p) throw new NotFoundError('פרויקט');
   const kind = AGENT_KINDS.find((k) => k === input.kind);
   if (!kind) throw new GateError('סוג משימה לא מוכר', 400);
   const stage: AgentStage = input.stage === 'animation' ? 'animation' : 'images';
   const scope = input.scope === 'pilot' ? 'pilot' : 'all';
+  for (const m of [input.model, input.faceModel, input.otherModel])
+    if (typeof m === 'string' && m && !VIDEO_MODELS.some((x) => x.id === m)) throw new GateError('מודל הנפשה לא מוכר', 400);
   if (ctx.db.prepare("SELECT 1 FROM agent_tasks WHERE project_id = ? AND kind = ? AND stage = ? AND status IN ('queued','running')").get(projectId, kind, stage))
     throw new GateError('המשימה הזו כבר רצה', 409);
-  if (kind === 'hf_unlimited' && !input.shotIds) {
+  // הנפשה מותאמת באנלימיטד: קבוצת שוטים (פנים / שאר) ו/או מודל לבחירה
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
+  const group: Group = input.group === 'faces' || input.group === 'others' ? input.group : 'all';
+  const sel = { group, model: str(input.model), faceModel: str(input.faceModel), otherModel: str(input.otherModel) };
+  const custom = kind === 'hf_unlimited' && stage === 'animation' && !input.shotIds && (group !== 'all' || !!sel.model || !!sel.faceModel || !!sel.otherModel);
+  const plan = custom ? animationPlan(ctx, projectId, scope, sel) : undefined;
+  if (kind === 'hf_unlimited' && !input.shotIds && !plan) {
     const req = externalRequests(ctx, projectId);
     const pending = stage === 'images' ? req.images : (req.animation as Array<{ approvedFrame?: unknown }>).filter((i) => i.approvedFrame);
     if (!pending.length) throw new GateError(stage === 'images' ? 'אין שוטים שמחכים לתמונה' : 'אין שוטים עם תמונה מאושרת שמחכים להנפשה', 409);
   }
   const id = uid();
   const at = ctx.now().toISOString();
-  const t = input.shotIds
+  const planModels = plan ? [...new Set(plan.map((i) => modelName(i.model)))].join(' + ') : '';
+  const t = plan
+    ? `היגספילד אנלימיטד · הנפשה · ${GROUP_HE[group]} · ${planModels} · ${scope === 'pilot' ? 'פיילוט (שוט אחד)' : `${plan.length} שוטים`}`
+    : input.shotIds
     ? `היגספילד אנלימיטד · ${STAGE_HE[stage]} · ${(input.variants ?? 1) > 1 ? `${input.variants} וריאציות` : 'תיקון'} (${input.shotIds.length} שוטים)`
     : title(kind, stage, scope);
   ctx.db
     .prepare("INSERT INTO agent_tasks (id, project_id, kind, stage, scope, title, prompt, status, log, result, requested_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', '', '', ?)")
-    .run(id, projectId, kind, stage, scope, t, buildPrompt(ctx, projectId, kind, stage, scope, String(input.note ?? '').slice(0, 500), { shotIds: input.shotIds, variants: input.variants }), at);
+    .run(id, projectId, kind, stage, scope, t, buildPrompt(ctx, projectId, kind, stage, scope, String(input.note ?? '').slice(0, 500), { shotIds: input.shotIds, variants: input.variants, plan }), at);
   emit(ctx, { projectId, type: 'project.progress', actor: 'אוהד', message: `▶ נשלח ל-Claude: ${t}`, payload: { agentTask: id } });
   return getTask(ctx, id);
 }
