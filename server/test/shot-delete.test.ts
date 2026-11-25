@@ -66,4 +66,21 @@ describe('מחיקת שוט מיותר בלי לאבד קריינות', () => {
     expect(first.narration).toBe(keep.narration);
     expect(first.durationSec).toBe(keep.durationSec);
   });
+
+  it('סטורי בורד מאושר: המחיקה פותחת אותו לעריכה ומוחקת את השוט', async () => {
+    const { ctx, sbId } = await draftStoryboard();
+    let shots = listShots(ctx.db, sbId);
+    while (shots.length < 2) {
+      cmd.addShot(ctx, shots[0].projectId, {});
+      shots = listShots(ctx.db, sbId);
+    }
+    const pid = shots[0].projectId;
+    cmd.approveAllShots(ctx, pid);
+    cmd.approveStoryboard(ctx, pid);
+    expect(currentStoryboard(ctx.db, pid)!.status).toBe('approved');
+    const before = listShots(ctx.db, sbId).length;
+    cmd.deleteShot(ctx, shots[1].id);
+    expect(listShots(ctx.db, sbId).length).toBe(before - 1);
+    expect(currentStoryboard(ctx.db, pid)!.status).toBe('draft');
+  });
 });

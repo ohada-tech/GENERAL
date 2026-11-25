@@ -14,8 +14,6 @@ type Msg = {
   createdAt: string;
 };
 
-/** הצ'אט הישיר עם Claude שמפתח את המערכת (לבקשות דחופות) */
-const SESSION_URL = 'https://claude.ai/code/session_01KQMvk2XJssYKmB3cFE4Kko';
 const SEEN_KEY = 'apos-devchat-seen';
 
 const STATUS: Record<Msg['status'], { label: string; tone: string }> = {
@@ -104,13 +102,6 @@ export function DevChat() {
           <div className="bell-head">
             <b>שינויים במערכת — עם Claude</b>
             <span className="row gap-s">
-              <button
-                className="btn-link small"
-                onClick={() => window.open(SESSION_URL, 'claude-dev', 'width=560,height=900')}
-                title="פותח בחלון צדדי את הצ'אט הישיר עם Claude — לבקשות דחופות"
-              >
-                <>צ'אט ישיר <Icon n="external" /></>
-              </button>
               <button className="icon-btn" onClick={() => setOpen(false)} aria-label="סגור">
                 ✕
               </button>

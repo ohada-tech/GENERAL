@@ -654,6 +654,11 @@ function renumber(ctx: Ctx, storyboardId: string, orderedIds: string[]) {
 }
 
 export function deleteShot(ctx: Ctx, shotId: string) {
+  // מחיקת שוט זמינה תמיד: בסטורי בורד מאושר (הגרסה הנוכחית) הוא נפתח קודם לעריכה,
+  // כך שבסגירת העריכה רק שוט שהשתנה (למשל זה שקיבל את הקריינות) יצטרך תמונה חדשה
+  const pre = getShot(ctx.db, shotId);
+  const preSb = pre ? getStoryboard(ctx.db, pre.storyboardId) : null;
+  if (pre && preSb?.status === 'approved' && currentStoryboard(ctx.db, pre.projectId)?.id === preSb.id) reopenStoryboard(ctx, pre.projectId);
   const { shot, sb } = mustDraftStoryboardOfShot(ctx, shotId);
   return tx(ctx.db, () => {
     // מוחקים את השוט, לא את הקריינות: הטקסט שלו עובר לשוט סמוך (קודם באותה סצנה, אחר כך הבא),

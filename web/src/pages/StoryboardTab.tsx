@@ -281,11 +281,14 @@ export function StoryboardTab({ detail, reload: reloadProject }: TabProps) {
                 </button>
                 {sb.status !== 'superseded' && <ShotFrameControls p={prod} shotId={s.id} />}
                 <ShotFixBox shot={s} fixing={fixing.has(s.id)} readOnly={readOnly} onChanged={refresh} />
-                {!readOnly && (
+                {sb.status !== 'superseded' && (
                   <div className="row end">
                     <ConfirmButton
                       disabled={act.busy}
-                      confirmLabel={s.narration?.trim() ? 'למחוק? הקריינות תעבור לשוט הסמוך' : 'בטוח? לחץ שוב'}
+                      confirmLabel={
+                        (sb.status === 'approved' ? 'הסטורי בורד ייפתח לעריכה. ' : '') +
+                        (s.narration?.trim() ? 'למחוק? הקריינות תעבור לשוט הסמוך' : 'בטוח? לחץ שוב')
+                      }
                       onConfirm={async () => {
                         await act.run(() => api.del(`/api/shots/${s.id}`));
                         if (openShot === s.id) setOpenShot(null);
@@ -451,6 +454,19 @@ function ShotEditor({
           {shot.revisionNote && <span className="small warn-text">↺ {shot.revisionNote}</span>}
           {dirty && <Tag tone="warn">לא נשמר</Tag>}
         </div>
+        {readOnly && !refsLocked && (
+          <ConfirmButton
+            disabled={act.busy}
+            confirmLabel={`הסטורי בורד ייפתח לעריכה. ${shot.narration?.trim() ? 'למחוק? הקריינות תעבור לשוט הסמוך' : 'בטוח? לחץ שוב'}`}
+            onConfirm={async () => {
+              await act.run(() => api.del(`/api/shots/${shot.id}`));
+              await onChanged();
+              onClose();
+            }}
+          >
+            מחק שוט
+          </ConfirmButton>
+        )}
         {!readOnly && (
           <div className="row gap-s">
             <button className="btn btn-sm" onClick={() => run(() => api.post(`/api/shots/${shot.id}/move`, { direction: 'up' }))} disabled={shot.number === 1 || act.busy}>

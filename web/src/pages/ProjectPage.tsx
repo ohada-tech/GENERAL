@@ -26,6 +26,7 @@ import { ProductionTab } from './ProductionTab';
 import { VoiceoverTab } from './VoiceoverTab';
 import { Icon } from '../components/Icon';
 import { UsageLine } from '../components/UsageLine';
+import { SystemNote } from '../components/SystemNote';
 import { RevisionsCard, type RevisionRound } from '../components/Revisions';
 
 export interface ProjectDetail {
@@ -213,6 +214,7 @@ export function ProjectPage({ health }: { health: Health | null }) {
         {tab === 'jobs' && <JobsTab {...props} />}
         {tab === 'settings' && <SettingsTab {...props} />}
       </div>
+      {!isCloud() && <SystemNote projectName={project.name} tab={tab} />}
         </div>
       </div>
 

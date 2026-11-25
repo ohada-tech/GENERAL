@@ -1101,3 +1101,7 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .shot-frame.st-approved { border-color: color-mix(in srgb, var(--ok) 55%, transparent); }
 .shot-frame.st-failed { border-color: color-mix(in srgb, var(--danger, #d33) 55%, transparent); }
 .shot-frame form input { width: 100%; }
+
+/* הערה למערכת — קבוע בתחתית כל לשונית בפרויקט */
+.system-note { margin-top: 24px; display: flex; flex-direction: column; gap: 8px; border-style: dashed; box-shadow: none; }
+.system-note textarea { width: 100%; resize: vertical; }
