@@ -309,11 +309,7 @@ export function Dashboard() {
                       <span className="t-stage">{cur.label}</span>
                       <span className="muted">{p.state.progress}%</span>
                     </div>
-                    {p.state.nextAction && !done && (
-                      <Link className="t-next" to={`/projects/${p.id}/${p.state.nextAction.tab}`}>
-                        הבא: <b>{p.state.nextAction.label}</b>
-                      </Link>
-                    )}
+                    {p.state.nextAction && !done && <NextStep p={p} onDone={reload} />}
                     {p.revisions?.open && (
                       <Tag tone={p.revisions.open.number > p.revisions.included ? 'warn' : 'info'}>
                         🔁 סבב תיקונים {p.revisions.open.number} · {p.revisions.open.done}/{p.revisions.open.total}
@@ -396,6 +392,37 @@ function DoneToggle({ p, done, onDone }: { p: ProjectSummary; done: boolean; onD
       <button className="btn btn-sm btn-ghost" disabled={act.busy} onClick={toggle} title={done ? 'החזרה להפקה' : 'הסרטון נמסר והלקוח אישר — הפרויקט יעבור ל"נמסרו"'}>
         {done ? '↺ החזר להפקה' : <><Icon n="checkCircle" /> נסגר ואושר</>}
       </button>
+      <InlineError error={act.error} onClose={act.clearError} />
+    </div>
+  );
+}
+
+/** "הבא": מריץ את הצעד בעצמו כשאפשר (תסריט, סטורי בורד, פיילוט אנלימיטד), אחרת פותח את המקום הנכון */
+function NextStep({ p, onDone }: { p: ProjectSummary; onDone: () => Promise<void> | void }) {
+  const act = useAction();
+  const navigate = useNavigate();
+  const [msg, setMsg] = useState('');
+  const a = p.state.nextAction!;
+  const runs = a.kind === 'task';
+  return (
+    <div onClick={(e) => { e.stopPropagation(); e.preventDefault(); }}>
+      <button
+        className="t-next btn-link"
+        disabled={act.busy}
+        title={runs ? 'מריץ את הצעד הזה עכשיו' : 'פותח את המקום בפרויקט'}
+        onClick={async () => {
+          const r = await act.run(() => api.post<{ done?: string; navigate?: string }>(`/api/projects/${p.id}/next`));
+          if (!r) return;
+          if (r.navigate) navigate(`/projects/${p.id}/${r.navigate}`);
+          else {
+            setMsg(r.done ?? 'הופעל');
+            await onDone();
+          }
+        }}
+      >
+        {runs ? '▶ ' : ''}הבא: <b>{a.label}</b>
+      </button>
+      {msg && <div className="small ok-text">✓ {msg}</div>}
       <InlineError error={act.error} onClose={act.clearError} />
     </div>
   );

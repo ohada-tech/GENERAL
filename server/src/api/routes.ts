@@ -29,6 +29,7 @@ import * as rev from '../services/revisions.js';
 import * as hf from '../services/hf-runs.js';
 import * as agent from '../services/agent-tasks.js';
 import * as act from '../services/actions.js';
+import { runNextStep } from '../services/next-step.js';
 import * as secrets from '../services/secrets.js';
 import * as learning from '../services/learning.js';
 import * as knowledge from '../services/knowledge.js';
@@ -58,6 +59,8 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
   }));
 
   app.get('/api/dashboard', async () => dashboard(ctx));
+  // "הבא" שמבצע את הצעד הבא בעצמו (או מחזיר לאן לעבור)
+  app.post('/api/projects/:id/next', async (req) => runNextStep(ctx, (req.params as any).id));
 
   /* ---------- projects ---------- */
   app.post('/api/projects', async (req, reply) => {

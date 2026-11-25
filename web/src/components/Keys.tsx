@@ -66,11 +66,14 @@ export function KeysTag({ keys, onClick }: { keys: Keys | undefined; onClick: ()
   const shown = ORDER.filter((k) => keys[k] && (k !== 'kie' || keys[k].configured));
   const all = shown.every((k) => ok(keys[k]));
   const text = shown.map((k) => `${META[k].name}${where(keys[k])} ${ok(keys[k]) ? '✓' : '✗'}`).join(' · ');
+  // המחשב מריץ את ChatGPT ו-Claude Code — כשהוא כבוי, תסריטים ותמונות ממתינים בתור
+  const vias = [keys.openai?.via, keys.anthropic?.via].filter(Boolean);
+  const pcOff = vias.length > 0 && vias.every((v) => !v!.online);
   return (
-    <button className="tag-btn" onClick={onClick} title="מפתחות API — נשמרים בשרת בלבד">
-      <Tag tone={all ? 'auto' : 'warn'}>
-        <span className="keys-full">{all ? `מחובר: ${text}` : `מפתחות: ${text}`}</span>
-        <span className="keys-short"><Icon n="key" /> <Icon n={all ? 'check' : 'alert'} /></span>
+    <button className="tag-btn" onClick={onClick} title={pcOff ? 'המחשב כבוי: כתיבה, סטורי בורד ותמונות ממתינים עד שיידלק' : 'מפתחות API — נשמרים בשרת בלבד'}>
+      <Tag tone={pcOff ? 'danger' : all ? 'auto' : 'warn'}>
+        <span className="keys-full">{pcOff ? `🖥 המחשב כבוי — העבודה ממתינה · ${text}` : all ? `מחובר: ${text}` : `מפתחות: ${text}`}</span>
+        <span className="keys-short">{pcOff ? '🖥 כבוי' : <><Icon n="key" /> <Icon n={all ? 'check' : 'alert'} /></>}</span>
       </Tag>
     </button>
   );

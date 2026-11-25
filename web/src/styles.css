@@ -1105,3 +1105,4 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 /* הערה למערכת — קבוע בתחתית כל לשונית בפרויקט */
 .system-note { margin-top: 24px; display: flex; flex-direction: column; gap: 8px; border-style: dashed; box-shadow: none; }
 .system-note textarea { width: 100%; resize: vertical; }
+.t-next.btn-link { width: 100%; text-align: right; padding: 10px 0 0; color: var(--text-2); font-size: 13px; }
