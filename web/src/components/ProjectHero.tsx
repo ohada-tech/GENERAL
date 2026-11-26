@@ -167,6 +167,11 @@ export function StageRail({
             </Link>
           </li>
         ))}
+        <li>
+          <Link to={`/photoedit?project=${id}`} className="rail-link" title="עורך עיצובים סטטיים: מודעות, באנרים ופוסטים, עם תמונות הפרויקט">
+            🎨 PHOTOEDIT
+          </Link>
+        </li>
       </ul>
     </nav>
   );

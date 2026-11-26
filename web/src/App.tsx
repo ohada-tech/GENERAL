@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { APP_VERSION } from '@apos/shared';
 import { WhatsNew } from './pages/WhatsNew';
-import { Link, Route, Routes } from 'react-router-dom';
+import { Link, Route, Routes, useLocation } from 'react-router-dom';
 import { BrandLockup } from './components/Brand';
 import { KeysModal, KeysTag, type Keys, type KeyStatus } from './components/Keys';
 import { Login } from './components/Login';
@@ -18,6 +18,9 @@ import { DevChat } from './components/DevChat';
 import { ProjectPage } from './pages/ProjectPage';
 import { Icon, IconDefs } from './components/Icon';
 
+/** PHOTOEDIT — עורך העיצובים הסטטיים; נטען רק כשנכנסים אליו */
+const PhotoEditApp = lazy(() => import('./photoedit/ui/PhotoEditApp'));
+
 export interface Health {
   ok: boolean;
   owner: string;
@@ -31,6 +34,7 @@ export interface Health {
 /** שער התחברות: בשרת הענן נדרשת סיסמה; מקומית ובגרסת claude.ai — לא. */
 export function App() {
   const me = useApi<{ authRequired: boolean; authenticated: boolean }>(isCloud() ? null : '/api/auth/me');
+  const { pathname } = useLocation();
   useEffect(() => {
     const on = () => void me.reload();
     window.addEventListener('apos:unauthorized', on);
@@ -38,6 +42,7 @@ export function App() {
   }, [me.reload]);
   if (!isCloud() && me.loading && !me.data) return <Loading />;
   if (me.data?.authRequired && !me.data.authenticated) return <Login onDone={me.reload} />;
+  if (pathname.startsWith('/photoedit')) return <Suspense fallback={<Loading />}><PhotoEditApp /></Suspense>;
   return <Shell canLogout={!!me.data?.authRequired} />;
 }
 
@@ -60,6 +65,9 @@ function Shell({ canLogout }: { canLogout: boolean }) {
         </Link>
         <div className="topbar-side">
           {!isCloud() && <InstallApp />}
+          <Link to="/photoedit" className="btn-link small" title="PHOTOEDIT — עורך עיצובים סטטיים (מודעות, באנרים, פוסטים)">
+            PHOTOEDIT
+          </Link>
           <Link to="/learning" className="btn-link small" title="ספר הידע והכללים שהמערכת למדה">
             <Icon n="brain" holo /> המוח
           </Link>

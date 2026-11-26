@@ -1,0 +1,391 @@
+/**
+ * Canvas Engine — מרכיב את המסמך מהשכבות: תוכן, מסכה, אפקטים, Clipping, קבוצות ושכבות התאמה.
+ * מנותק מהממשק: מקבל מסמך ומחזיר קנבס. משמש גם לתצוגה (בסקאלה מוקטנת בזמן גרירה), גם לייצוא וגם לתמונות ממוזערות.
+ */
+import { applyAdjust } from './adjust';
+import type { AdjustLayer, Doc, Layer, Mask, Rect, ShapeLayer, XfLayer } from './model';
+import { aabb, apply, cornersOf, ctx2d, gco, hasEffects, isXf, newCanvas, rgba, xfMatrix } from './model';
+import { drawText, layoutText } from './text';
+
+/* ---------- מידות ומטריצות ---------- */
+
+export function localSize(l: XfLayer): { w: number; h: number } {
+  if (l.type === 'raster') return { w: l.canvas.width, h: l.canvas.height };
+  if (l.type === 'shape') return { w: l.w, h: l.h };
+  const L = layoutText(l);
+  return { w: L.w, h: L.h };
+}
+
+export function layerMatrix(l: XfLayer): DOMMatrix {
+  const { w, h } = localSize(l);
+  return xfMatrix(l.t, w, h);
+}
+
+/** תיבת התוכן במרחב המקומי. לפיקסלים — רק האזור הלא-שקוף (כמו תיבת הטרנספורם בפוטושופ) */
+const boundsCache = new WeakMap<HTMLCanvasElement, Rect | null>();
+export function contentBounds(c: HTMLCanvasElement): Rect | null {
+  if (boundsCache.has(c)) return boundsCache.get(c)!;
+  const { width: w, height: h } = c;
+  const d = ctx2d(c).getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) {
+    const row = y * w * 4;
+    for (let x = 0; x < w; x++) {
+      if (d[row + x * 4 + 3] > 2) {
+        if (x < x0) x0 = x; if (x > x1) x1 = x;
+        if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+    }
+  }
+  const r = x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  boundsCache.set(c, r);
+  return r;
+}
+
+export function localBox(l: XfLayer): Rect {
+  if (l.type === 'raster') return contentBounds(l.canvas) ?? { x: 0, y: 0, w: l.canvas.width, h: l.canvas.height };
+  const { w, h } = localSize(l);
+  return { x: 0, y: 0, w, h };
+}
+
+/** ארבע הפינות של תיבת השכבה במסמך */
+export function layerQuad(l: XfLayer) {
+  const m = layerMatrix(l), b = localBox(l);
+  return [
+    apply(m, { x: b.x, y: b.y }), apply(m, { x: b.x + b.w, y: b.y }),
+    apply(m, { x: b.x + b.w, y: b.y + b.h }), apply(m, { x: b.x, y: b.y + b.h }),
+  ];
+}
+
+export function layerBounds(l: Layer): Rect | null {
+  if (isXf(l)) return aabb(layerQuad(l));
+  if (l.type === 'group') {
+    let r: Rect | null = null;
+    for (const c of l.children) {
+      const b = layerBounds(c);
+      if (b) r = r ? { x: Math.min(r.x, b.x), y: Math.min(r.y, b.y), w: Math.max(r.x + r.w, b.x + b.w) - Math.min(r.x, b.x), h: Math.max(r.y + r.h, b.y + b.h) - Math.min(r.y, b.y) } : b;
+    }
+    return r;
+  }
+  return null;
+}
+
+/* ---------- מאגר קנבסים לכל מעבר רינדור ---------- */
+
+class Pool {
+  private free = new Map<string, HTMLCanvasElement[]>();
+  private used: Array<[string, HTMLCanvasElement]> = [];
+  get(w: number, h: number) {
+    const k = `${w}x${h}`;
+    const list = this.free.get(k);
+    const c = list?.pop() ?? newCanvas(w, h);
+    const x = c.getContext('2d')!;
+    x.setTransform(1, 0, 0, 1, 0, 0);
+    x.globalAlpha = 1;
+    x.globalCompositeOperation = 'source-over';
+    x.clearRect(0, 0, w, h);
+    this.used.push([k, c]);
+    return c;
+  }
+  reset() {
+    for (const [k, c] of this.used) {
+      if (!this.free.has(k)) this.free.set(k, []);
+      const l = this.free.get(k)!;
+      if (l.length < 24) l.push(c);
+    }
+    this.used = [];
+  }
+}
+const pool = new Pool();
+
+/* ---------- ציור תוכן במרחב המקומי ---------- */
+
+export function shapePath(ctx: CanvasRenderingContext2D, l: Pick<ShapeLayer, 'shape' | 'w' | 'h' | 'radius' | 'sides'>) {
+  const { w, h } = l;
+  ctx.beginPath();
+  switch (l.shape) {
+    case 'rect': {
+      const r = Math.min(l.radius, w / 2, h / 2);
+      if (r > 0) ctx.roundRect(0, 0, w, h, r);
+      else ctx.rect(0, 0, w, h);
+      break;
+    }
+    case 'ellipse':
+      ctx.ellipse(w / 2, h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+      break;
+    case 'line':
+      ctx.moveTo(0, h / 2);
+      ctx.lineTo(w, h / 2);
+      break;
+    case 'triangle':
+      ctx.moveTo(w / 2, 0); ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath();
+      break;
+    case 'polygon':
+    case 'star': {
+      const n = Math.max(3, Math.round(l.sides));
+      const pts = l.shape === 'star' ? n * 2 : n;
+      for (let i = 0; i < pts; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI * 2) / pts;
+        const k = l.shape === 'star' && i % 2 ? 0.45 : 1;
+        const x = w / 2 + Math.cos(a) * (w / 2) * k, y = h / 2 + Math.sin(a) * (h / 2) * k;
+        if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      }
+      ctx.closePath();
+      break;
+    }
+  }
+}
+
+function drawShape(ctx: CanvasRenderingContext2D, l: ShapeLayer) {
+  shapePath(ctx, l);
+  const f = l.fill;
+  if (l.shape === 'line') {
+    ctx.strokeStyle = f.type === 'none' ? l.stroke.color : f.color;
+    ctx.lineWidth = Math.max(1, l.h);
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    return;
+  }
+  if (f.type !== 'none') {
+    if (f.type === 'solid') ctx.fillStyle = f.color;
+    else {
+      let g: CanvasGradient;
+      if (f.type === 'linear') {
+        const a = (f.angle * Math.PI) / 180, cx = l.w / 2, cy = l.h / 2;
+        const r = Math.abs(Math.cos(a) * l.w / 2) + Math.abs(Math.sin(a) * l.h / 2);
+        g = ctx.createLinearGradient(cx - Math.cos(a) * r, cy + Math.sin(a) * r, cx + Math.cos(a) * r, cy - Math.sin(a) * r);
+      } else g = ctx.createRadialGradient(l.w / 2, l.h / 2, 0, l.w / 2, l.h / 2, Math.max(l.w, l.h) / 2);
+      g.addColorStop(0, f.color);
+      g.addColorStop(1, f.color2);
+      ctx.fillStyle = g;
+    }
+    ctx.fill();
+  }
+  if (l.stroke.on && l.stroke.width > 0) {
+    ctx.strokeStyle = l.stroke.color;
+    ctx.lineWidth = l.stroke.width;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  }
+}
+
+export interface RenderOpts {
+  scale: number;
+  /** שכבות להסתרה (טקסט שנערך כרגע על הקנבס) */
+  hide?: Set<string>;
+  /** ציור חי: תמונת פיקסלים/מסכה זמנית לשכבה */
+  live?: { layerId: string; target: 'pixels' | 'mask'; canvas: HTMLCanvasElement } | null;
+  /** פיקסלים צפים (Move עם בחירה) — במרחב המסמך, מעל השכבה */
+  floating?: { layerId: string; canvas: HTMLCanvasElement; dx: number; dy: number } | null;
+  /** בלי אפקטים ושכבות התאמה — לרינדור מהיר במיוחד */
+  draft?: boolean;
+}
+
+export function drawLayerContent(ctx: CanvasRenderingContext2D, l: XfLayer, o: RenderOpts) {
+  if (l.type === 'raster') ctx.drawImage(o.live && o.live.layerId === l.id && o.live.target === 'pixels' ? o.live.canvas : l.canvas, 0, 0);
+  else if (l.type === 'shape') drawShape(ctx, l);
+  else drawText(ctx, l);
+}
+
+const maskOf = (l: Layer, o: RenderOpts): Mask | null => {
+  if (o.live && o.live.layerId === l.id && o.live.target === 'mask') return { canvas: o.live.canvas, enabled: true };
+  return l.mask && l.mask.enabled ? l.mask : null;
+};
+
+/** שכבה אחת (או קבוצה) כקנבס בגודל המסמך, אחרי מסכה ואפקטים — לפני מיזוג */
+function renderLayer(l: Layer, doc: Doc, o: RenderOpts): HTMLCanvasElement | null {
+  const W = Math.round(doc.width * o.scale), H = Math.round(doc.height * o.scale);
+  let c: HTMLCanvasElement;
+  if (l.type === 'group') {
+    c = pool.get(W, H);
+    renderList(l.children, doc, o, c);
+  } else if (isXf(l)) {
+    c = pool.get(W, H);
+    const x = c.getContext('2d')!;
+    const m = layerMatrix(l);
+    x.setTransform(new DOMMatrix().scaleSelf(o.scale, o.scale).multiplySelf(m));
+    x.imageSmoothingQuality = 'high';
+    drawLayerContent(x, l, o);
+    if (o.floating && o.floating.layerId === l.id) {
+      x.setTransform(o.scale, 0, 0, o.scale, 0, 0);
+      x.drawImage(o.floating.canvas, o.floating.dx, o.floating.dy);
+    }
+    x.setTransform(1, 0, 0, 1, 0, 0);
+  } else return null;
+
+  const mask = maskOf(l, o);
+  if (mask) {
+    const x = c.getContext('2d')!;
+    x.globalCompositeOperation = 'destination-in';
+    x.drawImage(mask.canvas, 0, 0, W, H);
+    x.globalCompositeOperation = 'source-over';
+  }
+  if (!o.draft && hasEffects(l.fx)) c = withEffects(c, l, o);
+  return c;
+}
+
+function silhouette(src: HTMLCanvasElement, color: string, alpha = 1) {
+  const s = pool.get(src.width, src.height), x = s.getContext('2d')!;
+  x.drawImage(src, 0, 0);
+  x.globalCompositeOperation = 'source-in';
+  x.fillStyle = rgba(color, alpha);
+  x.fillRect(0, 0, s.width, s.height);
+  x.globalCompositeOperation = 'source-over';
+  return s;
+}
+
+function withEffects(content: HTMLCanvasElement, l: Layer, o: RenderOpts): HTMLCanvasElement {
+  const { width: W, height: H } = content;
+  const fx = l.fx, s = o.scale;
+  const out = pool.get(W, H), x = out.getContext('2d')!;
+  const far = W + H + 200;
+  if (fx.shadow.on) {
+    const a = (fx.shadow.angle * Math.PI) / 180;
+    x.save();
+    x.shadowColor = rgba(fx.shadow.color, fx.shadow.opacity);
+    x.shadowBlur = fx.shadow.blur * s;
+    x.shadowOffsetX = -Math.cos(a) * fx.shadow.distance * s + far;
+    x.shadowOffsetY = Math.sin(a) * fx.shadow.distance * s;
+    x.drawImage(content, -far, 0);
+    x.restore();
+  }
+  if (fx.glow.on) {
+    x.save();
+    x.shadowColor = rgba(fx.glow.color, fx.glow.opacity);
+    x.shadowBlur = fx.glow.size * s;
+    x.shadowOffsetX = far;
+    x.drawImage(content, -far, 0);
+    x.drawImage(content, -far, 0);
+    x.restore();
+  }
+  if (fx.stroke.on && fx.stroke.width > 0) {
+    const st = pool.get(W, H), sx = st.getContext('2d')!;
+    if (l.type === 'text' && !(l.mask && l.mask.enabled)) {
+      sx.setTransform(new DOMMatrix().scaleSelf(s, s).multiplySelf(layerMatrix(l)));
+      drawText(sx, l, fx.stroke.color, { width: fx.stroke.width, color: fx.stroke.color });
+      sx.setTransform(1, 0, 0, 1, 0, 0);
+    } else {
+      const sil = silhouette(content, fx.stroke.color);
+      const r = fx.stroke.width * s;
+      for (const k of r > 6 ? [1, 0.7, 0.4] : [1]) {
+        const steps = Math.min(64, Math.max(12, Math.round(r * k * 3)));
+        for (let i = 0; i < steps; i++) {
+          const a = (i / steps) * Math.PI * 2;
+          sx.drawImage(sil, Math.cos(a) * r * k, Math.sin(a) * r * k);
+        }
+      }
+    }
+    x.globalAlpha = fx.stroke.opacity;
+    x.drawImage(st, 0, 0);
+    x.globalAlpha = 1;
+  }
+  x.drawImage(content, 0, 0);
+  if (fx.overlay.on) x.drawImage(silhouette(content, fx.overlay.color, fx.overlay.opacity), 0, 0);
+  return out;
+}
+
+function adjustInto(target: HTMLCanvasElement, l: AdjustLayer, doc: Doc, o: RenderOpts) {
+  const x = target.getContext('2d')!;
+  const img = x.getImageData(0, 0, target.width, target.height);
+  applyAdjust(img, l.kind, l.p);
+  const mask = maskOf(l, o);
+  if (!mask && l.opacity >= 1) { x.putImageData(img, 0, 0); return; }
+  const a = pool.get(target.width, target.height), ax = a.getContext('2d')!;
+  ax.putImageData(img, 0, 0);
+  if (mask) {
+    ax.globalCompositeOperation = 'destination-in';
+    ax.drawImage(mask.canvas, 0, 0, a.width, a.height);
+  }
+  x.globalAlpha = l.opacity;
+  x.globalCompositeOperation = 'source-atop';
+  x.drawImage(a, 0, 0);
+  x.globalAlpha = 1;
+  x.globalCompositeOperation = 'source-over';
+  void doc;
+}
+
+function renderList(layers: Layer[], doc: Doc, o: RenderOpts, target: HTMLCanvasElement) {
+  const tx = target.getContext('2d')!;
+  for (let i = 0; i < layers.length; i++) {
+    const l = layers[i];
+    if (l.clip && i > 0 && layers[i - 1] && !(layers[i - 1].type === 'adjust' && !layers[i - 1].clip)) continue;
+    if (!l.visible || o.hide?.has(l.id)) {
+      // הסתרת בסיס מסתירה גם את השכבות שחתוכות אליו
+      continue;
+    }
+    if (l.type === 'adjust') {
+      if (!o.draft) adjustInto(target, l, doc, o);
+      continue;
+    }
+    const b = renderLayer(l, doc, o);
+    if (!b) continue;
+    for (let j = i + 1; j < layers.length && layers[j].clip; j++) {
+      const cl = layers[j];
+      if (!cl.visible || o.hide?.has(cl.id)) continue;
+      if (cl.type === 'adjust') { if (!o.draft) adjustInto(b, cl, doc, o); continue; }
+      const lc = renderLayer(cl, doc, o);
+      if (!lc) continue;
+      const lx = lc.getContext('2d')!;
+      lx.globalCompositeOperation = 'destination-in';
+      lx.drawImage(b, 0, 0);
+      lx.globalCompositeOperation = 'source-over';
+      const bx = b.getContext('2d')!;
+      bx.globalAlpha = cl.opacity;
+      bx.globalCompositeOperation = gco(cl.blend);
+      bx.drawImage(lc, 0, 0);
+      bx.globalAlpha = 1;
+      bx.globalCompositeOperation = 'source-over';
+    }
+    tx.globalAlpha = l.opacity;
+    tx.globalCompositeOperation = gco(l.blend);
+    tx.drawImage(b, 0, 0);
+    tx.globalAlpha = 1;
+    tx.globalCompositeOperation = 'source-over';
+  }
+}
+
+/** מרכיב את כל המסמך לתוך target (שיוגדל לגודל המסמך כפול scale) */
+export function renderDoc(doc: Doc, o: RenderOpts, target?: HTMLCanvasElement): HTMLCanvasElement {
+  const W = Math.max(1, Math.round(doc.width * o.scale)), H = Math.max(1, Math.round(doc.height * o.scale));
+  const out = target ?? newCanvas(W, H);
+  if (out.width !== W || out.height !== H) { out.width = W; out.height = H; }
+  const x = out.getContext('2d')!;
+  x.setTransform(1, 0, 0, 1, 0, 0);
+  x.clearRect(0, 0, W, H);
+  try {
+    renderList(doc.layers, doc, o, out);
+  } finally {
+    pool.reset();
+  }
+  return out;
+}
+
+/** שכבה בודדת כקנבס בגודל המסמך (להמרה לפיקסלים, מיזוג, ייצוא SVG) */
+export function renderSingle(l: Layer, doc: Doc, scale = 1): HTMLCanvasElement {
+  const tmp: Doc = { ...doc, layers: [{ ...l, visible: true, clip: false }] as Layer[] };
+  return renderDoc(tmp, { scale });
+}
+
+/** תמונה ממוזערת של שכבה (לפאנל) */
+export function drawThumb(l: Layer, doc: Doc, c: HTMLCanvasElement) {
+  const x = c.getContext('2d')!;
+  x.clearRect(0, 0, c.width, c.height);
+  const k = Math.min(c.width / doc.width, c.height / doc.height);
+  const w = doc.width * k, h = doc.height * k;
+  x.save();
+  x.translate((c.width - w) / 2, (c.height - h) / 2);
+  x.scale(k, k);
+  if (isXf(l)) {
+    x.transform(...matrixArgs(layerMatrix(l)));
+    drawLayerContent(x, l, { scale: k });
+  } else if (l.type === 'group') {
+    const r = renderDoc({ ...doc, layers: l.children }, { scale: k, draft: true });
+    x.setTransform(1, 0, 0, 1, (c.width - w) / 2, (c.height - h) / 2);
+    x.drawImage(r, 0, 0);
+  }
+  x.restore();
+}
+
+export const matrixArgs = (m: DOMMatrix): [number, number, number, number, number, number] => [m.a, m.b, m.c, m.d, m.e, m.f];
+
+export { cornersOf };
