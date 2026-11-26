@@ -1108,3 +1108,19 @@ input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--b
 .t-next.btn-link { width: 100%; text-align: right; padding: 10px 0 0; color: var(--text-2); font-size: 13px; }
 .running-row { padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; }
 .running-row a { text-decoration: none; color: inherit; }
+
+/* סרגל עליון בטלפון: שורה 1 = הלוגו, שורה 2 = כל הכפתורים בשורה אחת עם גלילה הצידה (לא עולים על הלוגו) */
+@media (max-width: 640px) {
+  .topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; padding-block: 6px 4px; }
+  .topbar .brand { flex: 0 0 auto; }
+  .topbar .version-badge { display: none; }
+  .topbar-side {
+    flex: 1 1 100%; flex-wrap: nowrap; justify-content: flex-start; gap: 8px;
+    overflow-x: auto; overflow-y: visible; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    padding: 8px 2px 4px; margin-inline: -2px;
+  }
+  .topbar-side::-webkit-scrollbar { display: none; }
+  .topbar-side > * { flex: 0 0 auto; }
+  .topbar-side .tag { white-space: nowrap; }
+  .usage-line { gap: 2px 10px; }
+}
