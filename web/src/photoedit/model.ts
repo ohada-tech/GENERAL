@@ -39,7 +39,17 @@ export const defaultEffects = (): Effects => ({
 export const hasEffects = (fx: Effects) => fx.shadow.on || fx.stroke.on || fx.glow.on || fx.overlay.on;
 
 /** מסכת שכבה: קנבס בגודל המסמך; ערוץ האלפא = נראות (אטום = נראה) */
-export interface Mask { canvas: HTMLCanvasElement; enabled: boolean }
+export interface Mask {
+  canvas: HTMLCanvasElement;
+  enabled: boolean;
+  /** Density בפאנל Properties: 1 = מלא, 0 = המסכה לא מסתירה כלום (לא הרסני) */
+  density?: number;
+  /** Feather בפאנל Properties: ריכוך לא הרסני בפיקסלים */
+  feather?: number;
+}
+
+/** ערוץ אלפא שמור (Select > Save Selection) — נשמר עם המסמך */
+export interface Channel { id: string; name: string; canvas: HTMLCanvasElement }
 
 interface Base {
   id: string;
@@ -82,6 +92,8 @@ export interface TextLayer extends Base {
   style: TextStyle;
   /** null = Point Text (בלי גלישה); מספר = רוחב תיבת פסקה */
   boxW: number | null;
+  /** כיוון הטקסט: h = אופקי (ברירת מחדל, גם לקבצים ישנים), v = אנכי — תווים מלמעלה למטה, עמודות מימין לשמאל */
+  orientation?: 'h' | 'v';
 }
 
 export type ShapeKind = 'rect' | 'ellipse' | 'line' | 'triangle' | 'polygon' | 'star';
@@ -105,7 +117,13 @@ export type AdjustKind =
 
 export interface AdjustLayer extends Base { type: 'adjust'; kind: AdjustKind; p: Record<string, any> }
 
-export interface GroupLayer extends Base { type: 'group'; children: Layer[]; open: boolean }
+/**
+ * Artboard (משטח עבודה): קבוצה ברמה העליונה עם מלבן משלה במרחב המסמך. הילדים נחתכים לגבולות המלבן
+ * ומעליהם/מתחתם רקע (bg = צבע או 'transparent'). שכבות מחוץ לכל משטח = Pasteboard, לא מיוצאות.
+ */
+export interface ArtboardSpec { x: number; y: number; w: number; h: number; bg: string }
+
+export interface GroupLayer extends Base { type: 'group'; children: Layer[]; open: boolean; artboard?: ArtboardSpec }
 
 export type Layer = RasterLayer | TextLayer | ShapeLayer | AdjustLayer | GroupLayer;
 export type XfLayer = RasterLayer | TextLayer | ShapeLayer;
@@ -121,6 +139,8 @@ export interface Doc {
   layers: Layer[]; // אינדקס 0 = תחתונה
   guides: { v: number[]; h: number[] };
   selection: HTMLCanvasElement | null;
+  /** בחירות שמורות (Save/Load Selection) */
+  channels?: Channel[];
   fonts: Array<{ family: string; data: string }>;
   projectId: string | null;
   serverId: string | null;
@@ -234,7 +254,7 @@ export function cloneLayer(l: Layer, newId = false): Layer {
     case 'text': return { ...(common as TextLayer), t: { ...l.t }, style: { ...l.style } };
     case 'shape': return { ...(common as ShapeLayer), t: { ...l.t }, fill: { ...l.fill }, stroke: { ...l.stroke } };
     case 'adjust': return { ...(common as AdjustLayer), p: JSON.parse(JSON.stringify(l.p)) };
-    case 'group': return { ...(common as GroupLayer), children: l.children.map((c) => cloneLayer(c, newId)) };
+    case 'group': return { ...(common as GroupLayer), ...(l.artboard ? { artboard: { ...l.artboard } } : {}), children: l.children.map((c) => cloneLayer(c, newId)) };
   }
 }
 

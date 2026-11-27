@@ -2,7 +2,7 @@
  * Canvas Engine — מרכיב את המסמך מהשכבות: תוכן, מסכה, אפקטים, Clipping, קבוצות ושכבות התאמה.
  * מנותק מהממשק: מקבל מסמך ומחזיר קנבס. משמש גם לתצוגה (בסקאלה מוקטנת בזמן גרירה), גם לייצוא וגם לתמונות ממוזערות.
  */
-import { applyAdjust } from './adjust';
+import { applyAdjust, blurCanvas } from './adjust';
 import type { AdjustLayer, Doc, Layer, Mask, Rect, ShapeLayer, XfLayer } from './model';
 import { aabb, apply, cornersOf, ctx2d, gco, hasEffects, isXf, newCanvas, rgba, xfMatrix } from './model';
 import { drawText, layoutText } from './text';
@@ -60,6 +60,8 @@ export function layerQuad(l: XfLayer) {
 export function layerBounds(l: Layer): Rect | null {
   if (isXf(l)) return aabb(layerQuad(l));
   if (l.type === 'group') {
+    // משטח עבודה: התוכן נחתך לגבולות המשטח, ולכן התיבה שלו היא המלבן עצמו
+    if (l.artboard) return { x: l.artboard.x, y: l.artboard.y, w: l.artboard.w, h: l.artboard.h };
     let r: Rect | null = null;
     for (const c of l.children) {
       const b = layerBounds(c);
@@ -188,9 +190,51 @@ export function drawLayerContent(ctx: CanvasRenderingContext2D, l: XfLayer, o: R
 }
 
 const maskOf = (l: Layer, o: RenderOpts): Mask | null => {
-  if (o.live && o.live.layerId === l.id && o.live.target === 'mask') return { canvas: o.live.canvas, enabled: true };
-  return l.mask && l.mask.enabled ? l.mask : null;
+  if (o.live && o.live.layerId === l.id && o.live.target === 'mask') return { canvas: effectiveMask({ ...(l.mask ?? { enabled: true }), canvas: o.live.canvas }), enabled: true };
+  return l.mask && l.mask.enabled ? { canvas: effectiveMask(l.mask), enabled: true } : null;
 };
+
+/* ---------- Density / Feather של מסכה (לא הרסני, עם מטמון לפי קנבס וערכים) ---------- */
+
+const effCache = new WeakMap<HTMLCanvasElement, { d: number; f: number; c: HTMLCanvasElement }>();
+
+/** המסכה כפי שהיא חלה בפועל: ריכוך (Feather) ואז צפיפות (Density: 0 = לא מסתירה כלום) */
+export function effectiveMask(m: Pick<Mask, 'canvas' | 'density' | 'feather'>): HTMLCanvasElement {
+  const d = m.density ?? 1, f = m.feather ?? 0;
+  if (d >= 1 && f <= 0) return m.canvas;
+  const hit = effCache.get(m.canvas);
+  if (hit && hit.d === d && hit.f === f) return hit.c;
+  const w = m.canvas.width, h = m.canvas.height;
+  let c = m.canvas;
+  if (f > 0) {
+    // ריפוד בהמשך הקצוות, כדי שמסכה שחושפת הכול לא תדהה בשולי המסמך
+    const p = Math.ceil(f * 2.5) + 1;
+    const big = newCanvas(w + 2 * p, h + 2 * p), bx = big.getContext('2d')!;
+    bx.drawImage(c, p, p);
+    bx.drawImage(c, 0, 0, 1, h, 0, p, p, h);
+    bx.drawImage(c, w - 1, 0, 1, h, w + p, p, p, h);
+    bx.drawImage(c, 0, 0, w, 1, p, 0, w, p);
+    bx.drawImage(c, 0, h - 1, w, 1, p, h + p, w, p);
+    bx.drawImage(c, 0, 0, 1, 1, 0, 0, p, p);
+    bx.drawImage(c, w - 1, 0, 1, 1, w + p, 0, p, p);
+    bx.drawImage(c, 0, h - 1, 1, 1, 0, h + p, p, p);
+    bx.drawImage(c, w - 1, h - 1, 1, 1, w + p, h + p, p, p);
+    const bl = blurCanvas(big, f);
+    c = newCanvas(w, h);
+    c.getContext('2d')!.drawImage(bl, -p, -p);
+  }
+  if (d < 1) {
+    const o = newCanvas(w, h), x = o.getContext('2d')!;
+    x.fillStyle = `rgba(255,255,255,${1 - d})`;
+    x.fillRect(0, 0, w, h);
+    x.globalAlpha = d;
+    x.globalCompositeOperation = 'lighter';
+    x.drawImage(c, 0, 0);
+    c = o;
+  }
+  effCache.set(m.canvas, { d, f, c });
+  return c;
+}
 
 /** שכבה אחת (או קבוצה) כקנבס בגודל המסמך, אחרי מסכה ואפקטים — לפני מיזוג */
 function renderLayer(l: Layer, doc: Doc, o: RenderOpts): HTMLCanvasElement | null {
@@ -198,7 +242,22 @@ function renderLayer(l: Layer, doc: Doc, o: RenderOpts): HTMLCanvasElement | nul
   let c: HTMLCanvasElement;
   if (l.type === 'group') {
     c = pool.get(W, H);
+    const ab = l.artboard;
+    // משטח עבודה: רקע מתחת לילדים (כדי שמצבי מיזוג יחולו עליו), ואז חיתוך לגבולות המשטח
+    const s = o.scale, abx = ab ? ab.x * s : 0, aby = ab ? ab.y * s : 0, abw = ab ? ab.w * s : 0, abh = ab ? ab.h * s : 0;
+    if (ab && ab.bg !== 'transparent') {
+      const x = c.getContext('2d')!;
+      x.fillStyle = ab.bg === 'white' ? '#ffffff' : ab.bg === 'black' ? '#000000' : ab.bg;
+      x.fillRect(abx, aby, abw, abh);
+    }
     renderList(l.children, doc, o, c);
+    if (ab) {
+      const x = c.getContext('2d')!;
+      x.globalCompositeOperation = 'destination-in';
+      x.fillStyle = '#000';
+      x.fillRect(abx, aby, abw, abh);
+      x.globalCompositeOperation = 'source-over';
+    }
   } else if (isXf(l)) {
     c = pool.get(W, H);
     const x = c.getContext('2d')!;

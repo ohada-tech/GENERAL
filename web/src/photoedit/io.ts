@@ -6,8 +6,9 @@
 import type { Doc, Layer, XfLayer } from './model';
 import { ctx2d, isXf, newCanvas, rgba, uid } from './model';
 import { layerMatrix, localSize, renderDoc, renderSingle, shapePath } from './render';
-import { layoutText } from './text';
+import { layoutText, verticalChars } from './text';
 import { hasEffects } from './model';
+import { thumbSource } from './artboards';
 
 export const FORMAT = 'photoedit';
 export const VERSION = 1;
@@ -76,7 +77,7 @@ type SLayer = Record<string, any>;
 
 async function serLayer(l: Layer): Promise<SLayer> {
   const out: SLayer = { ...l };
-  if (l.mask) out.mask = { enabled: l.mask.enabled, png: await encodeCanvas(l.mask.canvas) };
+  if (l.mask) out.mask = { enabled: l.mask.enabled, density: l.mask.density ?? 1, feather: l.mask.feather ?? 0, png: await encodeCanvas(l.mask.canvas) };
   if (l.type === 'raster') { delete out.canvas; out.png = await encodeCanvas(l.canvas); }
   if (l.type === 'group') out.children = await Promise.all(l.children.map(serLayer));
   return out;
@@ -84,10 +85,22 @@ async function serLayer(l: Layer): Promise<SLayer> {
 
 async function deLayer(s: SLayer): Promise<Layer> {
   const l = { ...s } as any;
-  if (s.mask) l.mask = { enabled: s.mask.enabled !== false, canvas: await decodeCanvas(s.mask.png) };
+  if (s.mask) {
+    l.mask = { enabled: s.mask.enabled !== false, canvas: await decodeCanvas(s.mask.png) };
+    // שדות חדשים (Density/Feather) — קבצים ישנים בלעדיהם נטענים כרגיל
+    if (typeof s.mask.density === 'number' && s.mask.density < 1) l.mask.density = Math.max(0, s.mask.density);
+    if (typeof s.mask.feather === 'number' && s.mask.feather > 0) l.mask.feather = s.mask.feather;
+  }
   else l.mask = null;
   if (s.type === 'raster') { l.canvas = await decodeCanvas(s.png); delete l.png; }
   if (s.type === 'group') l.children = await Promise.all((s.children ?? []).map(deLayer));
+  // משטח עבודה (נוסף אחרי הגרסה הראשונה): קבצים ישנים בלי השדה נטענים כקבוצה רגילה
+  if (s.type === 'group') {
+    const a = s.artboard;
+    if (a && [a.x, a.y, a.w, a.h].every((v: unknown) => typeof v === 'number' && Number.isFinite(v)) && a.w > 0 && a.h > 0) {
+      l.artboard = { x: Math.round(a.x), y: Math.round(a.y), w: Math.round(a.w), h: Math.round(a.h), bg: typeof a.bg === 'string' ? a.bg : '#ffffff' };
+    } else delete l.artboard;
+  }
   l.rev = Date.now() + Math.random();
   return l as Layer;
 }
@@ -106,6 +119,7 @@ export async function serialize(doc: Doc) {
     projectId: doc.projectId,
     serverId: doc.serverId,
     layers: await Promise.all(doc.layers.map(serLayer)),
+    channels: await Promise.all((doc.channels ?? []).map(async (c) => ({ id: c.id, name: c.name, png: await encodeCanvas(c.canvas) }))),
   };
 }
 
@@ -124,6 +138,8 @@ export async function deserialize(j: any): Promise<Doc> {
     serverId: j.serverId ?? null,
     selection: null,
     layers: await Promise.all((j.layers ?? []).map(deLayer)),
+    // ערוצי אלפא נוספו אחרי הגרסה הראשונה — קובץ בלי השדה נפתח עם רשימה ריקה
+    channels: await Promise.all((Array.isArray(j.channels) ? j.channels : []).filter((c: any) => c && typeof c.png === 'string').map(async (c: any) => ({ id: c.id || uid(), name: c.name || 'Alpha', canvas: await decodeCanvas(c.png) }))),
   };
 }
 
@@ -219,6 +235,12 @@ async function svgLayer(l: XfLayer, attrs: string): Promise<string> {
     return `${grad}<g ${tf}${attrs}>${el}</g>`;
   }
   const L = layoutText(l), s = l.style;
+  if (L.vertical) {
+    // טקסט אנכי: תו לכל tspan, ממורכז בעמודה — כמו ברינדור על הקנבס
+    const adv = L.adv ?? s.size;
+    const spans = L.lines.flatMap((col, i) => verticalChars(col).map((ch, k) => `<tspan x="${L.w - (i + 0.5) * L.lineH}" y="${(k + 0.5) * adv}">${esc(ch)}</tspan>`));
+    return `<text ${tf}${attrs} text-anchor="middle" dominant-baseline="central" font-family="${esc(s.family)}" font-size="${s.size}" font-weight="${s.weight}"${s.italic ? ' font-style="italic"' : ''} fill="${s.color}">${spans.join('')}</text>`;
+  }
   const anchor = s.align === 'center' ? 'middle' : (s.align === 'right') === (s.dir === 'rtl') ? 'start' : 'end';
   const x = s.align === 'center' ? L.w / 2 : s.align === 'left' ? 0 : s.align === 'right' ? L.w : s.dir === 'rtl' ? L.w : 0;
   const spans = L.lines.map((line, i) => {
@@ -231,6 +253,18 @@ async function svgLayer(l: XfLayer, attrs: string): Promise<string> {
 
 /** תמונה ממוזערת לרשימת המסמכים */
 export function thumbBlob(doc: Doc, max = 360): Promise<Blob> {
+  // מסמך עם משטחי עבודה: כל המשטחים (בלי ה-Pasteboard), על רקע אפור כמו בסביבת העבודה
+  const ab = thumbSource(doc);
+  if (ab) {
+    const { crop } = ab;
+    const k = Math.min(1, max / Math.max(crop.w, crop.h));
+    const c = renderDoc(ab.doc, { scale: k });
+    const out = newCanvas(crop.w * k, crop.h * k), x = out.getContext('2d')!;
+    x.fillStyle = '#2b2c31';
+    x.fillRect(0, 0, out.width, out.height);
+    x.drawImage(c, -crop.x * k, -crop.y * k);
+    return new Promise((resolve) => out.toBlob((b) => resolve(b ?? new Blob()), 'image/png'));
+  }
   const k = Math.min(1, max / Math.max(doc.width, doc.height));
   const c = renderDoc(doc, { scale: k });
   const out = newCanvas(c.width, c.height), x = out.getContext('2d')!;

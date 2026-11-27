@@ -5,7 +5,12 @@ import type { Editor } from '../editor';
 import { cloud, recovery, deserialize, type CloudDoc, type RecoveryEntry, exportBlob } from '../io';
 import { comboOf, pretty, BROWSER_RESERVED } from '../shortcuts';
 import { AdjustParams } from './panels';
+import { SelectDialogs } from './select-dialogs';
+import { PatternPicker } from './paint-options';
+import { fillPattern } from '../patterns';
 import { Check, ColorField, Num, Seg, Slider, useEditor } from './widgets';
+import { exportDoc } from '../artboard-ops';
+import { hasArtboards } from '../artboards';
 
 export const PRESETS: Array<{ name: string; w: number; h: number; note?: string }> = [
   { name: 'Instagram Post', w: 1080, h: 1350, note: '4:5' },
@@ -19,7 +24,7 @@ export const PRESETS: Array<{ name: string; w: number; h: number; note?: string 
   { name: 'A4 (300dpi)', w: 2480, h: 3508 },
 ];
 
-function Modal({ title, children, onClose, footer, wide }: { title: string; children: ReactNode; onClose: () => void; footer?: ReactNode; wide?: boolean }) {
+export function Modal({ title, children, onClose, footer, wide }: { title: string; children: ReactNode; onClose: () => void; footer?: ReactNode; wide?: boolean }) {
   return (
     <div className="pe-modal-back" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className={`pe-modal ${wide ? 'wide' : ''}`} role="dialog" aria-label={title} onKeyDown={(e) => e.stopPropagation()}>
@@ -43,7 +48,8 @@ function NewDialog({ ed, projectId }: { ed: Editor; projectId: string | null }) 
   const [dpi, setDpi] = useState(72);
   const [bg, setBg] = useState<'white' | 'black' | 'transparent' | 'custom'>('white');
   const [custom, setCustom] = useState('#f5efe6');
-  const create = () => { ed.closeDialog(); ed.newDoc({ name, width: w, height: h, dpi, background: bg === 'custom' ? custom : bg, projectId }); };
+  const [artboard, setArtboard] = useState(false);
+  const create = () => { ed.closeDialog(); ed.newDoc({ name, width: w, height: h, dpi, background: bg === 'custom' ? custom : bg, projectId, artboard }); };
   return (
     <Modal title="New Document · מסמך חדש" onClose={() => ed.closeDialog()} wide
       footer={<><button type="button" className="pe-btn" onClick={() => ed.closeDialog()}>ביטול</button><button type="button" className="pe-btn primary" onClick={create}>Create · יצירה</button></>}>
@@ -61,11 +67,12 @@ function NewDialog({ ed, projectId }: { ed: Editor; projectId: string | null }) 
           <label className="pe-field">שם<input value={name} placeholder="ללא שם" onChange={(e) => setName(e.target.value)} autoFocus onKeyDown={(e) => { if (e.key === 'Enter') create(); }} /></label>
           <div className="pe-row"><Num label="Width" value={w} min={1} max={20000} unit="px" width={64} onChange={setW} /><button type="button" className="pe-small-btn" title="החלפת כיוון" onClick={() => { setW(h); setH(w); }}>⇄</button><Num label="Height" value={h} min={1} max={20000} unit="px" width={64} onChange={setH} /></div>
           <Num label="Resolution" value={dpi} min={1} max={1200} unit="ppi" width={52} onChange={setDpi} />
+          <Check label="Artboards · משטחי עבודה" checked={artboard} onChange={setArtboard} title="המסמך נפתח עם משטח עבודה אחד במידה הזו; אפשר להוסיף לידו משטחים במידות אחרות (Shift+V)" />
           <div className="pe-field">רקע
             <Seg value={bg} onChange={setBg} options={[['white', 'White'], ['black', 'Black'], ['transparent', 'Transparent'], ['custom', 'Custom']]} />
             {bg === 'custom' && <ColorField value={custom} onChange={setCustom} />}
           </div>
-          <p className="pe-hint">המסמך נוצר בדיוק במידות האלה. {projectId ? 'הוא יקושר לפרויקט שממנו נפתח PHOTOEDIT.' : ''}</p>
+          <p className="pe-hint">{artboard ? 'משטח עבודה אחד במידות האלה, עם הרקע שנבחר; לידו אפשר להוסיף עוד משטחים (פוסט, ריבוע, סטורי) שחולקים את אותם נכסים.' : 'המסמך נוצר בדיוק במידות האלה.'} {projectId ? 'הוא יקושר לפרויקט שממנו נפתח PHOTOEDIT.' : ''}</p>
         </div>
       </div>
     </Modal>
@@ -195,7 +202,9 @@ function SaveAsDialog({ ed }: { ed: Editor }) {
 /* ---------- Export ---------- */
 
 function ExportDialog({ ed }: { ed: Editor }) {
-  const d = ed.doc!;
+  // עם משטחי עבודה: מייצאים את המשטח הפעיל (מסמך זמני בגודל המשטח)
+  const abDoc = useMemo(() => (hasArtboards(ed.doc) ? exportDoc(ed) : null), [ed]);
+  const d = abDoc ?? ed.doc!;
   const [format, setFormat] = useState<'png' | 'jpg' | 'webp' | 'svg'>('png');
   const [quality, setQuality] = useState(92);
   const [scale, setScale] = useState(1);
@@ -227,6 +236,7 @@ function ExportDialog({ ed }: { ed: Editor }) {
         <button type="button" className="pe-btn primary" disabled={busy} onClick={() => go(false)}>{busy ? 'מייצא…' : 'הורדה'}</button>
       </>}>
       <label className="pe-field">שם קובץ<input value={name} onChange={(e) => setName(e.target.value)} /></label>
+      {abDoc && <p className="pe-hint" dir="rtl">מייצא את משטח העבודה הפעיל בלבד ({abDoc.width}×{abDoc.height}). לכל המשטחים: File › Artboards to Files.</p>}
       <div className="pe-field">פורמט<Seg value={format} onChange={setFormat} options={[['png', 'PNG'], ['jpg', 'JPG'], ['webp', 'WEBP'], ['svg', 'SVG']]} /></div>
       {(format === 'jpg' || format === 'webp') && <Slider label="איכות" value={quality} min={10} max={100} unit="%" onChange={setQuality} />}
       {format !== 'svg' && (
@@ -329,15 +339,18 @@ function FilterDialog({ ed, id }: { ed: Editor; id: string }) {
 }
 
 function FillDialog({ ed }: { ed: Editor }) {
-  const [src, setSrc] = useState<'fg' | 'bg' | 'custom' | 'white' | 'black'>('fg');
+  const [src, setSrc] = useState<'fg' | 'bg' | 'custom' | 'white' | 'black' | 'pattern'>('fg');
   const [custom, setCustom] = useState('#ff3b30');
+  const [pattern, setPattern] = useState(ed.opts.patternStamp.pattern);
   const [op, setOp] = useState(100);
-  const color = { fg: ed.fg, bg: ed.bg, custom, white: '#ffffff', black: '#000000' }[src];
+  const color = { fg: ed.fg, bg: ed.bg, custom, white: '#ffffff', black: '#000000', pattern: '' }[src];
   return (
     <Modal title="Fill · מילוי" onClose={() => ed.closeDialog()}
-      footer={<><button type="button" className="pe-btn" onClick={() => ed.closeDialog()}>ביטול</button><button type="button" className="pe-btn primary" onClick={() => { ed.closeDialog(); ed.fill(color, op / 100); }}>OK</button></>}>
-      <Seg value={src} onChange={setSrc} options={[['fg', 'צבע קדמי'], ['bg', 'צבע רקע'], ['custom', 'צבע…'], ['white', 'לבן'], ['black', 'שחור']]} />
+      footer={<><button type="button" className="pe-btn" onClick={() => ed.closeDialog()}>ביטול</button><button type="button" className="pe-btn primary" onClick={() => { ed.closeDialog(); if (src === 'pattern') fillPattern(ed, pattern, op / 100); else ed.fill(color, op / 100); }}>OK</button></>}>
+      <Seg value={src} onChange={setSrc} options={[['fg', 'צבע קדמי'], ['bg', 'צבע רקע'], ['custom', 'צבע…'], ['white', 'לבן'], ['black', 'שחור'], ['pattern', 'דפוס · Pattern']]} />
       {src === 'custom' && <ColorField value={custom} onChange={setCustom} />}
+      {src === 'pattern' && <PatternPicker value={pattern} onChange={setPattern} />}
+      {src === 'pattern' && <p className="pe-hint">דפוס משלכם: Edit &gt; Define Pattern (מהבחירה או מהשכבה).</p>}
       <Slider label="Opacity" value={op} min={1} max={100} unit="%" onChange={setOp} />
     </Modal>
   );
@@ -465,6 +478,6 @@ export function Dialogs({ ed, projectId }: { ed: Editor; projectId: string | nul
     case 'confirmClose': return <ConfirmClose ed={ed} index={dlg.data.index} />;
     case 'placeProject': return projectId ? <PlaceFromProject ed={ed} projectId={projectId} /> : null;
     case 'about': return <AboutDialog ed={ed} />;
-    default: return null;
+    default: return <SelectDialogs ed={ed} />;
   }
 }

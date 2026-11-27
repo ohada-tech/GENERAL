@@ -10,11 +10,21 @@ import {
   aabb, apply, clamp, cloneLayer, copyCanvas, ctx2d, defaultTextStyle, findLayer, flatForPanel, isXf, makeAdjust, makeGroup,
   makeRaster, makeShape, makeText, newCanvas, touch, uid, walk, xfLeaves, xfMatrix,
 } from './model';
-import { contentBounds, drawLayerContent, layerBounds, layerMatrix, layerQuad, localBox, localSize, renderDoc, renderSingle } from './render';
+import { contentBounds, drawLayerContent, effectiveMask, layerBounds, layerMatrix, layerQuad, localBox, localSize, renderDoc, renderSingle } from './render';
 import { allSel, combine, featherSel, growSel, invertSel, isEmpty, selBounds, selEdges, type SelMode } from './selection';
 import { Shortcuts, comboOf } from './shortcuts';
 import { clearTextCache, ensureFont, fontString, layoutText } from './text';
-import { TOOLS, type Tool, type ToolId } from './tools';
+import { TOOLS, type PtrEvt, type Tool, type ToolId } from './tools';
+import { antsSelection, paintSelectionOverlays } from './select-ops';
+import { runSelectCmd } from './select-cmds';
+import type { SelXf } from './tools-select';
+import { extraOpts, groupByKey, nextInGroup, OVERLAY_HOOKS, setGroupCurrent, groupCurrent, type ExtraOpts } from './tool-registry';
+import { runToolCmd } from './tool-cmds';
+import { abRect, artboardOf, artboardSnapTargets, artboardsOf, fitDocToArtboards, fitRect, hasArtboards, isArtboard, makeArtboard, offsetTree, paintArtboardBackdrop, paintArtboardFrames } from './artboards';
+import { autoNest, exportDoc, nudgeArtboards } from './artboard-ops';
+
+/** ראשית ה-Pasteboard המצטברת של כל תמונת מצב בהיסטוריה (לתיקון התצוגה בביטול/חזרה) */
+const snapOrigin = new WeakMap<object, { x: number; y: number }>();
 
 export interface DocState {
   doc: Doc;
@@ -32,6 +42,10 @@ export interface DocState {
   saving: boolean;
   saveError: string | null;
   fitted: boolean;
+  /** Quick Mask (Q): הבחירה מוצגת כאדום ונערכת במברשת/מחק/מעבר צבע */
+  qmask?: boolean;
+  /** Rotate View (R): סיבוב התצוגה במעלות סביב מרכז הקנבס — לא משנה פיקסלים */
+  rot?: number;
 }
 
 export interface Dialog { type: string; data?: any }
@@ -40,9 +54,10 @@ export interface ToolOpts {
   brush: { size: number; hardness: number; opacity: number; flow: number };
   eraser: { size: number; hardness: number; opacity: number; flow: number };
   clone: { size: number; hardness: number; opacity: number; flow: number; aligned: boolean };
-  marquee: { shape: 'rect' | 'ellipse'; feather: number; ratio: string };
-  lasso: { mode: 'free' | 'poly'; feather: number };
-  wand: { tolerance: number; contiguous: boolean; allLayers: boolean };
+  marquee: { shape: 'rect' | 'ellipse' | 'row' | 'col'; feather: number; ratio: string };
+  lasso: { mode: 'free' | 'poly' | 'magnetic'; feather: number; width: number; contrast: number; frequency: number };
+  wand: { mode: 'wand' | 'quick'; tolerance: number; contiguous: boolean; allLayers: boolean };
+  quick: { size: number; mode: 'new' | 'add' | 'sub'; allLayers: boolean; autoEnhance: boolean };
   gradient: { mode: 'gradient' | 'bucket'; type: 'linear' | 'radial'; reverse: boolean; opacity: number; tolerance: number; contiguous: boolean };
   shape: { kind: ShapeKind; fill: Fill; strokeOn: boolean; strokeColor: string; strokeWidth: number; radius: number; sides: number };
   text: TextStyle;
@@ -62,13 +77,15 @@ export class Editor {
   fg = '#000000';
   bg = '#ffffff';
   swatches = ['#000000', '#ffffff', '#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#00c7be', '#007aff', '#5856d6', '#af52de', '#ff2d55', '#a2845e', '#1c1c1e', '#8e8e93', '#f2f2f7', '#0a2540'];
-  opts: ToolOpts = {
+  opts: ToolOpts & ExtraOpts = {
+    ...extraOpts(),
     brush: { size: 40, hardness: 0.8, opacity: 1, flow: 1 },
     eraser: { size: 60, hardness: 0.8, opacity: 1, flow: 1 },
     clone: { size: 60, hardness: 0.6, opacity: 1, flow: 1, aligned: true },
     marquee: { shape: 'rect', feather: 0, ratio: 'free' },
-    lasso: { mode: 'free', feather: 0 },
-    wand: { tolerance: 32, contiguous: true, allLayers: true },
+    lasso: { mode: 'free', feather: 0, width: 10, contrast: 10, frequency: 57 },
+    wand: { mode: 'wand', tolerance: 32, contiguous: true, allLayers: true },
+    quick: { size: 30, mode: 'new', allLayers: true, autoEnhance: true },
     gradient: { mode: 'gradient', type: 'linear', reverse: false, opacity: 1, tolerance: 32, contiguous: true },
     shape: { kind: 'rect', fill: { type: 'solid', color: '#ff3b30', color2: '#ffcc00', angle: 90 }, strokeOn: false, strokeColor: '#000000', strokeWidth: 4, radius: 0, sides: 5 },
     text: defaultTextStyle(),
@@ -96,9 +113,20 @@ export class Editor {
     marquee?: { pts: Pt[]; closed: boolean } | null;
     rubber?: Rect | null;
     gradientLine?: { a: Pt; b: Pt } | null;
-    textEdit?: { layerId: string; isNew: boolean; before: string } | null;
+    /** mask = Type Mask: בסיום ההקלדה הטקסט הופך לבחירה והשכבה הזמנית נמחקת */
+    textEdit?: { layerId: string; isNew: boolean; before: string; mask?: boolean; prev?: { selected: string[]; active: string | null } } | null;
     cloneSrc?: Pt | null;
     cloneCursor?: Pt | null;
+    /** תצוגה מקדימה של בחירה (Select and Mask, Quick Selection, Transform Selection) במקום הבחירה */
+    selPreview?: { canvas: HTMLCanvasElement; mode: 'ants' | 'overlay' | 'black' | 'white' } | null;
+    /** Quick Mask: משיחה חיה על הבחירה */
+    qmask?: HTMLCanvasElement | null;
+    /** מסכה לבד (Alt+לחיצה) או Overlay אדום (מקש Backslash) */
+    maskView?: { layerId: string; mode: 'alone' | 'overlay' } | null;
+    /** Transform Selection */
+    selxf?: SelXf | null;
+    /** דיאלוג שדוגם צבע מהקנבס (Color Range) */
+    pick?: ((e: PtrEvt) => void) | null;
   } = {};
 
   /* ---------- מצב והאזנה לממשק ---------- */
@@ -133,7 +161,7 @@ export class Editor {
 
   attach(canvas: HTMLCanvasElement, rulerX: HTMLCanvasElement, rulerY: HTMLCanvasElement, host: HTMLDivElement) {
     this.canvas = canvas; this.rulerX = rulerX; this.rulerY = rulerY; this.overlayHost = host;
-    this.antsTimer = window.setInterval(() => { this.antsPhase = (this.antsPhase + 1) % 8; if (this.doc?.selection || this.live.marquee) this.redraw(false); }, 140);
+    this.antsTimer = window.setInterval(() => { this.antsPhase = (this.antsPhase + 1) % 8; if (this.doc?.selection || this.live.marquee || this.live.selPreview) this.redraw(false); }, 140);
     this.redraw();
   }
   detach() {
@@ -169,7 +197,7 @@ export class Editor {
     if (c.width !== Math.round(cw * dpr) || c.height !== Math.round(ch * dpr)) { c.width = Math.round(cw * dpr); c.height = Math.round(ch * dpr); }
     const x = c.getContext('2d')!;
     x.setTransform(dpr, 0, 0, dpr, 0, 0);
-    x.fillStyle = '#1f1f1f';
+    x.fillStyle = '#111216';
     x.fillRect(0, 0, cw, ch);
     if (!st) { this.paintRulers(); return; }
     if (!st.fitted && cw > 50) { this.fit(); st.fitted = true; }
@@ -184,6 +212,18 @@ export class Editor {
     }
     const z = st.zoom;
     const dx = st.panX, dy = st.panY, W = doc.width * z, H = doc.height * z;
+    // Rotate View: כל מה שבמרחב המסמך מצויר דרך סיבוב סביב מרכז הקנבס; שכבות-העל של הכלים (למטה) כבר במסך
+    const rot = st.rot ?? 0;
+    if (rot) x.setTransform(new DOMMatrix([dpr, 0, 0, dpr, 0, 0]).multiplySelf(this.viewRotation()));
+    const abs = hasArtboards(doc);
+    if (abs) {
+      // משטחי עבודה: אין לוח שחמט אחד למסמך — כל משטח מצויר במקומו על ה-Pasteboard עם צל ומסגרת
+      paintArtboardBackdrop(x, doc, z, dx, dy);
+      x.imageSmoothingEnabled = z * dpr < 2;
+      x.imageSmoothingQuality = 'high';
+      x.drawImage(this.comp, dx, dy, W, H);
+      paintArtboardFrames(x, doc, z, dx, dy);
+    } else {
     // צל המסמך ולוח שחמט לשקיפות
     x.fillStyle = 'rgba(0,0,0,.45)';
     x.fillRect(dx + 3, dy + 3, W, H);
@@ -195,9 +235,19 @@ export class Editor {
     x.fillStyle = '#ffffff';
     x.fillRect(dx, dy, W, H);
     x.fillStyle = '#cccccc';
-    const x0 = Math.max(0, Math.floor(-dx / s)), y0 = Math.max(0, Math.floor(-dy / s));
-    const x1 = Math.min(Math.ceil(W / s), Math.ceil((cw - dx) / s)), y1 = Math.min(Math.ceil(H / s), Math.ceil((ch - dy) / s));
-    for (let j = y0; j < y1; j++) for (let i = x0 + ((x0 + j) % 2); i < x1; i += 2) x.fillRect(dx + i * s, dy + j * s, s, s);
+    if (rot) {
+      // בסיבוב אי אפשר לחשב את התחום הנראה בצירים — דפוס חוזר במקום לולאת ריבועים
+      const pc = newCanvas(s * 2, s * 2), px = pc.getContext('2d')!;
+      px.fillStyle = '#cccccc'; px.fillRect(s, 0, s, s); px.fillRect(0, s, s, s);
+      const pat = x.createPattern(pc, 'repeat')!;
+      pat.setTransform(new DOMMatrix().translateSelf(dx, dy));
+      x.fillStyle = pat;
+      x.fillRect(dx, dy, W, H);
+    } else {
+      const x0 = Math.max(0, Math.floor(-dx / s)), y0 = Math.max(0, Math.floor(-dy / s));
+      const x1 = Math.min(Math.ceil(W / s), Math.ceil((cw - dx) / s)), y1 = Math.min(Math.ceil(H / s), Math.ceil((ch - dy) / s));
+      for (let j = y0; j < y1; j++) for (let i = x0 + ((x0 + j) % 2); i < x1; i += 2) x.fillRect(dx + i * s, dy + j * s, s, s);
+    }
     x.imageSmoothingEnabled = z * dpr < 2;
     x.imageSmoothingQuality = 'high';
     x.drawImage(this.comp, dx, dy, W, H);
@@ -205,16 +255,21 @@ export class Editor {
     x.strokeStyle = 'rgba(0,0,0,.6)';
     x.lineWidth = 1;
     x.strokeRect(Math.round(dx) - 0.5, Math.round(dy) - 0.5, Math.round(W) + 1, Math.round(H) + 1);
+    }
 
+    paintSelectionOverlays(this, x, z, dx, dy);
     if (this.view.extras) {
       if (this.view.grid) this.paintGrid(x, doc, z, dx, dy);
-      if (doc.selection) this.paintAnts(x, doc.selection, z, dx, dy);
+      const ants = antsSelection(this);
+      if (ants) this.paintAnts(x, ants, z, dx, dy);
       if (this.view.guides) {
         x.strokeStyle = 'rgba(0,255,255,.9)';
         x.lineWidth = 1;
         x.beginPath();
-        for (const gx of doc.guides.v) { const sx = Math.round(dx + gx * z) + 0.5; x.moveTo(sx, 0); x.lineTo(sx, ch); }
-        for (const gy of doc.guides.h) { const sy = Math.round(dy + gy * z) + 0.5; x.moveTo(0, sy); x.lineTo(cw, sy); }
+        // בסיבוב הקווים ארוכים יותר מהקנבס כדי שיכסו אותו בכל זווית
+        const ext = rot ? cw + ch : 0;
+        for (const gx of doc.guides.v) { const sx = Math.round(dx + gx * z) + 0.5; x.moveTo(sx, -ext); x.lineTo(sx, ch + ext); }
+        for (const gy of doc.guides.h) { const sy = Math.round(dy + gy * z) + 0.5; x.moveTo(-ext, sy); x.lineTo(cw + ext, sy); }
         x.stroke();
       }
       if (this.live.smart?.length) {
@@ -225,6 +280,8 @@ export class Editor {
         x.stroke();
       }
     }
+    if (rot) x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    for (const hook of OVERLAY_HOOKS) hook(this, x);
     this.activeTool().overlay?.(this, x);
     this.paintRulers();
     this.positionTextArea();
@@ -264,15 +321,16 @@ export class Editor {
       if (rc.width !== Math.round(cw * dpr) || rc.height !== Math.round(ch * dpr)) { rc.width = Math.round(cw * dpr); rc.height = Math.round(ch * dpr); }
       const x = rc.getContext('2d')!;
       x.setTransform(dpr, 0, 0, dpr, 0, 0);
-      x.fillStyle = '#2b2b2b';
+      x.fillStyle = '#17181d';
       x.fillRect(0, 0, cw, ch);
-      if (!st) continue;
+      // בתצוגה מסובבת הסרגלים מוסתרים (כמו בפוטושופ הם לא מסתובבים)
+      if (!st || st.rot) continue;
       const z = st.zoom, off = horiz ? st.panX - 18 : st.panY;
       const steps = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
       const step = steps.find((s) => s * z >= 60) ?? 5000;
-      x.strokeStyle = '#777';
-      x.fillStyle = '#aaa';
-      x.font = '9px Assistant, sans-serif';
+      x.strokeStyle = 'rgba(235,238,245,.24)';
+      x.fillStyle = 'rgba(235,238,245,.55)';
+      x.font = '500 9px -apple-system, "SF Pro Text", Inter, Assistant, sans-serif';
       x.beginPath();
       const len = horiz ? cw : ch;
       const startDoc = Math.floor(-off / z / step) * step;
@@ -289,7 +347,7 @@ export class Editor {
       x.stroke();
       if (this.cursorDoc) {
         const p = (horiz ? this.cursorDoc.x : this.cursorDoc.y) * z + off;
-        x.strokeStyle = '#4da3ff';
+        x.strokeStyle = '#0a84ff';
         x.beginPath();
         if (horiz) { x.moveTo(p, 0); x.lineTo(p, 18); } else { x.moveTo(0, p); x.lineTo(18, p); }
         x.stroke();
@@ -297,22 +355,46 @@ export class Editor {
     }
   }
 
+  /** סיבוב התצוגה סביב מרכז הקנבס (מטריצת יחידה כשאין סיבוב) */
+  viewRotation(): DOMMatrix {
+    const rot = this.st?.rot ?? 0;
+    if (!rot) return new DOMMatrix();
+    const cx = (this.canvas?.clientWidth ?? 0) / 2, cy = (this.canvas?.clientHeight ?? 0) / 2;
+    return new DOMMatrix().translateSelf(cx, cy).rotateSelf(rot).translateSelf(-cx, -cy);
+  }
+  /** מסמך → מסך: סיבוב ∘ הזזה ∘ זום */
+  viewMatrix(): DOMMatrix {
+    const st = this.st!;
+    return this.viewRotation().translateSelf(st.panX, st.panY).scaleSelf(st.zoom, st.zoom);
+  }
   toDoc(sx: number, sy: number): Pt {
     const st = this.st!;
+    if (st.rot) return apply(this.viewMatrix().inverse(), { x: sx, y: sy });
     return { x: (sx - st.panX) / st.zoom, y: (sy - st.panY) / st.zoom };
   }
   toScreen(p: Pt): Pt {
     const st = this.st!;
+    if (st.rot) return apply(this.viewMatrix(), p);
     return { x: p.x * st.zoom + st.panX, y: p.y * st.zoom + st.panY };
+  }
+  setViewRotation(deg: number) {
+    const st = this.st;
+    if (!st) return;
+    const r = ((((deg + 180) % 360) + 360) % 360) - 180;
+    st.rot = Math.abs(r) < 0.05 ? 0 : +r.toFixed(2);
+    this.redraw(false);
+    this.emit();
   }
 
   fit() {
     const st = this.st, c = this.canvas;
     if (!st || !c) return;
     const cw = c.clientWidth, ch = c.clientHeight;
-    st.zoom = Math.min((cw - 60) / st.doc.width, (ch - 60) / st.doc.height, 8);
-    st.panX = (cw - st.doc.width * st.zoom) / 2;
-    st.panY = (ch - st.doc.height * st.zoom) / 2;
+    // עם משטחי עבודה: התאמה לכל המשטחים (לא ל-Pasteboard כולו); מרווח נוסף לתוויות ולכפתורי +
+    const r = fitRect(st.doc), m = hasArtboards(st.doc) ? 110 : 60;
+    st.zoom = Math.min((cw - m) / r.w, (ch - m) / r.h, 8);
+    st.panX = (cw - r.w * st.zoom) / 2 - r.x * st.zoom;
+    st.panY = (ch - r.h * st.zoom) / 2 - r.y * st.zoom;
     this.redraw(true);
     this.emit();
   }
@@ -324,8 +406,10 @@ export class Editor {
     const p = at ?? { x: c.clientWidth / 2, y: c.clientHeight / 2 };
     const d = this.toDoc(p.x, p.y);
     st.zoom = nz;
-    st.panX = p.x - d.x * nz;
-    st.panY = p.y - d.y * nz;
+    // הנקודה שמתחת לסמן נשארת במקום (גם בתצוגה מסובבת: מבטלים קודם את הסיבוב)
+    const pre = st.rot ? apply(this.viewRotation().inverse(), p) : p;
+    st.panX = pre.x - d.x * nz;
+    st.panY = pre.y - d.y * nz;
     this.redraw(this.compScale < Math.min(1, nz * DPR()));
     this.emit();
   }
@@ -342,6 +426,11 @@ export class Editor {
   pan(dx: number, dy: number) {
     const st = this.st;
     if (!st) return;
+    if (st.rot) {
+      // גרירה במסך → הזזה במרחב שלפני הסיבוב
+      const a = (-st.rot * Math.PI) / 180;
+      [dx, dy] = [dx * Math.cos(a) - dy * Math.sin(a), dx * Math.sin(a) + dy * Math.cos(a)];
+    }
     st.panX += dx;
     st.panY += dy;
     this.redraw(false);
@@ -356,8 +445,32 @@ export class Editor {
     if (!f || f.layer.type !== 'text') return;
     const l = f.layer;
     const L = layoutText(l);
-    const view = new DOMMatrix().translateSelf(st.panX, st.panY).scaleSelf(st.zoom, st.zoom).multiplySelf(layerMatrix(l));
+    const view = this.viewMatrix().multiplySelf(layerMatrix(l));
     const s = l.style;
+    if (L.vertical) {
+      // טקסט אנכי: העורך של הדפדפן במצב vertical-rl (עמודות מימין לשמאל, תווים זקופים)
+      ta.style.transform = `matrix(${view.a},${view.b},${view.c},${view.d},${view.e},${view.f})`;
+      ta.style.font = fontString(s);
+      ta.style.writingMode = 'vertical-rl';
+      ta.style.textOrientation = 'upright';
+      ta.style.letterSpacing = `${(L.adv ?? s.size) - s.size}px`;
+      ta.style.lineHeight = `${L.lineH}px`;
+      ta.style.direction = 'ltr';
+      // עברית אנכית: בלי היפוך bidi — האות הראשונה למעלה, כמו ברינדור
+      ta.style.unicodeBidi = 'bidi-override';
+      ta.style.textAlign = 'start';
+      ta.style.textTransform = s.caps ? 'uppercase' : 'none';
+      ta.style.color = s.color;
+      ta.style.caretColor = s.color;
+      ta.style.width = `${L.w + L.lineH}px`;
+      ta.style.marginLeft = `${-L.lineH}px`;
+      ta.style.height = `${L.h + s.size * 1.2}px`;
+      ta.style.whiteSpace = 'pre';
+      return;
+    }
+    ta.style.writingMode = '';
+    ta.style.textOrientation = '';
+    ta.style.unicodeBidi = '';
     ta.style.transform = `matrix(${view.a},${view.b},${view.c},${view.d},${view.e},${view.f})`;
     ta.style.font = fontString(s);
     ta.style.letterSpacing = `${L.spacing}px`;
@@ -373,11 +486,11 @@ export class Editor {
     ta.style.whiteSpace = l.boxW == null ? 'pre' : 'pre-wrap';
   }
 
-  beginTextEdit(l: TextLayer, isNew: boolean) {
+  beginTextEdit(l: TextLayer, isNew: boolean, mask = false, prev?: { selected: string[]; active: string | null }) {
     this.commitTextEdit();
     const host = this.overlayHost;
     if (!host) return;
-    this.live.textEdit = { layerId: l.id, isNew, before: l.text };
+    this.live.textEdit = { layerId: l.id, isNew, before: l.text, mask, prev };
     this.selectLayer(l.id);
     const ta = document.createElement('textarea');
     ta.className = 'pe-textedit';
@@ -417,7 +530,8 @@ export class Editor {
   reanchorText(l: TextLayer, oldW: number, oldH: number) {
     const now = layoutText(l);
     const align = l.style.align === 'justify' ? (l.style.dir === 'rtl' ? 'right' : 'left') : l.style.align;
-    const ax = l.boxW != null ? 0 : align === 'right' ? -(now.w - oldW) / 2 : align === 'left' ? (now.w - oldW) / 2 : 0;
+    // אנכי: הפינה הימנית-עליונה קבועה (עמודות חדשות נוספות שמאלה, תווים נוספים למטה)
+    const ax = now.vertical ? -(now.w - oldW) / 2 : l.boxW != null ? 0 : align === 'right' ? -(now.w - oldW) / 2 : align === 'left' ? (now.w - oldW) / 2 : 0;
     const ay = (now.h - oldH) / 2;
     const m = new DOMMatrix().rotateSelf(l.t.rot).scaleSelf(l.t.sx, l.t.sy);
     l.t.x += m.a * ax + m.c * ay;
@@ -432,7 +546,19 @@ export class Editor {
     this.textArea = null;
     if (d) {
       const f = findLayer(d.layers, te.layerId);
-      if (f && f.layer.type === 'text') {
+      if (f && f.layer.type === 'text' && te.mask) {
+        // Type Mask: צורת הטקסט הופכת לבחירה, השכבה הזמנית יוצאת מהמסמך
+        const l = f.layer;
+        f.parent.splice(f.index, 1);
+        // השכבה שהייתה פעילה לפני ההקלדה חוזרת להיות פעילה
+        const prev = te.prev ?? { selected: this.st!.selected.filter((x) => x !== te.layerId), active: null };
+        this.st!.selected = prev.selected.filter((x) => findLayer(d.layers, x));
+        this.st!.active = prev.active && findLayer(d.layers, prev.active) ? prev.active : this.st!.selected[this.st!.selected.length - 1] ?? null;
+        if (l.text.trim()) {
+          const c = renderSingle({ ...cloneLayer(l), fx: { ...l.fx, shadow: { ...l.fx.shadow, on: false }, glow: { ...l.fx.glow, on: false }, stroke: { ...l.fx.stroke, on: false } } } as Layer, d);
+          this.setSelection(c, l.orientation === 'v' ? 'מסכת טקסט אנכית' : 'מסכת טקסט');
+        }
+      } else if (f && f.layer.type === 'text') {
         if (!f.layer.text.trim()) {
           f.parent.splice(f.index, 1);
           if (!te.isNew) this.commit('מחיקת טקסט');
@@ -462,7 +588,24 @@ export class Editor {
     return st;
   }
 
-  newDoc(o: { name?: string; width: number; height: number; dpi?: number; background: 'white' | 'black' | 'transparent' | string; projectId?: string | null }) {
+  newDoc(o: { name?: string; width: number; height: number; dpi?: number; background: 'white' | 'black' | 'transparent' | string; projectId?: string | null; artboard?: boolean }) {
+    if (o.artboard) {
+      // New Document עם Artboard: משטח אחד בגודל שנבחר, הרקע הוא רקע המשטח, ובתוכו שכבה ריקה
+      const w = Math.round(o.width), h = Math.round(o.height);
+      const bg = o.background === 'white' ? '#ffffff' : o.background === 'black' ? '#000000' : o.background;
+      const ab = makeArtboard({ x: 0, y: 0, w, h }, 'משטח עבודה 1', bg, [makeRaster('שכבה 1', newCanvas(w, h), w / 2, h / 2)]);
+      const doc: Doc = {
+        id: uid(), name: o.name?.trim() || `ללא שם-${++untitled}`, width: w, height: h, dpi: o.dpi ?? 72,
+        layers: [ab], guides: { v: [], h: [] }, selection: null, fonts: [], projectId: o.projectId ?? null, serverId: null,
+      };
+      fitDocToArtboards(doc);
+      const st = this.addDoc(doc, 'מסמך חדש');
+      st.selected = [ab.children[0].id];
+      st.active = ab.children[0].id;
+      st.history.states[st.history.index].selected = [...st.selected];
+      this.emit();
+      return st;
+    }
     const doc: Doc = {
       id: uid(), name: o.name?.trim() || `ללא שם-${++untitled}`, width: Math.round(o.width), height: Math.round(o.height), dpi: o.dpi ?? 72,
       layers: [], guides: { v: [], h: [] }, selection: null, fonts: [], projectId: o.projectId ?? null, serverId: null,
@@ -516,7 +659,12 @@ export class Editor {
   commit(label: string) {
     const st = this.st;
     if (!st) return;
+    // משטחי עבודה: גבולות המסמך (ה-Pasteboard) עוקבים אחרי המשטחים; התצוגה מתוקנת כדי ששום דבר לא יקפוץ
+    const sh = fitDocToArtboards(st.doc);
+    if (sh) { st.panX -= sh.ox * st.zoom; st.panY -= sh.oy * st.zoom; }
+    const org = snapOrigin.get(st.history.states[st.history.index]) ?? { x: 0, y: 0 };
     st.history.push(History.take(st.doc, label, st.selected));
+    snapOrigin.set(st.history.states[st.history.index], sh ? { x: org.x + sh.ox, y: org.y + sh.oy } : org);
     st.opMark++;
     this.redraw(true);
     this.emit();
@@ -549,6 +697,10 @@ export class Editor {
     if (!st) return;
     this.commitTextEdit();
     this.cancelTransient();
+    // ביטול/חזרה מעבר להזזת ראשית ה-Pasteboard: התצוגה זזה איתה, כדי שהמשטחים יישארו במקום על המסך
+    const o0 = snapOrigin.get(st.history.states[st.history.index]) ?? { x: 0, y: 0 }, o1 = snapOrigin.get(st.history.states[i]) ?? { x: 0, y: 0 };
+    st.panX -= (o1.x - o0.x) * st.zoom;
+    st.panY -= (o1.y - o0.y) * st.zoom;
     st.selected = st.history.restore(st.doc, i).filter((id) => findLayer(st.doc.layers, id));
     st.active = st.selected[st.selected.length - 1] ?? null;
     st.opMark++;
@@ -569,6 +721,10 @@ export class Editor {
     this.live.paint = null;
     if (this.live.floating) this.activeTool().cancel?.(this);
     this.live.floating = null;
+    if (this.live.selxf || this.live.selPreview) this.activeTool().cancel?.(this);
+    this.live.selxf = null;
+    this.live.selPreview = null;
+    this.live.qmask = null;
   }
 
   /* ---------- שכבות: בחירה וגישה ---------- */
@@ -608,7 +764,9 @@ export class Editor {
   insert(l: Layer, ref: string | null = this.st?.active ?? null) {
     const d = this.doc!;
     const f = ref ? findLayer(d.layers, ref) : null;
-    if (f) f.parent.splice(f.index + 1, 0, l);
+    // משטח עבודה פעיל: השכבה החדשה נכנסת לראש המשטח (כמו בפוטושופ), לא מעליו על ה-Pasteboard
+    if (f && isArtboard(f.layer) && !isArtboard(l)) { f.layer.children.push(l); f.layer.open = true; }
+    else if (f) f.parent.splice(f.index + 1, 0, l);
     else d.layers.push(l);
     this.st!.selected = [l.id];
     this.st!.active = l.id;
@@ -624,6 +782,7 @@ export class Editor {
     this.activeTool().deactivate?.(this);
     this.tool = id;
     this.springTool = null;
+    setGroupCurrent(id);
     this.activeTool().activate?.(this);
     this.redraw(false);
     this.emit();
@@ -631,8 +790,15 @@ export class Editor {
 
   /** לחיצה חוזרת על קיצור (Shift+M וכו') מחליפה בין כלים באותה קבוצה */
   cycleTool(id: ToolId) {
-    if (id === 'marquee') this.opts.marquee.shape = this.opts.marquee.shape === 'rect' ? 'ellipse' : 'rect';
-    if (id === 'lasso') this.opts.lasso.mode = this.opts.lasso.mode === 'free' ? 'poly' : 'free';
+    // קבוצות של כלים נפרדים (B: Brush/Pencil/Color Replacement, J: Healing…) — הכלי הבא בקבוצה
+    const next = nextInGroup(id);
+    if (next) { this.setTool(next); this.emit(); return; }
+    if (this.tool === id) this.activeTool().deactivate?.(this);
+    const shapes: Array<ToolOpts['marquee']['shape']> = ['rect', 'ellipse', 'row', 'col'];
+    const lassos: Array<ToolOpts['lasso']['mode']> = ['free', 'poly', 'magnetic'];
+    if (id === 'marquee') this.opts.marquee.shape = shapes[(shapes.indexOf(this.opts.marquee.shape) + 1) % shapes.length];
+    if (id === 'lasso') this.opts.lasso.mode = lassos[(lassos.indexOf(this.opts.lasso.mode) + 1) % lassos.length];
+    if (id === 'wand') this.opts.wand.mode = this.opts.wand.mode === 'quick' ? 'wand' : 'quick';
     if (id === 'gradient') this.opts.gradient.mode = this.opts.gradient.mode === 'gradient' ? 'bucket' : 'gradient';
     if (id === 'shape') { const k: ShapeKind[] = ['rect', 'ellipse', 'triangle', 'polygon', 'star', 'line']; this.opts.shape.kind = k[(k.indexOf(this.opts.shape.kind) + 1) % k.length]; }
     this.setTool(id);
@@ -651,14 +817,14 @@ export class Editor {
   /** הפאנל הפתוח בכל קבוצת פאנלים (Window) */
   panelTabs: Record<string, string> = { top: 'Color', mid: 'Properties', bottom: 'Layers' };
   openPanel(name: string) {
-    const groups: Record<string, string[]> = { top: ['Color', 'Swatches'], mid: ['Properties', 'Adjustments', 'Character', 'Paragraph', 'Align', 'Transform'], bottom: ['Layers', 'History'] };
+    const groups: Record<string, string[]> = { top: ['Color', 'Swatches', 'Info'], mid: ['Properties', 'Adjustments', 'Character', 'Paragraph', 'Align', 'Transform'], bottom: ['Layers', 'History'] };
     for (const [g, names] of Object.entries(groups)) if (names.includes(name)) this.panelTabs[g] = name;
     this.view.panels = true;
     this.emit();
   }
 
   openDialog(type: string, data?: any) { this.commitTextEdit(); this.dialog = { type, data }; this.emit(); }
-  closeDialog() { this.dialog = null; this.live.paint = null; this.redraw(true); this.emit(); }
+  closeDialog() { this.dialog = null; this.live.paint = null; this.live.selPreview = null; this.live.pick = null; this.redraw(true); this.emit(); }
 
   /* ---------- מקלדת ---------- */
 
@@ -707,7 +873,8 @@ export class Editor {
     // Opacity בספרות, כמו בפוטושופ: 1=10% ... 0=100%
     if (/^\d$/.test(combo) && this.st) {
       const v = combo === '0' ? 1 : Number(combo) / 10;
-      if (['brush', 'eraser', 'clone'].includes(this.tool)) { (this.opts[this.tool as 'brush'] as { opacity: number }).opacity = v; this.emit(); }
+      const own = (this.opts as unknown as Record<string, { opacity?: unknown; size?: unknown }>)[this.tool];
+      if (own && typeof own.opacity === 'number' && typeof own.size === 'number') { (own as { opacity: number }).opacity = v; this.emit(); }
       else if (this.topSelected().length) { for (const l of this.topSelected()) { l.opacity = v; touch(l); } this.commit(`אטימות ${Math.round(v * 100)}%`); }
     }
   };
@@ -723,8 +890,11 @@ export class Editor {
   run(id: string) {
     const d = this.doc;
     if (id.startsWith('tool.')) {
-      const tid = id.slice(5) as ToolId;
-      if (this.tool === tid && ['marquee', 'lasso', 'gradient', 'shape'].includes(tid)) return;
+      let tid = id.slice(5) as ToolId;
+      if (this.tool === tid && ['marquee', 'lasso', 'wand', 'gradient', 'shape'].includes(tid)) return;
+      // מקש של קבוצה בוחר את הכלי האחרון שהיה בשימוש בה (כמו בפוטושופ)
+      const g = groupByKey(tid);
+      if (g && !g.fixedKey) tid = groupCurrent(g.key);
       this.setTool(tid);
       return;
     }
@@ -732,8 +902,18 @@ export class Editor {
       case 'colors.default': this.fg = '#000000'; this.bg = '#ffffff'; this.emit(); return;
       case 'colors.swap': [this.fg, this.bg] = [this.bg, this.fg]; this.emit(); return;
       case 'brush.smaller': case 'brush.bigger': case 'brush.softer': case 'brush.harder': {
-        const key = (['brush', 'eraser', 'clone'].includes(this.tool) ? this.tool : 'brush') as 'brush';
-        const o = this.opts[key];
+        if (this.tool === 'wand' && this.opts.wand.mode === 'quick') {
+          // Quick Selection: [ ] משנים את גודל המברשת
+          const q = this.opts.quick;
+          if (id === 'brush.smaller') q.size = Math.max(1, Math.round(q.size - (q.size > 100 ? 25 : q.size > 10 ? 5 : 1)));
+          if (id === 'brush.bigger') q.size = Math.min(2500, Math.round(q.size + (q.size >= 100 ? 25 : q.size >= 10 ? 5 : 1)));
+          this.redraw(false);
+          this.emit();
+          return;
+        }
+        // כל כלי שיש לו מברשת (Size/Hardness) — אחרת המברשת הרגילה
+        const own = (this.opts as unknown as Record<string, { size?: unknown; hardness?: unknown }>)[this.tool];
+        const o = (own && typeof own.size === 'number' && typeof own.hardness === 'number' ? own : this.opts.brush) as { size: number; hardness: number };
         if (id === 'brush.smaller') o.size = Math.max(1, Math.round(o.size - (o.size > 100 ? 25 : o.size > 10 ? 5 : 1)));
         if (id === 'brush.bigger') o.size = Math.min(2500, Math.round(o.size + (o.size >= 100 ? 25 : o.size >= 10 ? 5 : 1)));
         if (id === 'brush.softer') o.hardness = Math.max(0, +(o.hardness - 0.25).toFixed(2));
@@ -753,6 +933,8 @@ export class Editor {
       if (id === 'view.rulers') { this.view.rulers = !this.view.rulers; this.emit(); }
       return;
     }
+    if (runSelectCmd(this, id)) return;
+    if (runToolCmd(this, id)) return;
     switch (id) {
       case 'file.save': void this.save(); return;
       case 'file.saveAs': this.openDialog('saveAs'); return;
@@ -843,11 +1025,15 @@ export class Editor {
 
   addImageLayer(c: HTMLCanvasElement, name: string, at?: Pt) {
     const d = this.doc!;
-    const l = makeRaster(name.replace(/\.[a-z0-9]+$/i, ''), c, at?.x ?? d.width / 2, at?.y ?? d.height / 2);
+    // עם משטחי עבודה: ברירת המחדל היא מרכז המשטח הפעיל, וההתאמה לגודל המשטח
+    const ab = hasArtboards(d) ? artboardOf(d, this.st!.active) ?? artboardsOf(d)[0] : null;
+    const box = ab ? abRect(ab) : { x: 0, y: 0, w: d.width, h: d.height };
+    const l = makeRaster(name.replace(/\.[a-z0-9]+$/i, ''), c, at?.x ?? box.x + box.w / 2, at?.y ?? box.y + box.h / 2);
     // תמונה גדולה מהמסמך מוקטנת להתאמה (לא הרסני — הפיקסלים המקוריים נשמרים)
-    const k = Math.min(1, d.width / c.width, d.height / c.height);
+    const k = Math.min(1, box.w / c.width, box.h / c.height);
     l.t.sx = l.t.sy = k;
     this.insert(l);
+    autoNest(this, [l]);
     this.commit('הוספת תמונה');
     return l;
   }
@@ -909,18 +1095,24 @@ export class Editor {
       const f = findLayer(d.layers, l.id)!;
       const c = cloneLayer(l, true);
       c.name = `${l.name} עותק`;
+      // Ctrl+J על משטח עבודה: העותק (עם התוכן) מימין לכל המשטחים, לא מעל המקור
+      if (isArtboard(c)) {
+        const right = Math.max(...artboardsOf(d).map((a) => a.artboard.x + a.artboard.w));
+        offsetTree(c, right + 100 - c.artboard.x, 0);
+      }
       f.parent.splice(f.index + 1, 0, c);
       ids.push(c.id);
     }
     this.st!.selected = ids;
     this.st!.active = ids[ids.length - 1];
-    this.commit('שכפול שכבה');
+    this.commit(sel.some(isArtboard) ? 'שכפול משטח עבודה' : 'שכפול שכבה');
   }
 
   group() {
     const d = this.doc!;
     const sel = this.topSelected();
     if (!sel.length) return;
+    if (sel.some(isArtboard)) { this.toast('אי אפשר לקבץ משטחי עבודה — הם תמיד ברמה העליונה', 'error'); return; }
     const flat = flatForPanel(d.layers).map((r) => r.layer.id);
     const topMost = sel.reduce((a, b) => (flat.indexOf(a.id) < flat.indexOf(b.id) ? a : b));
     const f = findLayer(d.layers, topMost.id)!;
@@ -988,6 +1180,12 @@ export class Editor {
     const moving = ids.map((id) => findLayer(d.layers, id)?.layer).filter(Boolean) as Layer[];
     // לא מכניסים קבוצה לתוך עצמה
     for (const m of moving) if (m.type === 'group' && findLayer(m.children, targetId)) return;
+    // משטח עבודה נשאר תמיד ברמה העליונה: נגרר רק מעל/מתחת למשטח (או לשכבה) ברמה העליונה
+    if (moving.some(isArtboard)) {
+      const top = d.layers.find((t) => t.id === targetId || (t.type === 'group' && findLayer(t.children, targetId)));
+      if (!top || moving.includes(top)) return;
+      if (top.id !== targetId || where === 'into') { targetId = top.id; where = 'above'; }
+    }
     for (const m of moving) { const f = findLayer(d.layers, m.id)!; f.parent.splice(f.index, 1); }
     const t = findLayer(d.layers, targetId);
     if (!t) { d.layers.push(...moving); }
@@ -1018,7 +1216,7 @@ export class Editor {
     if (l.type === 'raster') x.drawImage(l.canvas, 0, 0);
     else { const r = renderSingle({ ...l, fx: { ...l.fx, shadow: { ...l.fx.shadow, on: false } } } as Layer, d); x.setTransform(1, 0, 0, 1, 0, 0); x.drawImage(r, 0, 0); }
     x.setTransform(1, 0, 0, 1, 0, 0);
-    if (l.mask?.enabled) { x.globalCompositeOperation = 'destination-in'; x.drawImage(l.mask.canvas, 0, 0); }
+    if (l.mask?.enabled) { x.globalCompositeOperation = 'destination-in'; x.drawImage(effectiveMask(l.mask), 0, 0); }
     if (sel) { x.globalCompositeOperation = 'destination-in'; x.drawImage(sel, 0, 0); }
     return c;
   }
@@ -1177,7 +1375,7 @@ export class Editor {
       const c = copyCanvas(l.canvas), x = c.getContext('2d')!;
       x.setTransform(layerMatrix(l).inverse());
       x.globalCompositeOperation = 'destination-in';
-      x.drawImage(l.mask.canvas, 0, 0);
+      x.drawImage(effectiveMask(l.mask), 0, 0);
       l.canvas = c;
     }
     l.mask = null;
@@ -1376,8 +1574,11 @@ export class Editor {
     const d = this.doc!;
     if (this.tool === 'move' || this.springTool === 'move' || this.live.freeTransform) {
       const leaves = this.topSelected().filter((l) => !l.locked).flatMap(xfLeaves);
-      if (!leaves.length) return;
+      const abSel = this.topSelected().some((l) => isArtboard(l) && !l.locked);
+      if (!leaves.length && !abSel) return;
+      if (abSel && !this.live.freeTransform) nudgeArtboards(this, dx, dy);
       for (const l of leaves) { l.t.x += dx; l.t.y += dy; touch(l); }
+      if (!abSel && !this.live.freeTransform) autoNest(this, this.topSelected());
       if (this.live.freeTransform) { this.redraw(true); return; }
       this.commit('הזזה');
     } else if (d.selection && ['marquee', 'lasso', 'wand'].includes(this.tool)) {
@@ -1486,10 +1687,12 @@ export class Editor {
     const scaleMask = (c: HTMLCanvasElement) => { const n = newCanvas(w, h), x = n.getContext('2d')!; x.imageSmoothingQuality = 'high'; x.drawImage(c, 0, 0, w, h); return n; };
     walk(d.layers, (l) => {
       if (isXf(l)) { l.t.x *= kx; l.t.y *= ky; l.t.sx *= kx; l.t.sy *= ky; this.bakeScale(l); }
+      if (isArtboard(l)) l.artboard = { ...l.artboard, x: Math.round(l.artboard.x * kx), y: Math.round(l.artboard.y * ky), w: Math.max(1, Math.round(l.artboard.w * kx)), h: Math.max(1, Math.round(l.artboard.h * ky)) };
       if (l.mask) l.mask = { ...l.mask, canvas: scaleMask(l.mask.canvas) };
       touch(l);
     });
     d.selection = d.selection ? scaleMask(d.selection) : null;
+    d.channels = d.channels?.map((c) => ({ ...c, canvas: scaleMask(c.canvas) }));
     d.guides = { v: d.guides.v.map((g) => g * kx), h: d.guides.h.map((g) => g * ky) };
     d.width = Math.round(w);
     d.height = Math.round(h);
@@ -1510,10 +1713,12 @@ export class Editor {
     };
     walk(d.layers, (l) => {
       if (isXf(l)) { l.t.x += ox; l.t.y += oy; }
+      if (isArtboard(l)) l.artboard = { ...l.artboard, x: Math.round(l.artboard.x + ox), y: Math.round(l.artboard.y + oy) };
       if (l.mask) l.mask = { ...l.mask, canvas: shiftMask(l.mask.canvas, true) };
       touch(l);
     });
     d.selection = d.selection ? shiftMask(d.selection, false) : null;
+    d.channels = d.channels?.map((c) => ({ ...c, canvas: shiftMask(c.canvas, false) }));
     d.guides = { v: d.guides.v.map((g) => g + ox).filter((g) => g >= 0 && g <= w), h: d.guides.h.map((g) => g + oy).filter((g) => g >= 0 && g <= h) };
     d.width = w;
     d.height = h;
@@ -1559,10 +1764,12 @@ export class Editor {
     };
     walk(d.layers, (l) => {
       if (isXf(l)) { const p = map({ x: l.t.x, y: l.t.y }); l.t.x = p.x; l.t.y = p.y; l.t.rot = (l.t.rot + deg) % 360; }
+      if (isArtboard(l)) { const r = abRect(l), q = aabb([map({ x: r.x, y: r.y }), map({ x: r.x + r.w, y: r.y + r.h })]); l.artboard = { ...l.artboard, x: Math.round(q.x), y: Math.round(q.y), w: Math.round(q.w), h: Math.round(q.h) }; }
       if (l.mask) l.mask = { ...l.mask, canvas: rotC(l.mask.canvas) };
       touch(l);
     });
     d.selection = d.selection ? rotC(d.selection) : null;
+    d.channels = d.channels?.map((c) => ({ ...c, canvas: rotC(c.canvas) }));
     d.guides = { v: [], h: [] };
     d.width = nw;
     d.height = nh;
@@ -1578,10 +1785,12 @@ export class Editor {
         if (horizontal) { l.t.x = d.width - l.t.x; l.t.sx *= -1; } else { l.t.y = d.height - l.t.y; l.t.sy *= -1; }
         l.t.rot = -l.t.rot;
       }
+      if (isArtboard(l)) l.artboard = horizontal ? { ...l.artboard, x: d.width - l.artboard.x - l.artboard.w } : { ...l.artboard, y: d.height - l.artboard.y - l.artboard.h };
       if (l.mask) l.mask = { ...l.mask, canvas: fl(l.mask.canvas) };
       touch(l);
     });
     d.selection = d.selection ? fl(d.selection) : null;
+    d.channels = d.channels?.map((c) => ({ ...c, canvas: fl(c.canvas) }));
     this.commit(horizontal ? 'היפוך קנבס אופקי' : 'היפוך קנבס אנכי');
   }
 
@@ -1781,9 +1990,9 @@ export class Editor {
   }
 
   async exportAs(o: ExportOpts, filename: string, toProject: string | null) {
-    const d = this.doc!;
     this.commitTextEdit();
-    const blob = await exportBlob(d, o);
+    // עם משטחי עבודה: המשטח הפעיל בלבד (זה של השכבה הפעילה, אחרת הראשון)
+    const blob = await exportBlob(exportDoc(this), o);
     const ext = o.format === 'jpg' ? 'jpg' : o.format;
     const file = `${safeName(filename)}.${ext}`;
     if (toProject) {
@@ -1794,7 +2003,7 @@ export class Editor {
 
   async quickExport() {
     const d = this.doc!;
-    await this.exportAs({ format: 'png', quality: 1, scale: 1, transparent: true, bg: '#ffffff' }, d.name, null);
+    await this.exportAs({ format: 'png', quality: 1, scale: 1, transparent: true, bg: '#ffffff' }, hasArtboards(d) ? exportDoc(this).name : d.name, null);
   }
 
   async downloadProject() {
@@ -1819,6 +2028,8 @@ export class Editor {
         const l = ls[i];
         if (!l.visible) continue;
         if (l.type === 'group') {
+          // תוכן של משטח עבודה נחתך לגבולותיו — מחוץ למשטח הוא לא נתפס
+          if (l.artboard && (p.x < l.artboard.x || p.y < l.artboard.y || p.x > l.artboard.x + l.artboard.w || p.y > l.artboard.y + l.artboard.h)) continue;
           const r = rec(l.children);
           if (r) return deep ? r : l;
           continue;
@@ -1846,8 +2057,10 @@ export class Editor {
   /** נקודות הצמדה: קצוות ומרכז המסמך, קווי עזר, קצוות ומרכזי שכבות אחרות */
   snapTargets(exclude: Set<string>): { xs: number[]; ys: number[] } {
     const d = this.doc!;
-    const xs = [0, d.width / 2, d.width, ...(this.view.guides ? d.guides.v : [])];
-    const ys = [0, d.height / 2, d.height, ...(this.view.guides ? d.guides.h : [])];
+    // עם משטחי עבודה: קצוות ומרכזי המשטחים במקום קצוות ה-Pasteboard
+    const ab = hasArtboards(d) ? artboardSnapTargets(d, exclude) : null;
+    const xs = [...(ab ? ab.xs : [0, d.width / 2, d.width]), ...(this.view.guides ? d.guides.v : [])];
+    const ys = [...(ab ? ab.ys : [0, d.height / 2, d.height]), ...(this.view.guides ? d.guides.h : [])];
     if (this.view.smartGuides) {
       walk(d.layers, (l) => {
         if (!isXf(l) || !l.visible || exclude.has(l.id)) return;

@@ -11,6 +11,7 @@ export interface Snap {
   width: number;
   height: number;
   selection: HTMLCanvasElement | null;
+  channels: NonNullable<Doc['channels']>;
   guides: { v: number[]; h: number[] };
   selected: string[];
   time: number;
@@ -28,6 +29,7 @@ export class History {
       width: doc.width,
       height: doc.height,
       selection: doc.selection,
+      channels: [...(doc.channels ?? [])],
       guides: { v: [...doc.guides.v], h: [...doc.guides.h] },
       selected: [...selected],
       time: Date.now(),
@@ -49,6 +51,7 @@ export class History {
     doc.width = s.width;
     doc.height = s.height;
     doc.selection = s.selection;
+    doc.channels = [...s.channels];
     doc.guides = { v: [...s.guides.v], h: [...s.guides.h] };
     return [...s.selected];
   }

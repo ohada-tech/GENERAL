@@ -8,8 +8,25 @@ import { apply, clamp, copyCanvas, ctx2d, hexToRgb, isXf, newCanvas, touch, xfMa
 import { layerBounds, layerMatrix, localBox, localSize, renderDoc, renderSingle } from './render';
 import { combine, polySel, rectSel, wandSel, type SelMode } from './selection';
 import { layoutText } from './text';
+import { blendLumaIntoSelection } from './select-ops';
+import { byMode, MagneticLassoTool, magneticActive, QuickSelectTool, RowColMarqueeTool, SelTransformTool } from './tools-select';
+import { BgEraserTool, ColorReplaceTool, HistoryBrushTool, MagicEraserTool } from './tools-paint';
+import { BlurTool, BurnTool, DodgeTool, HealTool, PatchTool, RedEyeTool, SharpenTool, SmudgeTool, SpongeTool, SpotHealTool } from './tools-retouch';
+import { ColorSamplerTool, RotateViewTool, RulerTool } from './tools-measure';
+import { getPattern } from './patterns';
+import { ArtboardTool, artboardLabelAt, afterMoveToolDrag } from './tools-artboard';
+import { applyArtboardMove, beginArtboardMove, selectedArtboards, type AbMove } from './artboard-ops';
+import { unionRect } from './model';
 
-export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'eyedropper' | 'brush' | 'clone' | 'eraser' | 'gradient' | 'text' | 'shape' | 'hand' | 'zoom';
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'eyedropper' | 'brush' | 'clone' | 'eraser' | 'gradient' | 'text' | 'shape' | 'hand' | 'zoom' | 'selxf'
+  // ציור, רטוש ומדידה (tools-paint / tools-retouch / tools-measure)
+  | 'pencil' | 'colorReplace' | 'bgEraser' | 'magicEraser' | 'historyBrush' | 'patternStamp'
+  | 'blur' | 'sharpen' | 'smudge' | 'dodge' | 'burn' | 'sponge'
+  | 'spotHeal' | 'heal' | 'patch' | 'redEye'
+  | 'colorSampler' | 'ruler' | 'rotateView'
+  | 'vtext' | 'htmask' | 'vtmask'
+  // משטחי עבודה (tools-artboard)
+  | 'artboard';
 
 export interface PtrEvt { doc: Pt; screen: Pt; shift: boolean; alt: boolean; ctrl: boolean; button: number; clicks: number }
 
@@ -71,6 +88,8 @@ interface MoveState {
   targets?: { xs: number[]; ys: number[] };
   guide?: { axis: 'v' | 'h'; index: number };
   floatOrig?: HTMLCanvasElement;
+  /** משטחי עבודה נבחרים שזזים יחד עם התוכן (המלבן והמסכות; המיקומים זזים ב-items) */
+  abm?: AbMove | null;
   selOrig?: HTMLCanvasElement | null;
   moved?: boolean;
 }
@@ -92,8 +111,10 @@ function hitGuide(ed: Editor, sp: Pt): MoveState['guide'] | null {
   const d = ed.doc!;
   if (!ed.view.guides || !ed.view.extras) return null;
   const st = ed.st!;
-  for (let i = 0; i < d.guides.v.length; i++) if (Math.abs(d.guides.v[i] * st.zoom + st.panX - sp.x) <= 3) return { axis: 'v', index: i };
-  for (let i = 0; i < d.guides.h.length; i++) if (Math.abs(d.guides.h[i] * st.zoom + st.panY - sp.y) <= 3) return { axis: 'h', index: i };
+  // במרחב המסמך — עובד גם כשהתצוגה מסובבת (Rotate View)
+  const p = ed.toDoc(sp.x, sp.y);
+  for (let i = 0; i < d.guides.v.length; i++) if (Math.abs(d.guides.v[i] - p.x) * st.zoom <= 3) return { axis: 'v', index: i };
+  for (let i = 0; i < d.guides.h.length; i++) if (Math.abs(d.guides.h[i] - p.y) * st.zoom <= 3) return { axis: 'h', index: i };
   return null;
 }
 
@@ -188,10 +209,12 @@ const MoveTool: Tool = {
       ed.st!.active = ids[ids.length - 1];
     }
     const items = ed.transformable().map((l) => ({ l, t0: { ...l.t } }));
-    if (!items.length) return;
-    let box: Rect | null = null;
+    const abm = ed.live.freeTransform ? null : beginArtboardMove(selectedArtboards(ed), false);
+    if (!items.length && !abm) return;
+    let box: Rect | null = abm ? { ...abm.box } : null;
     for (const it of items) { const b = layerBounds(it.l)!; box = box ? { x: Math.min(box.x, b.x), y: Math.min(box.y, b.y), w: Math.max(box.x + box.w, b.x + b.w) - Math.min(box.x, b.x), h: Math.max(box.y + box.h, b.y + b.h) - Math.min(box.y, b.y) } : b; }
-    ms = { mode: 'move', start: e.doc, items, box0: box!, targets: ed.snapTargets(new Set(items.map((i) => i.l.id))) };
+    if (abm) box = unionRect(box, abm.box);
+    ms = { mode: 'move', start: e.doc, items, box0: box!, abm, targets: ed.snapTargets(new Set([...items.map((i) => i.l.id), ...(abm?.ids ?? [])])) };
     ed.beginInteract();
   },
   move(ed, e) {
@@ -226,6 +249,8 @@ const MoveTool: Tool = {
       let dx = e.doc.x - ms.start.x, dy = e.doc.y - ms.start.y;
       if (e.shift) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
       ({ dx, dy } = snapDelta(ed, ms.box0!, dx, dy, ms.targets!));
+      // משטח עבודה זז בפיקסלים שלמים, והתוכן שלו איתו
+      if (ms.abm) { dx = Math.round(dx); dy = Math.round(dy); applyArtboardMove(ms.abm, dx, dy); }
       for (const it of ms.items) { it.l.t.x = it.t0.x + dx; it.l.t.y = it.t0.y + dy; touch(it.l); }
       ed.redraw(true);
       ed.status = `ΔX ${Math.round(dx)}  ΔY ${Math.round(dy)}`;
@@ -363,7 +388,8 @@ const MoveTool: Tool = {
     if (!s.moved) { ed.redraw(true); return; }
     for (const it of s.items) ed.bakeScale(it.l);
     if (ed.live.freeTransform) { ed.redraw(true); ed.emit(); return; }
-    ed.commit(s.mode === 'move' ? 'הזזה' : s.mode === 'rotate' ? 'סיבוב' : 'שינוי גודל');
+    if (s.mode === 'move' && !s.abm) afterMoveToolDrag(ed);
+    ed.commit(s.mode === 'move' ? (s.abm ? 'הזזת משטח עבודה' : 'הזזה') : s.mode === 'rotate' ? 'סיבוב' : 'שינוי גודל');
   },
   cancel(ed) {
     if (ms?.mode === 'float' && ed.live.floating) {
@@ -383,11 +409,12 @@ const MoveTool: Tool = {
   overlay(ed, x) {
     const r = ed.live.rubber;
     if (r) {
-      const a = ed.toScreen({ x: r.x, y: r.y });
       x.strokeStyle = '#4da3ff';
       x.fillStyle = 'rgba(77,163,255,.12)';
-      x.fillRect(a.x, a.y, r.w * ed.st!.zoom, r.h * ed.st!.zoom);
-      x.strokeRect(Math.round(a.x) + 0.5, Math.round(a.y) + 0.5, Math.round(r.w * ed.st!.zoom), Math.round(r.h * ed.st!.zoom));
+      x.lineWidth = 1;
+      rectPath(ed, x, r);
+      x.fill();
+      x.stroke();
     }
     drawSelectionBoxes(ed, x);
   },
@@ -425,6 +452,14 @@ function drawSelectionBoxes(ed: Editor, x: CanvasRenderingContext2D) {
     x.moveTo(c.x - 7, c.y); x.lineTo(c.x + 7, c.y); x.moveTo(c.x, c.y - 7); x.lineTo(c.x, c.y + 7);
     x.stroke();
   }
+}
+
+/** מלבן במסמך כמצולע במסך (נכון גם כשהתצוגה מסובבת) */
+function rectPath(ed: Editor, x: CanvasRenderingContext2D, r: Rect) {
+  const pts = [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }].map((p) => ed.toScreen(p));
+  x.beginPath();
+  pts.forEach((p, i) => (i ? x.lineTo(p.x, p.y) : x.moveTo(p.x, p.y)));
+  x.closePath();
 }
 
 function layerQuadScreen(ed: Editor, l: XfLayer): Pt[] {
@@ -657,24 +692,28 @@ const CropTool: Tool = {
   overlay(ed, x) {
     const c = ed.live.crop;
     if (!c) return;
-    const a = ed.toScreen({ x: c.x, y: c.y }), b = ed.toScreen({ x: c.x + c.w, y: c.y + c.h });
+    // ארבע פינות במסך — נכון גם כשהתצוגה מסובבת
+    const qs = [{ x: c.x, y: c.y }, { x: c.x + c.w, y: c.y }, { x: c.x + c.w, y: c.y + c.h }, { x: c.x, y: c.y + c.h }].map((p) => ed.toScreen(p));
     const cv = ed.canvas!;
+    const poly = () => { qs.forEach((p, i) => (i ? x.lineTo(p.x, p.y) : x.moveTo(p.x, p.y))); x.closePath(); };
     x.fillStyle = 'rgba(0,0,0,.55)';
     x.beginPath();
     x.rect(0, 0, cv.clientWidth, cv.clientHeight);
-    x.rect(a.x, a.y, b.x - a.x, b.y - a.y);
+    poly();
     x.fill('evenodd');
     x.strokeStyle = 'rgba(255,255,255,.45)';
     x.lineWidth = 1;
     x.beginPath();
     for (const k of [1 / 3, 2 / 3]) {
-      x.moveTo(a.x + (b.x - a.x) * k, a.y); x.lineTo(a.x + (b.x - a.x) * k, b.y);
-      x.moveTo(a.x, a.y + (b.y - a.y) * k); x.lineTo(b.x, a.y + (b.y - a.y) * k);
+      const t1 = quadPoint(qs, k, 0), b1 = quadPoint(qs, k, 1), l1 = quadPoint(qs, 0, k), r1 = quadPoint(qs, 1, k);
+      x.moveTo(t1.x, t1.y); x.lineTo(b1.x, b1.y);
+      x.moveTo(l1.x, l1.y); x.lineTo(r1.x, r1.y);
     }
     x.stroke();
     x.strokeStyle = '#fff';
-    x.strokeRect(a.x + 0.5, a.y + 0.5, b.x - a.x, b.y - a.y);
-    const qs = [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }];
+    x.beginPath();
+    poly();
+    x.stroke();
     for (const [hx, hy] of HANDLES) handleDot(x, quadPoint(qs, hx, hy), 9);
   },
 };
@@ -707,11 +746,16 @@ function pick(ed: Editor, e: PtrEvt) {
 
 /* ======================= Brush / Eraser / Clone ======================= */
 
+type StrokeTool = 'brush' | 'eraser' | 'clone' | 'pencil' | 'patternStamp';
+
 interface Stroke {
-  tool: 'brush' | 'eraser' | 'clone';
+  tool: StrokeTool;
   layerId: string;
-  target: 'pixels' | 'mask';
+  /** qmask = Quick Mask: המשיחה עורכת את הבחירה עצמה */
+  target: 'pixels' | 'mask' | 'qmask';
   base: HTMLCanvasElement;
+  /** Quick Mask: הבהירות של הצבע = ערך הבחירה (שחור מסיר, לבן מוסיף, אפור חלקי) */
+  lum?: number;
   stroke: HTMLCanvasElement;
   inv: DOMMatrix;
   scale: number;
@@ -720,18 +764,53 @@ interface Stroke {
   op: 'paint' | 'erase';
   source?: HTMLCanvasElement;
   offset?: Pt;
+  /** Pattern Stamp: מקור הדפוס (Aligned = מעוגן למסמך, אחרת לתחילת המשיחה) */
+  pattern?: { canvas: HTMLCanvasElement; origin: Pt };
 }
 let stroke: Stroke | null = null;
 let lastStrokeEnd: Pt | null = null;
 let cloneOffset: Pt | null = null;
 
-function brushOpts(ed: Editor, tool: 'brush' | 'eraser' | 'clone') { return ed.opts[tool]; }
+function brushOpts(ed: Editor, tool: StrokeTool): { size: number; hardness: number; opacity: number; flow: number } { return ed.opts[tool]; }
 
 function dab(st: Stroke, ed: Editor, p: Pt) {
   const o = brushOpts(ed, st.tool);
   const x = st.stroke.getContext('2d')!;
   const q = apply(st.inv, p);
   const r = Math.max(0.5, (o.size / 2) * st.scale);
+  if (st.tool === 'pencil') {
+    // Pencil: עיגול קשיח בלי החלקת קצוות — שורות של פיקסלים שלמים
+    x.fillStyle = st.color;
+    if (r <= 0.75) { x.fillRect(Math.floor(q.x), Math.floor(q.y), 1, 1); return; }
+    for (let yy = Math.floor(q.y - r); yy <= Math.ceil(q.y + r); yy++) {
+      const dy = yy + 0.5 - q.y;
+      if (Math.abs(dy) > r) continue;
+      const half = Math.sqrt(r * r - dy * dy);
+      const x0 = Math.round(q.x - half), x1 = Math.round(q.x + half);
+      if (x1 > x0) x.fillRect(x0, yy, x1 - x0, 1);
+    }
+    return;
+  }
+  if (st.tool === 'patternStamp' && st.pattern) {
+    const rd = o.size / 2;
+    const size = Math.ceil(rd * 2 + 2);
+    const tmp = newCanvas(size, size), tx = tmp.getContext('2d')!;
+    const pat = tx.createPattern(st.pattern.canvas, 'repeat')!;
+    pat.setTransform(new DOMMatrix().translateSelf(st.pattern.origin.x - (p.x - rd), st.pattern.origin.y - (p.y - rd)));
+    tx.fillStyle = pat;
+    tx.fillRect(0, 0, size, size);
+    tx.globalCompositeOperation = 'destination-in';
+    const g = tx.createRadialGradient(rd, rd, rd * o.hardness * 0.999, rd, rd, rd);
+    g.addColorStop(0, `rgba(0,0,0,${o.flow})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    tx.fillStyle = g;
+    tx.fillRect(0, 0, size, size);
+    x.save();
+    x.setTransform(st.inv);
+    x.drawImage(tmp, p.x - rd, p.y - rd);
+    x.restore();
+    return;
+  }
   if (st.tool === 'clone' && st.source && st.offset) {
     const rd = o.size / 2;
     const size = Math.ceil(rd * 2 + 2);
@@ -773,6 +852,17 @@ function composeStroke(st: Stroke, ed: Editor): HTMLCanvasElement {
   const d = ed.doc!;
   const o = brushOpts(ed, st.tool);
   let s = st.stroke;
+  if (st.target === 'qmask') {
+    // base·(1−a) + lum·a — מוחקים לפי המשיחה ואז מוסיפים אותה בעוצמת הבהירות
+    const out = copyCanvas(st.base), x = out.getContext('2d')!;
+    x.globalAlpha = o.opacity;
+    x.globalCompositeOperation = 'destination-out';
+    x.drawImage(s, 0, 0);
+    x.globalAlpha = o.opacity * (st.lum ?? 1);
+    x.globalCompositeOperation = 'lighter';
+    x.drawImage(s, 0, 0);
+    return out;
+  }
   if (d.selection) {
     s = copyCanvas(st.stroke);
     const sx = s.getContext('2d')!;
@@ -787,8 +877,20 @@ function composeStroke(st: Stroke, ed: Editor): HTMLCanvasElement {
   return out;
 }
 
-function startStroke(ed: Editor, e: PtrEvt, tool: 'brush' | 'eraser' | 'clone'): boolean {
+function startStroke(ed: Editor, e: PtrEvt, tool: StrokeTool): boolean {
   const d = ed.doc!;
+  if (ed.st!.qmask && (tool === 'brush' || tool === 'eraser' || tool === 'pencil')) {
+    // Quick Mask: מברשת בצבע הקדמי, מחק בצבע הרקע (כמו בפוטושופ) — על הבחירה, לא על שכבה
+    const [r, g, b] = hexToRgb(tool === 'eraser' ? ed.bg : ed.fg);
+    const base = d.selection ?? newCanvas(d.width, d.height);
+    const startPt = e.shift && lastStrokeEnd ? lastStrokeEnd : e.doc;
+    stroke = { tool, layerId: '', target: 'qmask', base, stroke: newCanvas(base.width, base.height), inv: new DOMMatrix(), scale: 1, last: startPt, color: '#ffffff', op: 'paint', lum: (0.299 * r + 0.587 * g + 0.114 * b) / 255 };
+    dab(stroke, ed, startPt);
+    if (e.shift && lastStrokeEnd) strokeTo(stroke, ed, e.doc);
+    ed.live.qmask = composeStroke(stroke, ed);
+    ed.redraw(false);
+    return true;
+  }
   let l = ed.active;
   if (!l) { ed.toast('בחר שכבה', 'error'); return false; }
   if (l.locked) { ed.toast('השכבה נעולה', 'error'); return false; }
@@ -816,15 +918,26 @@ function startStroke(ed: Editor, e: PtrEvt, tool: 'brush' | 'eraser' | 'clone'):
   }
   const scale = Math.sqrt(Math.abs(inv.a * inv.d - inv.b * inv.c));
   const startPt = e.shift && lastStrokeEnd ? lastStrokeEnd : e.doc;
+  if (tool === 'pencil' && ed.opts.pencil.autoErase && !maskEdit) {
+    // Auto Erase: מתחילים על פיקסל בצבע הקדמי → מציירים בצבע הרקע
+    const q = apply(inv, e.doc);
+    const px = ctx2d(base).getImageData(Math.floor(q.x), Math.floor(q.y), 1, 1).data;
+    const [fr, fg, fb] = hexToRgb(ed.fg);
+    if (px[3] > 0 && Math.max(Math.abs(px[0] - fr), Math.abs(px[1] - fg), Math.abs(px[2] - fb)) <= 6) color = ed.bg;
+  }
   stroke = { tool, layerId: l.id, target: maskEdit ? 'mask' : 'pixels', base, stroke: newCanvas(base.width, base.height), inv, scale, last: startPt, color, op };
   if (tool === 'clone') {
     stroke.source = renderDoc(d, { scale: 1 });
     if (!ed.opts.clone.aligned || !cloneOffset) cloneOffset = { x: e.doc.x - ed.live.cloneSrc!.x, y: e.doc.y - ed.live.cloneSrc!.y };
     stroke.offset = cloneOffset;
   }
+  if (tool === 'patternStamp') {
+    const o = ed.opts.patternStamp;
+    stroke.pattern = { canvas: getPattern(o.pattern).canvas, origin: o.aligned ? { x: 0, y: 0 } : { x: e.doc.x, y: e.doc.y } };
+  }
   dab(stroke, ed, startPt);
   if (e.shift && lastStrokeEnd) strokeTo(stroke, ed, e.doc);
-  ed.live.paint = { layerId: l.id, target: stroke.target, canvas: composeStroke(stroke, ed) };
+  ed.live.paint = { layerId: l.id, target: maskEdit ? 'mask' : 'pixels', canvas: composeStroke(stroke, ed) };
   ed.beginInteract();
   ed.redraw(true);
   return true;
@@ -832,20 +945,23 @@ function startStroke(ed: Editor, e: PtrEvt, tool: 'brush' | 'eraser' | 'clone'):
 
 let brushCursor: Pt | null = null;
 
-function paintTool(id: 'brush' | 'eraser' | 'clone'): Tool {
+const STROKE_LABEL: Record<StrokeTool, string> = { brush: 'מברשת', eraser: 'מחק', clone: 'חותמת שכפול', pencil: 'עיפרון', patternStamp: 'חותמת דוגמה' };
+
+function paintTool(id: StrokeTool): Tool {
   return {
     id,
     cursor: () => 'crosshair',
     down(ed, e) {
       if (id === 'clone' && e.alt) { ed.live.cloneSrc = e.doc; cloneOffset = null; ed.toast('נקודת מקור נקבעה'); ed.redraw(false); return; }
-      if (id === 'brush' && e.alt) { pick(ed, { ...e, alt: false }); return; }
+      if ((id === 'brush' || id === 'pencil') && e.alt) { pick(ed, { ...e, alt: false }); return; }
       startStroke(ed, e, id);
     },
     move(ed, e) {
       brushCursor = e.screen;
       if (!stroke) { ed.redraw(false); return; }
       strokeTo(stroke, ed, e.doc);
-      ed.live.paint = { layerId: stroke.layerId, target: stroke.target, canvas: composeStroke(stroke, ed) };
+      if (stroke.target === 'qmask') { ed.live.qmask = composeStroke(stroke, ed); ed.redraw(false); return; }
+      ed.live.paint = { layerId: stroke.layerId, target: stroke.target === 'mask' ? 'mask' : 'pixels', canvas: composeStroke(stroke, ed) };
       ed.redraw(true);
     },
     hover(ed, e) { brushCursor = e.screen; if (id === 'clone' && ed.live.cloneSrc && cloneOffset) ed.live.cloneCursor = { x: e.doc.x - cloneOffset.x, y: e.doc.y - cloneOffset.y }; ed.redraw(false); },
@@ -855,13 +971,14 @@ function paintTool(id: 'brush' | 'eraser' | 'clone'): Tool {
       stroke = null;
       lastStrokeEnd = e.doc;
       const result = composeStroke(st, ed);
+      if (st.target === 'qmask') { ed.live.qmask = null; ed.setSelection(result, `מסכה מהירה · ${STROKE_LABEL[id]}`); return; }
       const l = ed.layer(st.layerId)!;
       if (st.target === 'mask' && l.mask) l.mask = { ...l.mask, canvas: result };
       else (l as RasterLayer).canvas = result;
       touch(l);
       ed.live.paint = null;
       ed.endInteract();
-      ed.commit(id === 'brush' ? 'מברשת' : id === 'eraser' ? 'מחק' : 'חותמת שכפול');
+      ed.commit(STROKE_LABEL[id]);
     },
     overlay(ed, x) {
       if (!brushCursor || !ed.st) return;
@@ -910,6 +1027,7 @@ const GradientTool: Tool = {
   down(ed, e) {
     const o = ed.opts.gradient;
     if (o.mode === 'bucket') {
+      if (ed.st!.qmask) { ed.toast('במסכה מהירה עובדים עם מברשת, מחק או מעבר צבע · Q ליציאה', 'error'); return; }
       const d = ed.doc!;
       const l = rasterTarget(ed);
       if (!l) return;
@@ -942,8 +1060,8 @@ const GradientTool: Tool = {
     ed.live.gradientLine = null;
     if (!line || dist(line.a, line.b) < 2) { ed.redraw(false); return; }
     const d = ed.doc!, o = ed.opts.gradient;
-    const l = rasterTarget(ed);
-    if (!l) return;
+    const l = ed.st!.qmask ? null : rasterTarget(ed);
+    if (!l && !ed.st!.qmask) return;
     const c = newCanvas(d.width, d.height), x = c.getContext('2d')!;
     const g = o.type === 'linear' ? x.createLinearGradient(line.a.x, line.a.y, line.b.x, line.b.y) : x.createRadialGradient(line.a.x, line.a.y, 0, line.a.x, line.a.y, dist(line.a, line.b));
     g.addColorStop(0, o.reverse ? ed.bg : ed.fg);
@@ -951,6 +1069,7 @@ const GradientTool: Tool = {
     x.globalAlpha = o.opacity;
     x.fillStyle = g;
     x.fillRect(0, 0, d.width, d.height);
+    if (!l) { ed.setSelection(blendLumaIntoSelection(d.selection, c, d.width, d.height), 'מסכה מהירה · מעבר צבע'); return; }
     paintDocCanvas(ed, l, c, 'מעבר צבע');
   },
   overlay(ed, x) {
@@ -969,12 +1088,16 @@ const GradientTool: Tool = {
 
 let textDrag: { start: Pt } | null = null;
 
-const TextTool: Tool = {
-  id: 'text',
-  cursor: () => 'text',
+/**
+ * Type Tool בארבעת המצבים של פוטושופ: אופקי, אנכי (vtext), ומסכות טקסט (htmask/vtmask) —
+ * במסכה ההקלדה יוצרת בחירה בצורת הטקסט במקום שכבה.
+ */
+const textTool = (id: ToolId, orient: 'h' | 'v', mask: boolean): Tool => ({
+  id,
+  cursor: () => (orient === 'v' ? 'vertical-text' : 'text'),
   down(ed, e) {
     if (ed.live.textEdit) { ed.commitTextEdit(); return; }
-    const hit = ed.textAt(e.doc);
+    const hit = mask ? null : ed.textAt(e.doc);
     if (hit && !hit.locked) { ed.beginTextEdit(hit, false); return; }
     textDrag = { start: e.doc };
   },
@@ -992,8 +1115,16 @@ const TextTool: Tool = {
     // כמו בפוטושופ: צבע הטקסט החדש = הצבע הקדמי
     const style = { ...ed.opts.text, color: ed.fg };
     ed.fontReady(style);
+    const prev = { selected: [...ed.st!.selected], active: ed.st!.active };
     let l: TextLayer;
-    if (r && r.w * ed.st!.zoom > 8) {
+    if (orient === 'v') {
+      // אנכי: הלחיצה היא ראש העמודה הראשונה; עמודות נוספות נבנות שמאלה
+      l = ed.addTextLayer('', { x: s.x, y: s.y }, null, style);
+      l.orientation = 'v';
+      const L = layoutText(l);
+      l.t.x = s.x;
+      l.t.y = s.y + L.h / 2;
+    } else if (r && r.w * ed.st!.zoom > 8) {
       // Paragraph Text: תיבה עם גלישה
       l = ed.addTextLayer('', { x: r.x + r.w / 2, y: 0 }, Math.max(10, r.w), style);
       const L = layoutText(l);
@@ -1007,15 +1138,16 @@ const TextTool: Tool = {
       l.t.y = s.y - L.ascent - (L.lineH - (L.ascent + L.descent)) / 2 + L.h / 2;
     }
     void e;
-    ed.beginTextEdit(l, true);
+    ed.beginTextEdit(l, true, mask, mask ? prev : undefined);
   },
   overlay(ed, x) {
     const r = ed.live.rubber;
     if (r) {
-      const a = ed.toScreen({ x: r.x, y: r.y });
       x.setLineDash([3, 3]);
       x.strokeStyle = '#fff';
-      x.strokeRect(a.x + 0.5, a.y + 0.5, r.w * ed.st!.zoom, r.h * ed.st!.zoom);
+      x.lineWidth = 1;
+      rectPath(ed, x, r);
+      x.stroke();
       x.setLineDash([]);
     }
     const te = ed.live.textEdit;
@@ -1031,10 +1163,10 @@ const TextTool: Tool = {
         x.stroke();
         x.setLineDash([]);
       }
-    } else drawSelectionBoxes(ed, x);
+    } else if (!mask) drawSelectionBoxes(ed, x);
   },
   deactivate(ed) { ed.commitTextEdit(); },
-};
+});
 
 /* ======================= Shapes ======================= */
 
@@ -1079,7 +1211,7 @@ const ShapeTool: Tool = {
   overlay(ed, x) {
     if (!shapeDrag) { drawSelectionBoxes(ed, x); return; }
     const g = shapeGeom(ed, shapeDrag);
-    const m = new DOMMatrix().translateSelf(ed.st!.panX, ed.st!.panY).scaleSelf(ed.st!.zoom, ed.st!.zoom).translateSelf(g.r.x + g.r.w / 2, g.r.y + g.r.h / 2).rotateSelf(g.rot);
+    const m = ed.viewMatrix().translateSelf(g.r.x + g.r.w / 2, g.r.y + g.r.h / 2).rotateSelf(g.rot);
     x.save();
     x.setTransform(new DOMMatrix().scaleSelf(Math.min(3, window.devicePixelRatio || 1)).multiplySelf(m));
     x.strokeStyle = '#4da3ff';
@@ -1119,19 +1251,43 @@ const ZoomTool: Tool = {
 
 export const TOOLS: Record<ToolId, Tool> = {
   move: MoveTool,
-  marquee: MarqueeTool,
-  lasso: LassoTool,
-  wand: WandTool,
+  marquee: byMode(MarqueeTool, RowColMarqueeTool, (ed) => ed.opts.marquee.shape === 'row' || ed.opts.marquee.shape === 'col'),
+  lasso: byMode(LassoTool, MagneticLassoTool, (ed) => ed.opts.lasso.mode === 'magnetic'),
+  wand: byMode(WandTool, QuickSelectTool, (ed) => ed.opts.wand.mode === 'quick'),
   crop: CropTool,
   eyedropper: EyedropperTool,
   brush: paintTool('brush'),
   clone: paintTool('clone'),
   eraser: paintTool('eraser'),
   gradient: GradientTool,
-  text: TextTool,
+  text: textTool('text', 'h', false),
   shape: ShapeTool,
   hand: HandTool,
   zoom: ZoomTool,
+  selxf: SelTransformTool,
+  pencil: paintTool('pencil'),
+  colorReplace: ColorReplaceTool,
+  bgEraser: BgEraserTool,
+  magicEraser: MagicEraserTool,
+  historyBrush: HistoryBrushTool,
+  patternStamp: paintTool('patternStamp'),
+  blur: BlurTool,
+  sharpen: SharpenTool,
+  smudge: SmudgeTool,
+  dodge: DodgeTool,
+  burn: BurnTool,
+  sponge: SpongeTool,
+  spotHeal: SpotHealTool,
+  heal: HealTool,
+  patch: PatchTool,
+  redEye: RedEyeTool,
+  colorSampler: ColorSamplerTool,
+  ruler: RulerTool,
+  rotateView: RotateViewTool,
+  vtext: textTool('vtext', 'v', false),
+  htmask: textTool('htmask', 'h', true),
+  vtmask: textTool('vtmask', 'v', true),
+  artboard: ArtboardTool,
 };
 
 /* ======================= ניתוב אירועי עכבר ======================= */
@@ -1140,12 +1296,16 @@ let dragTool: Tool | null = null;
 
 export function pointerDown(ed: Editor, e: PtrEvt) {
   if (!ed.doc) return;
+  // דיאלוג שדוגם מהקנבס (Color Range) תופס את הלחיצה
+  if (ed.live.pick) { ed.live.pick(e); return; }
   let t = ed.activeTool();
   // Ctrl מחזיק זמנית את כלי ההזזה (כמו בפוטושופ); Alt במברשת/דלי/מעבר = דוגם צבע
-  if (e.ctrl && !['move', 'hand', 'zoom', 'crop', 'text', 'marquee', 'lasso', 'wand'].includes(t.id) && !e.alt) t = TOOLS.move;
-  if (e.ctrl && ['marquee', 'lasso'].includes(t.id) && !poly) t = TOOLS.move;
+  if (e.ctrl && !['move', 'hand', 'zoom', 'crop', 'text', 'vtext', 'htmask', 'vtmask', 'marquee', 'lasso', 'wand', 'selxf', 'rotateView'].includes(t.id) && !e.alt) t = TOOLS.move;
+  if (e.ctrl && ['marquee', 'lasso'].includes(t.id) && !poly && !magneticActive()) t = TOOLS.move;
   if (e.alt && t.id === 'gradient') t = TOOLS.eyedropper;
   if (e.button === 1) t = TOOLS.hand;
+  // גרירת תווית של משטח עבודה בכלי Move = הזזת המשטח (כמו בפוטושופ)
+  if (t === TOOLS.move && !ed.live.freeTransform && artboardLabelAt(ed, e.screen)) t = TOOLS.artboard;
   const spring = t !== ed.activeTool();
   dragTool = t;
   t.down?.(ed, spring && t === TOOLS.move ? { ...e, ctrl: false } : e);

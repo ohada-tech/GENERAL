@@ -8,7 +8,11 @@ import type { AdjustLayer, BlendMode, Effects, Layer, ShapeLayer, TextLayer, Tex
 import { BLEND_MODES, findLayer, flatForPanel, isXf, makeGroup, touch } from '../model';
 import { drawThumb, layerBounds, localBox } from '../render';
 import { layoutText } from '../text';
+import { maskToSelection, moveMask, setMaskProp, toggleMaskView } from '../select-cmds';
+import { historySource, setHistorySource } from '../tools-paint';
 import { Check, ColorField, ColorPicker, Ico, Num, Seg, Slider, useEditor } from './widgets';
+import { ArtboardProps } from './artboard-ui';
+import { isArtboard } from '../artboards';
 
 /* ======================= Layers ======================= */
 
@@ -86,7 +90,7 @@ export function LayersPanel({ ed }: { ed: Editor }) {
         {rows.map(({ layer: l, depth }) => (
           <div
             key={l.id}
-            className={`pe-layer-row ${sel.has(l.id) ? 'sel' : ''} ${st.active === l.id ? 'active' : ''} ${drop?.id === l.id ? `drop-${drop.where}` : ''} ${l.clip ? 'clipped' : ''}`}
+            className={`pe-layer-row ${isArtboard(l) ? 'artboard' : ''} ${sel.has(l.id) ? 'sel' : ''} ${st.active === l.id ? 'active' : ''} ${drop?.id === l.id ? `drop-${drop.where}` : ''} ${l.clip ? 'clipped' : ''}`}
             style={{ paddingInlineStart: 6 + depth * 16 }}
             draggable={renaming !== l.id}
             onDragStart={(e) => { e.dataTransfer.setData('text/x-pe-layer', l.id); if (!sel.has(l.id)) ed.selectLayer(l.id); }}
@@ -96,7 +100,13 @@ export function LayersPanel({ ed }: { ed: Editor }) {
               const y = (e.clientY - rc.top) / rc.height;
               setDrop({ id: l.id, where: l.type === 'group' && y > 0.3 && y < 0.7 ? 'into' : y < 0.5 ? 'above' : 'below' });
             }}
-            onDrop={(e) => { e.preventDefault(); if (drop) ed.moveLayers(ed.topSelected().map((x) => x.id), drop.id, drop.where); setDrop(null); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              const maskFrom = e.dataTransfer.getData('text/x-pe-mask');
+              if (maskFrom) { moveMask(ed, maskFrom, l.id, e.altKey); setDrop(null); return; }
+              if (drop) ed.moveLayers(ed.topSelected().map((x) => x.id), drop.id, drop.where);
+              setDrop(null);
+            }}
             onClick={(e) => onRowClick(e, l)}
             onDoubleClick={() => setRenaming(l.id)}
           >
@@ -113,7 +123,7 @@ export function LayersPanel({ ed }: { ed: Editor }) {
             {l.type === 'group' && (
               <button type="button" className={`pe-twisty ${l.open ? 'open' : ''}`} onClick={(e) => { e.stopPropagation(); l.open = !l.open; ed.emit(); }}><Ico n="chevron" size={12} /></button>
             )}
-            {l.type === 'group' ? <span className="pe-thumb pe-thumb-group"><Ico n="group" size={16} /></span> : (
+            {l.type === 'group' ? <span className={`pe-thumb pe-thumb-group ${l.artboard ? 'pe-thumb-artboard' : ''}`} title={l.artboard ? `Artboard · ${l.artboard.w}×${l.artboard.h}` : undefined}><Ico n={l.artboard ? 'artboard' : 'group'} size={16} /></span> : (
               <span title="Ctrl+לחיצה = בחירה מהשכבה" onClick={(e) => { if (e.ctrlKey || e.metaKey) { e.stopPropagation(); ed.selectionFromLayer(l, e.shiftKey ? 'add' : e.altKey ? 'sub' : 'new'); } else if (st.maskEdit && st.active === l.id) { st.maskEdit = false; ed.emit(); } }}>
                 <Thumb ed={ed} layer={l} />
               </span>
@@ -121,8 +131,18 @@ export function LayersPanel({ ed }: { ed: Editor }) {
             {l.mask && (
               <span
                 className={`pe-mask-wrap ${st.maskEdit && st.active === l.id ? 'editing' : ''} ${l.mask.enabled ? '' : 'disabled'}`}
-                title="לחיצה = עריכת המסכה · Shift+לחיצה = כיבוי/הפעלה"
-                onClick={(e) => { e.stopPropagation(); if (e.shiftKey) { ed.toggleMaskEnabled(l); return; } ed.selectLayer(l.id); st.maskEdit = true; ed.emit(); }}
+                title="לחיצה = עריכת המסכה · Shift = כיבוי/הפעלה · Alt = המסכה לבד · Ctrl = טעינה כבחירה · גרירה לשכבה אחרת = העברה (Alt = העתקה)"
+                draggable
+                onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('text/x-pe-mask', l.id); e.dataTransfer.effectAllowed = 'copyMove'; }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (e.ctrlKey || e.metaKey) { maskToSelection(ed, l, e.shiftKey && e.altKey ? 'int' : e.shiftKey ? 'add' : e.altKey ? 'sub' : 'new'); return; }
+                  if (e.shiftKey) { ed.toggleMaskEnabled(l); return; }
+                  ed.selectLayer(l.id);
+                  st.maskEdit = true;
+                  if (e.altKey) toggleMaskView(ed, l, 'alone');
+                  ed.emit();
+                }}
               >
                 <MaskThumb ed={ed} layer={l} />
               </span>
@@ -154,7 +174,7 @@ export function LayersPanel({ ed }: { ed: Editor }) {
             </div>
           )}
         </div>
-        <button type="button" title="הוספת מסכה (Alt = מסכה שמסתירה הכול)" onClick={(e) => ed.addMask(e.altKey)} disabled={!a}><Ico n="mask" /></button>
+        <button type="button" title="הוספת מסכה — עם בחירה: מהבחירה (Alt = מסתירה את הבחירה) · בלי בחירה: חושפת הכול (Alt = מסתירה הכול)" onClick={(e) => ed.run(st.doc.selection ? (e.altKey ? 'layer.maskHideSel' : 'layer.maskRevealSel') : (e.altKey ? 'layer.maskHideAll' : 'layer.maskRevealAll'))} disabled={!a}><Ico n="mask" /></button>
         <div className="pe-menu-anchor">
           <button type="button" title="שכבת התאמה חדשה" onClick={() => setMenu(menu === 'adjust' ? null : 'adjust')}><Ico n="adjust" /></button>
           {menu === 'adjust' && (
@@ -182,10 +202,16 @@ export function HistoryPanel({ ed }: { ed: Editor }) {
   const list = useRef<HTMLDivElement>(null);
   useEffect(() => { list.current?.querySelector('.cur')?.scrollIntoView({ block: 'nearest' }); });
   if (!st) return <div className="pe-empty-panel">אין מסמך פתוח</div>;
+  const src = historySource(st);
   return (
     <div className="pe-history" ref={list}>
       {st.history.states.map((s, i) => (
         <button key={`${s.time}-${i}`} type="button" className={`pe-hist-row ${i === st.history.index ? 'cur' : ''} ${i > st.history.index ? 'future' : ''}`} onClick={() => ed.jump(i)}>
+          {/* עמודת המקור של מברשת ההיסטוריה (History Brush) — כמו הריבוע השמאלי בפוטושופ */}
+          <span role="button" tabIndex={-1} className={`pe-hist-src ${s === src ? 'on' : ''}`} title="מקור למברשת ההיסטוריה · History Brush source" aria-label="מקור למברשת ההיסטוריה"
+            onClick={(e) => { e.stopPropagation(); setHistorySource(ed, i); }}>
+            {s === src ? <Ico n="historyBrush" size={13} /> : null}
+          </span>
           {i === 0 ? <span className="pe-hist-snap" /> : null}
           <span>{s.label}</span>
         </button>
@@ -611,6 +637,15 @@ export function PropertiesPanel({ ed }: { ed: Editor }) {
       <div className="pe-props">
         <h4>Layer Mask · מסכה</h4>
         <p className="pe-hint">מברשת שחורה מסתירה, לבנה מחזירה. X מחליף צבעים.</p>
+        <Slider label="Density · צפיפות" value={Math.round((l.mask.density ?? 1) * 100)} min={0} max={100} unit="%" onChange={(v) => setMaskProp(ed, l, 'density', v / 100)} />
+        <Slider label="Feather · ריכוך" value={l.mask.feather ?? 0} min={0} max={250} step={0.1} digits={1} unit="px" onChange={(v) => setMaskProp(ed, l, 'feather', v)} />
+        <div className="pe-row wrap">
+          <button type="button" className="pe-btn" title="Select and Mask (Ctrl+Alt+R)" onClick={() => ed.run('select.selectAndMask')}>Select and Mask…</button>
+          <button type="button" className="pe-btn" onClick={() => ed.run('select.colorRange')}>Color Range…</button>
+          <button type="button" className="pe-btn" title="Ctrl+לחיצה על המסכה" onClick={() => maskToSelection(ed, l)}>Load Selection</button>
+          <button type="button" className={`pe-btn ${ed.live.maskView?.layerId === l.id && ed.live.maskView.mode === 'alone' ? 'on' : ''}`} title="Alt+לחיצה על המסכה" onClick={() => toggleMaskView(ed, l, 'alone')}>מסכה לבד</button>
+          <button type="button" className={`pe-btn ${ed.live.maskView?.layerId === l.id && ed.live.maskView.mode === 'overlay' ? 'on' : ''}`} title={'מקש \\'} onClick={() => toggleMaskView(ed, l, 'overlay')}>Overlay</button>
+        </div>
         <div className="pe-row wrap">
           <button type="button" className="pe-btn" onClick={() => ed.invertMask()}>Invert</button>
           <button type="button" className="pe-btn" onClick={() => ed.toggleMaskEnabled(l)}>{l.mask.enabled ? 'Disable' : 'Enable'}</button>
@@ -648,7 +683,8 @@ export function PropertiesPanel({ ed }: { ed: Editor }) {
         </div>
       )}
       {l.type === 'raster' && <p className="pe-hint">Pixel Layer · {l.canvas.width}×{l.canvas.height}px{Math.abs(l.t.sx) !== 1 ? ` · מוצג ב-${Math.round(Math.abs(l.t.sx) * 100)}%` : ''}</p>}
-      {l.type === 'group' && <p className="pe-hint">קבוצה · {l.children.length} שכבות</p>}
+      {isArtboard(l) && <ArtboardProps ed={ed} a={l} />}
+      {l.type === 'group' && !l.artboard && <p className="pe-hint">קבוצה · {l.children.length} שכבות</p>}
       <FxEditor ed={ed} l={l} />
     </div>
   );
