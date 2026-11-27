@@ -17,6 +17,7 @@ import { clearTextCache, ensureFont, fontString, layoutText } from './text';
 import { TOOLS, type PtrEvt, type Tool, type ToolId } from './tools';
 import { antsSelection, paintSelectionOverlays } from './select-ops';
 import { runSelectCmd } from './select-cmds';
+import { runAiCmd } from './ai';
 import type { SelXf } from './tools-select';
 import { extraOpts, groupByKey, nextInGroup, OVERLAY_HOOKS, setGroupCurrent, groupCurrent, type ExtraOpts } from './tool-registry';
 import { runToolCmd } from './tool-cmds';
@@ -937,6 +938,7 @@ export class Editor {
       if (id === 'view.rulers') { this.view.rulers = !this.view.rulers; this.emit(); }
       return;
     }
+    if (runAiCmd(this, id)) return;
     if (runSelectCmd(this, id)) return;
     if (runToolCmd(this, id)) return;
     switch (id) {

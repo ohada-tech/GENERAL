@@ -66,6 +66,7 @@ export const DEFAULTS: ShortcutDef[] = [
   { id: 'edit.copy', label: 'העתקה', en: 'Copy', group: 'Edit', keys: ['Ctrl+C'] },
   { id: 'edit.copyMerged', label: 'העתקה ממוזגת', en: 'Copy Merged', group: 'Edit', keys: ['Ctrl+Shift+C'] },
   { id: 'edit.fill', label: 'מילוי', en: 'Fill…', group: 'Edit', keys: ['Shift+F5'] },
+  { id: 'edit.generativeFill', label: 'מילוי גנרטיבי (AI)', en: 'Generative Fill…', group: 'Edit', keys: [] },
   { id: 'edit.fillFg', label: 'מילוי בצבע קדמי', en: 'Fill with Foreground', group: 'Edit', keys: ['Alt+Backspace', 'Alt+Delete'] },
   { id: 'edit.fillBg', label: 'מילוי בצבע רקע', en: 'Fill with Background', group: 'Edit', keys: ['Ctrl+Backspace', 'Ctrl+Delete'] },
   { id: 'edit.clear', label: 'מחיקה', en: 'Clear / Delete Layer', group: 'Edit', keys: ['Delete', 'Backspace'] },
@@ -93,6 +94,7 @@ export const DEFAULTS: ShortcutDef[] = [
 
   // Layer
   { id: 'layer.new', label: 'שכבה חדשה', en: 'New Layer', group: 'Layer', keys: ['Ctrl+Shift+N', 'Ctrl+Alt+Shift+N'] },
+  { id: 'layer.removeBg', label: 'הסרת רקע (AI)', en: 'Remove Background', group: 'Layer', keys: [] },
   { id: 'layer.duplicate', label: 'שכפול שכבה', en: 'Layer via Copy / Duplicate', group: 'Layer', keys: ['Ctrl+J'] },
   { id: 'layer.viaCut', label: 'שכבה בגזירה', en: 'Layer via Cut', group: 'Layer', keys: ['Ctrl+Shift+J'] },
   { id: 'layer.group', label: 'קיבוץ שכבות', en: 'Group Layers', group: 'Layer', keys: ['Ctrl+G'] },
@@ -122,6 +124,7 @@ export const DEFAULTS: ShortcutDef[] = [
   { id: 'select.quickMask', label: 'מסכה מהירה', en: 'Edit in Quick Mask Mode', group: 'Select', keys: ['Q'] },
   { id: 'select.selectAndMask', label: 'בחירה ומסכה', en: 'Select and Mask…', group: 'Select', keys: ['Ctrl+Alt+R'] },
   { id: 'select.colorRange', label: 'טווח צבעים', en: 'Color Range…', group: 'Select', keys: [] },
+  { id: 'select.subject', label: 'בחירת נושא (AI)', en: 'Subject', group: 'Select', keys: [] },
   { id: 'select.grow', label: 'הרחבה לפי צבע', en: 'Grow', group: 'Select', keys: [] },
   { id: 'select.similar', label: 'צבעים דומים', en: 'Similar', group: 'Select', keys: [] },
   { id: 'select.border', label: 'מסגרת בחירה', en: 'Modify > Border…', group: 'Select', keys: [] },

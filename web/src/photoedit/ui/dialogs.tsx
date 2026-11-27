@@ -6,6 +6,7 @@ import { cloud, recovery, deserialize, type CloudDoc, type RecoveryEntry, export
 import { comboOf, pretty, BROWSER_RESERVED } from '../shortcuts';
 import { AdjustParams } from './panels';
 import { SelectDialogs } from './select-dialogs';
+import { GenFillDialog } from './ai-ui';
 import { PatternPicker } from './paint-options';
 import { fillPattern } from '../patterns';
 import { Check, ColorField, Num, Seg, Slider, useEditor } from './widgets';
@@ -453,7 +454,7 @@ function AboutDialog({ ed }: { ed: Editor }) {
         <h4>עובד עכשיו</h4>
         <p>Move · Free Transform · Marquee · Lasso / Polygonal · Magic Wand · Crop · Brush · Eraser · Clone Stamp · Gradient · Paint Bucket · Type (עברית RTL) · Shapes · Eyedropper · Hand · Zoom · Layers (קבוצות, מסכות, Clipping, Blend Modes, מיזוג, Rasterize) · Layer Style (צל, קו מתאר, זוהר, שכבת צבע) · 14 שכבות התאמה · 5 פילטרים · Rulers / Guides / Grid / Smart Guides / Snap · Align & Distribute · Image Size · Canvas Size · ייצוא PNG / JPG / WEBP / SVG · קובץ .photoedit</p>
         <h4>במפת הדרכים</h4>
-        <p>Pen Tool ו-Paths · Healing Brush · Content-Aware Fill · Liquify · Smart Objects · Perspective / Warp · Artboards · Actions ו-Batch Export · PSD Import / Export · הסרת רקע, הסרת אובייקטים, Generative Fill והרחבת תמונה דרך כלי ה-AI של המערכת.</p>
+        <p>Pen Tool ו-Paths · Healing Brush · Content-Aware Fill · Liquify · Smart Objects · Perspective / Warp · Artboards · Actions ו-Batch Export · PSD Import / Export · הרחבת תמונה (Generative Expand) ופלאגינים של היגספילד, GPT ו-Envato בתוך משטחי העבודה.</p>
       </div>
     </Modal>
   );
@@ -478,6 +479,7 @@ export function Dialogs({ ed, projectId }: { ed: Editor; projectId: string | nul
     case 'confirmClose': return <ConfirmClose ed={ed} index={dlg.data.index} />;
     case 'placeProject': return projectId ? <PlaceFromProject ed={ed} projectId={projectId} /> : null;
     case 'about': return <AboutDialog ed={ed} />;
+    case 'genFill': return ed.doc?.selection ? <GenFillDialog ed={ed} /> : null;
     default: return <SelectDialogs ed={ed} />;
   }
 }

@@ -13,6 +13,8 @@
     "@apos/shared": "*",
     "@fontsource/assistant": "^5.3.0",
     "@fontsource/poppins": "^5.3.0",
+    "@imgly/background-removal": "^1.7.0",
+    "onnxruntime-web": "^1.21.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-router-dom": "^7.18.4",

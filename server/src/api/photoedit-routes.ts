@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { GateError, NotFoundError, type Ctx } from '../context.js';
 import { now, uid } from '../db/db.js';
+import { registerPhotoeditAiRoutes } from './photoedit-ai.js';
 
 interface DocRow {
   id: string;
@@ -52,6 +53,7 @@ const toDto = (r: DocRow) => ({
 
 export function registerPhotoeditRoutes(app: FastifyInstance, ctx: Ctx) {
   ensurePhotoeditTable(ctx);
+  registerPhotoeditAiRoutes(app, ctx);
   const dir = path.join(ctx.config.dataDir, 'photoedit');
   const docPath = (id: string) => path.join(dir, `${id}.json`);
   const thumbPath = (id: string) => path.join(dir, `${id}.png`);

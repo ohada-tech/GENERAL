@@ -533,3 +533,25 @@
 .pe-vmask-badge { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 5px; color: var(--pe-acc); background: var(--pe-bg1); box-shadow: var(--pe-hi); cursor: pointer; }
 .pe-vmask-badge:hover { background: var(--pe-bg4); }
 .pe-vmask-badge.disabled { color: var(--pe-fg3); text-decoration: line-through; opacity: .6; }
+
+/* ===================== AI: Generative Fill, הסרת רקע, בחירת נושא ===================== */
+.pe-aibar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 40; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 40px); padding: 6px; border-radius: 999px; background: rgba(40,42,50,.72); -webkit-backdrop-filter: blur(30px) saturate(1.8); backdrop-filter: blur(30px) saturate(1.8); box-shadow: var(--pe-hi), var(--pe-shadow-pop); font-size: 12.5px; animation: pe-fade 180ms var(--pe-ease); }
+.pe-aibar button { border: 0; background: transparent; color: var(--pe-fg); font: inherit; cursor: pointer; }
+.pe-ai-act { padding: 6px 13px; border-radius: 999px; background: rgba(255,255,255,.08) !important; box-shadow: var(--pe-hi); white-space: nowrap; }
+.pe-ai-act:hover { background: rgba(255,255,255,.16) !important; }
+.pe-ai-act.primary { background: linear-gradient(135deg, #8b5cf6, #3b82f6) !important; color: #fff; font-weight: 600; }
+.pe-ai-act.primary:hover { filter: brightness(1.12); }
+.pe-ai-busy, .pe-ai-job, .pe-ai-var { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; white-space: nowrap; color: var(--pe-fg2); }
+.pe-ai-job.failed { color: #ff8a80; }
+.pe-ai-job button, .pe-ai-var button { padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,.08) !important; }
+.pe-ai-var button { font-size: 15px; line-height: 1; }
+.pe-spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); border-top-color: #a78bfa; animation: pe-spin 800ms linear infinite; flex: none; }
+@keyframes pe-spin { to { transform: rotate(360deg); } }
+.pe-ai-dlg { display: flex; flex-direction: column; gap: 10px; width: 100%; min-width: 0; box-sizing: border-box; text-align: right; }
+.pe-ai-dlg .pe-seg { flex-wrap: wrap; }
+.pe-ai-prompt { width: 100%; box-sizing: border-box; resize: vertical; min-height: 70px; padding: 10px 12px; border: 0; border-radius: var(--pe-r-ctl); background: var(--pe-bg2); color: var(--pe-fg); box-shadow: var(--pe-hi); font: inherit; font-size: 14px; line-height: 1.5; }
+.pe-ai-prompt:focus { outline: 2px solid rgba(139,92,246,.6); }
+.pe-ai-row { display: flex; align-items: center; gap: 10px; }
+.pe-ai-row > span { min-width: 64px; color: var(--pe-fg2); font-size: 12px; }
+.pe-hint.warn { color: #ffb4a8; }
+.pe-modal:has(.pe-ai-dlg) { width: min(540px, 100%); }

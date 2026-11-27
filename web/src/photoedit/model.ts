@@ -143,7 +143,7 @@ export interface AdjustLayer extends Base { type: 'adjust'; kind: AdjustKind; p:
  */
 export interface ArtboardSpec { x: number; y: number; w: number; h: number; bg: string }
 
-export interface GroupLayer extends Base { type: 'group'; children: Layer[]; open: boolean; artboard?: ArtboardSpec }
+export interface GroupLayer extends Base { type: 'group'; children: Layer[]; open: boolean; artboard?: ArtboardSpec; /** קבוצת וריאציות של Generative Fill */ gen?: { prompt: string; engine: string } }
 
 export type Layer = RasterLayer | TextLayer | ShapeLayer | AdjustLayer | GroupLayer;
 export type XfLayer = RasterLayer | TextLayer | ShapeLayer;

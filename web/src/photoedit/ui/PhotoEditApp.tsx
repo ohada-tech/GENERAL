@@ -22,6 +22,7 @@ import { CustomShapePicker, penOptions } from './pen-options';
 import { ArtboardDialogs, ArtboardOptions } from './artboard-ui';
 import { FreeTransformExtras, warpOptions } from './warp-options';
 import { LiquifyDialog } from './liquify-dialog';
+import { AiBar } from './ai-ui';
 import { hasDeform } from '../tools-warp';
 import { hasArtboards } from '../artboards';
 import '../photoedit.css';
@@ -71,6 +72,7 @@ function menus(ed: Editor, projectId: string | null): Array<{ title: string; ite
       { label: 'הדבקה', en: 'Paste', key: 'Ctrl+V', act: () => ed.toast('הדבקה: Ctrl+V על הקנבס') },
       { sep: true },
       { label: 'מילוי…', en: 'Fill', cmd: 'edit.fill', disabled: no },
+      { label: '✨ מילוי גנרטיבי…', en: 'Generative Fill', cmd: 'edit.generativeFill', disabled: !d?.selection },
       { label: 'הגדרת דפוס', en: 'Define Pattern', cmd: 'edit.definePattern', disabled: no || !a },
       { label: 'Free Transform', en: '', cmd: 'edit.freeTransform', disabled: no },
       { label: 'Transform', en: '', disabled: no, sub: [
@@ -146,6 +148,7 @@ function menus(ed: Editor, projectId: string | null): Array<{ title: string; ite
         { label: 'עריכה בבחירה ישירה', en: 'Edit (Direct Selection)', cmd: 'layer.vmaskEdit', disabled: !a?.vmask },
         { label: 'מחיקת מסכה וקטורית', en: 'Delete', cmd: 'layer.vmaskDelete', disabled: !a?.vmask },
       ] },
+      { label: '✨ הסרת רקע', en: 'Remove Background', cmd: 'layer.removeBg', disabled: !a || a.type === 'adjust' || a.type === 'group' },
       { label: 'Create Clipping Mask', en: '', cmd: 'layer.clip', disabled: no },
       { sep: true },
       { label: 'קיבוץ', en: 'Group Layers', cmd: 'layer.group', disabled: no },
@@ -188,7 +191,7 @@ function menus(ed: Editor, projectId: string | null): Array<{ title: string; ite
       { label: 'בחירה מהשכבה', en: 'Load Layer Pixels', act: () => a && ed.selectionFromLayer(a), disabled: !a },
       { sep: true },
       { label: 'טווח צבעים…', en: 'Color Range', cmd: 'select.colorRange', disabled: no },
-      { label: 'בחירת נושא · בקרוב · AI', en: 'Subject', disabled: true },
+      { label: '✨ בחירת נושא', en: 'Subject', cmd: 'select.subject', disabled: no },
       { label: 'בחירת שמיים · בקרוב · AI', en: 'Sky', disabled: true },
       { sep: true },
       { label: 'בחירה ומסכה…', en: 'Select and Mask', cmd: 'select.selectAndMask', disabled: !d?.selection && !(ed.st?.maskEdit && a?.mask) },
@@ -708,8 +711,11 @@ function Viewport({ ed }: { ed: Editor }) {
             { label: 'היפוך בחירה', en: 'Select Inverse', cmd: 'select.inverse', disabled: !ed.doc?.selection },
             { label: 'ריכוך…', en: 'Feather', cmd: 'select.feather', disabled: !ed.doc?.selection },
             { label: 'מילוי…', en: 'Fill', cmd: 'edit.fill' },
+            { label: '✨ מילוי גנרטיבי…', en: 'Generative Fill', cmd: 'edit.generativeFill', disabled: !ed.doc?.selection },
+            { label: '✨ בחירת נושא', en: 'Select Subject', cmd: 'select.subject' },
             { sep: true },
             { label: 'הוספת מסכה', en: 'Add Mask', act: () => ed.addMask() },
+            { label: '✨ הסרת רקע', en: 'Remove Background', cmd: 'layer.removeBg' },
             { label: 'Rasterize', cmd: 'layer.rasterize' },
           ]} />
         </div>
@@ -938,6 +944,7 @@ export default function PhotoEditApp() {
           <Tabs ed={ed} />
           <div className="pe-stage">
             <Viewport ed={ed} />
+            <AiBar ed={ed} />
             {!ed.docs.length && <Home ed={ed} projectId={projectId} projectName={projectName} />}
           </div>
         </div>
