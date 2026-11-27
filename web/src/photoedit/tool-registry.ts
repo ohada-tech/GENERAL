@@ -25,6 +25,10 @@ export interface ExtraOpts {
   heal: Brush & { aligned: boolean; allLayers: boolean };
   redEye: { pupil: number; darken: number };
   patternStamp: Brush & { opacity: number; flow: number; aligned: boolean; pattern: string };
+  /** Pen Tools (tools-pen): Path / Shape, Auto Add/Delete, Rubber Band, Curve Fit, ומילוי/קו מתאר של נתיב */
+  pen: { mode: 'path' | 'shape'; autoAddDelete: boolean; rubberBand: boolean; curveFit: number; tolerance: number; strokeTool: 'brush' | 'solid'; strokeWidth: number };
+  /** Custom Shape (U): מזהה הצורה מהספרייה (custom-shapes) */
+  customShape: { id: string };
 }
 
 export const extraOpts = (): ExtraOpts => ({
@@ -43,13 +47,15 @@ export const extraOpts = (): ExtraOpts => ({
   heal: { size: 40, hardness: 0.8, aligned: true, allLayers: false },
   redEye: { pupil: 50, darken: 50 },
   patternStamp: { size: 80, hardness: 0.7, opacity: 1, flow: 1, aligned: true, pattern: 'checker' },
+  pen: { mode: 'path', autoAddDelete: true, rubberBand: true, curveFit: 2, tolerance: 2, strokeTool: 'brush', strokeWidth: 4 },
+  customShape: { id: 'heart' },
 });
 
 /**
  * קבוצות כלים: key = המזהה שהקיצור מפעיל (tool.<key>). המקש בוחר את הכלי האחרון שהיה בשימוש בקבוצה,
  * ו-Shift+מקש עובר לבא בתור. fixedKey = לכל כלי בקבוצה יש מקש משלו (Hand=H, Rotate View=R).
  */
-export const TOOL_GROUPS: Array<{ key: ToolId; members: ToolId[]; fixedKey?: boolean }> = [
+export const TOOL_GROUPS: Array<{ key: ToolId; members: ToolId[]; fixedKey?: boolean; cycle?: ToolId[] }> = [
   { key: 'move', members: ['move', 'artboard'] },
   { key: 'brush', members: ['brush', 'pencil', 'colorReplace'] },
   { key: 'eraser', members: ['eraser', 'bgEraser', 'magicEraser'] },
@@ -61,6 +67,9 @@ export const TOOL_GROUPS: Array<{ key: ToolId; members: ToolId[]; fixedKey?: boo
   { key: 'eyedropper', members: ['eyedropper', 'colorSampler', 'ruler'] },
   { key: 'text', members: ['text', 'vtext', 'htmask', 'vtmask'] },
   { key: 'hand', members: ['hand', 'rotateView'], fixedKey: true },
+  // Shift+P עובר רק בין שלושת העטים (כמו בפוטושופ); Add/Delete/Convert נבחרים מהתפריט הנפתח
+  { key: 'pen', members: ['pen', 'freePen', 'curvPen', 'addAnchor', 'delAnchor', 'convertPt'], cycle: ['pen', 'freePen', 'curvPen'] },
+  { key: 'pathSel', members: ['pathSel', 'directSel'] },
 ];
 
 const current: Partial<Record<ToolId, ToolId>> = {};
@@ -72,7 +81,8 @@ export function nextInGroup(id: ToolId): ToolId | null {
   const g = groupOf(id);
   if (!g || g.members.length < 2) return null;
   const cur = groupCurrent(g.key);
-  return g.members[(g.members.indexOf(cur) + 1) % g.members.length];
+  const list = g.cycle ?? g.members;
+  return list[(list.indexOf(cur) + 1) % list.length];
 }
 
 /** שמות לסרגל המצב ולטולטיפים — Photoshop · עברית */
@@ -89,7 +99,11 @@ export const TOOL_NAMES: Partial<Record<ToolId, string>> = {
   colorSampler: 'Color Sampler Tool · דוגם צבע קבוע', ruler: 'Ruler Tool · סרגל',
   rotateView: 'Rotate View Tool · סיבוב תצוגה',
   move: 'Move Tool · הזזה', artboard: 'Artboard Tool · משטח עבודה',
+  warp: 'Warp · עיקום', puppet: 'Puppet Warp · עיוות בובה',
   vtext: 'Vertical Type Tool · טקסט אנכי', htmask: 'Horizontal Type Mask Tool · מסכת טקסט', vtmask: 'Vertical Type Mask Tool · מסכת טקסט אנכית',
+  pen: 'Pen Tool · עט', freePen: 'Freeform Pen Tool · עט חופשי', curvPen: 'Curvature Pen Tool · עט עקומות',
+  addAnchor: 'Add Anchor Point Tool · הוספת נקודת עיגון', delAnchor: 'Delete Anchor Point Tool · מחיקת נקודת עיגון', convertPt: 'Convert Point Tool · המרת נקודה',
+  pathSel: 'Path Selection Tool · בחירת נתיב', directSel: 'Direct Selection Tool · בחירה ישירה',
 };
 
 /** שכבות-על שמצוירות בכל כלי (אחרי הנמלים, לפני שכבת-העל של הכלי), בקואורדינטות מסך */

@@ -9,6 +9,7 @@ import { layerMatrix, localSize, renderDoc, renderSingle, shapePath } from './re
 import { layoutText, verticalChars } from './text';
 import { hasEffects } from './model';
 import { thumbSource } from './artboards';
+import { sanitizeSubs, toSvgD } from './paths';
 
 export const FORMAT = 'photoedit';
 export const VERSION = 1;
@@ -77,6 +78,10 @@ type SLayer = Record<string, any>;
 
 async function serLayer(l: Layer): Promise<SLayer> {
   const out: SLayer = { ...l };
+  // Puppet Warp הוא מצב עריכה זמני — לא נשמר
+  delete out.mesh;
+  if (!out.quad) delete out.quad;
+  if (!out.warp) delete out.warp;
   if (l.mask) out.mask = { enabled: l.mask.enabled, density: l.mask.density ?? 1, feather: l.mask.feather ?? 0, png: await encodeCanvas(l.mask.canvas) };
   if (l.type === 'raster') { delete out.canvas; out.png = await encodeCanvas(l.canvas); }
   if (l.type === 'group') out.children = await Promise.all(l.children.map(serLayer));
@@ -101,6 +106,22 @@ async function deLayer(s: SLayer): Promise<Layer> {
       l.artboard = { x: Math.round(a.x), y: Math.round(a.y), w: Math.round(a.w), h: Math.round(a.h), bg: typeof a.bg === 'string' ? a.bg : '#ffffff' };
     } else delete l.artboard;
   }
+  // Distort/Warp (נוספו אחרי הגרסה הראשונה): קבצים ישנים בלי השדות נטענים כרגיל; ערך פגום נזרק
+  const okPts = (a: unknown, n: number) => Array.isArray(a) && a.length === n && a.every((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y));
+  if (!okPts(s.quad, 4)) delete l.quad; else l.quad = s.quad.map((p: { x: number; y: number }) => ({ x: p.x, y: p.y }));
+  if (!s.warp || !okPts(s.warp.pts, 16)) delete l.warp;
+  else l.warp = { pts: s.warp.pts.map((p: { x: number; y: number }) => ({ x: p.x, y: p.y })), preset: String(s.warp.preset ?? 'custom'), bend: Number(s.warp.bend) || 0, h: Number(s.warp.h) || 0, v: Number(s.warp.v) || 0, vertical: !!s.warp.vertical };
+  delete l.mesh;
+  // נתיבים וקטוריים (נוספו אחרי הגרסה הראשונה): Vector Mask וצורת path — ולידציה, ערך פגום נזרק
+  if (s.vmask && typeof s.vmask === 'object') l.vmask = { enabled: s.vmask.enabled !== false, subs: sanitizeSubs(s.vmask.subs) };
+  else delete l.vmask;
+  if (s.type === 'shape') {
+    if (s.shape === 'path') {
+      l.subs = sanitizeSubs(s.subs);
+      l.vw = Number.isFinite(s.vw) && s.vw > 0 ? s.vw : s.w;
+      l.vh = Number.isFinite(s.vh) && s.vh > 0 ? s.vh : s.h;
+    } else { delete l.subs; delete l.vw; delete l.vh; }
+  }
   l.rev = Date.now() + Math.random();
   return l as Layer;
 }
@@ -120,6 +141,7 @@ export async function serialize(doc: Doc) {
     serverId: doc.serverId,
     layers: await Promise.all(doc.layers.map(serLayer)),
     channels: await Promise.all((doc.channels ?? []).map(async (c) => ({ id: c.id, name: c.name, png: await encodeCanvas(c.canvas) }))),
+    paths: (doc.paths ?? []).map((p) => ({ id: p.id, name: p.name, subs: p.subs, ...(p.work ? { work: true } : {}) })),
   };
 }
 
@@ -140,6 +162,8 @@ export async function deserialize(j: any): Promise<Doc> {
     layers: await Promise.all((j.layers ?? []).map(deLayer)),
     // ערוצי אלפא נוספו אחרי הגרסה הראשונה — קובץ בלי השדה נפתח עם רשימה ריקה
     channels: await Promise.all((Array.isArray(j.channels) ? j.channels : []).filter((c: any) => c && typeof c.png === 'string').map(async (c: any) => ({ id: c.id || uid(), name: c.name || 'Alpha', canvas: await decodeCanvas(c.png) }))),
+    // פאנל Paths (נוסף אחר כך) — קובץ בלי השדה נפתח בלי נתיבים
+    paths: (Array.isArray(j.paths) ? j.paths : []).filter((p: any) => p && typeof p === 'object').map((p: any) => ({ id: typeof p.id === 'string' ? p.id : uid(), name: typeof p.name === 'string' ? p.name : 'Path', subs: sanitizeSubs(p.subs), ...(p.work ? { work: true } : {}) })),
   };
 }
 
@@ -179,7 +203,8 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 export async function exportSvg(doc: Doc, o: Pick<ExportOpts, 'transparent' | 'bg'>): Promise<string> {
   const parts: string[] = [];
   if (!o.transparent) parts.push(`<rect width="${doc.width}" height="${doc.height}" fill="${o.bg || '#fff'}"/>`);
-  const simple = (l: Layer) => isXf(l) && !l.mask && !hasEffects(l.fx) && !l.clip;
+  // שכבה מעוותת (Distort/Warp) אין לה מקבילה וקטורית ב-SVG — היא מרונדרת לתמונה
+  const simple = (l: Layer) => isXf(l) && !l.mask && !hasEffects(l.fx) && !l.clip && !l.quad && !l.warp && !l.mesh;
   const hasAdjust = (ls: Layer[]): boolean => ls.some((l) => l.type === 'adjust' || (l.type === 'group' && hasAdjust(l.children)));
   if (hasAdjust(doc.layers)) {
     const png = await encodeCanvas(renderDoc(doc, { scale: 1 }));
@@ -191,10 +216,10 @@ export async function exportSvg(doc: Doc, o: Pick<ExportOpts, 'transparent' | 'b
         const op = l.opacity < 1 ? ` opacity="${l.opacity}"` : '';
         const blend = l.blend !== 'normal' ? ` style="mix-blend-mode:${l.blend}"` : '';
         if (l.type === 'group' && !l.mask && !hasEffects(l.fx)) {
-          parts.push(`<g${op}${blend}>`);
+          parts.push(`${vclipDefs(l)}<g${op}${blend}${vclipAttr(l)}>`);
           await emit(l.children);
           parts.push('</g>');
-        } else if (simple(l)) parts.push(await svgLayer(l as XfLayer, op + blend));
+        } else if (simple(l)) parts.push(l.vmask?.enabled ? `${vclipDefs(l)}<g${vclipAttr(l)}>${await svgLayer(l as XfLayer, op + blend)}</g>` : await svgLayer(l as XfLayer, op + blend));
         else parts.push(`<image width="${doc.width}" height="${doc.height}"${op}${blend} href="${await encodeCanvas(renderSingle(l, doc))}"/>`);
       }
     };
@@ -223,7 +248,8 @@ async function svgLayer(l: XfLayer, attrs: string): Promise<string> {
       fillRef = `url(#${gid})`;
     }
     let el: string;
-    if (l.shape === 'rect') el = `<rect width="${w}" height="${h}" rx="${Math.min(l.radius, w / 2, h / 2)}" fill="${fillRef}"${stroke}/>`;
+    if (l.shape === 'path') el = `<path d="${toSvgD(l.subs ?? [], { a: w / (l.vw || w), b: 0, c: 0, d: h / (l.vh || h), e: 0, f: 0 })}" fill="${fillRef}" fill-rule="nonzero"${stroke} stroke-linejoin="round"/>`;
+    else if (l.shape === 'rect') el = `<rect width="${w}" height="${h}" rx="${Math.min(l.radius, w / 2, h / 2)}" fill="${fillRef}"${stroke}/>`;
     else if (l.shape === 'ellipse') el = `<ellipse cx="${w / 2}" cy="${h / 2}" rx="${w / 2}" ry="${h / 2}" fill="${fillRef}"${stroke}/>`;
     else if (l.shape === 'line') el = `<line x1="0" y1="${h / 2}" x2="${w}" y2="${h / 2}" stroke="${l.fill.type === 'none' ? l.stroke.color : l.fill.color}" stroke-width="${Math.max(1, h)}" stroke-linecap="round"/>`;
     else {
@@ -384,3 +410,11 @@ export function downloadBlob(blob: Blob, filename: string) {
 export const safeName = (s: string) => (s || 'photoedit').replace(/[\\/:*?"<>|]+/g, '_').trim() || 'photoedit';
 
 export { rgba, ctx2d };
+
+/* ---------- Vector Mask ב-SVG: clipPath במרחב המסמך ---------- */
+
+function vclipDefs(l: Layer): string {
+  if (!l.vmask?.enabled) return '';
+  return `<defs><clipPath id="vm${l.id.replace(/[^a-z0-9]/gi, '').slice(0, 12)}" clipPathUnits="userSpaceOnUse"><path d="${toSvgD(l.vmask.subs)}" clip-rule="nonzero"/></clipPath></defs>`;
+}
+const vclipAttr = (l: Layer) => (l.vmask?.enabled ? ` clip-path="url(#vm${l.id.replace(/[^a-z0-9]/gi, '').slice(0, 12)})"` : '');

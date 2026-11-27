@@ -7,6 +7,7 @@
 import type { ArtboardSpec, Doc, GroupLayer, Layer, Pt, Rect } from './model';
 import { cloneLayer, ctx2d, findLayer, isXf, makeGroup, makeShape, newCanvas, touch, unionRect, walk } from './model';
 import { contentBounds, layerBounds } from './render';
+import { mapDocVectors } from './path-doc';
 
 export type Artboard = GroupLayer & { artboard: ArtboardSpec };
 
@@ -131,6 +132,8 @@ export function offsetTree(l: Layer, dx: number, dy: number) {
     if (n.mask) n.mask = { ...n.mask, canvas: shiftMask(n.mask.canvas, dx, dy) };
     touch(n);
   });
+  // מסכות וקטוריות (במרחב המסמך) זזות עם התוכן
+  mapDocVectors(null, { a: 1, b: 0, c: 0, d: 1, e: dx, f: dy }, [l], false);
 }
 
 /**
@@ -147,6 +150,7 @@ export function shiftDoc(doc: Doc, w: number, h: number, ox: number, oy: number)
   doc.selection = doc.selection ? shiftMask(doc.selection, ox, oy, w, h, false) : null;
   doc.channels = doc.channels?.map((c) => ({ ...c, canvas: shiftMask(c.canvas, ox, oy, w, h, false) }));
   doc.guides = { v: doc.guides.v.map((g) => g + ox).filter((g) => g >= 0 && g <= w), h: doc.guides.h.map((g) => g + oy).filter((g) => g >= 0 && g <= h) };
+  mapDocVectors(doc, { a: 1, b: 0, c: 0, d: 1, e: ox, f: oy });
   doc.width = w;
   doc.height = h;
 }

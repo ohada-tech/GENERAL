@@ -10,7 +10,7 @@ import {
   aabb, apply, clamp, cloneLayer, copyCanvas, ctx2d, defaultTextStyle, findLayer, flatForPanel, isXf, makeAdjust, makeGroup,
   makeRaster, makeShape, makeText, newCanvas, touch, uid, walk, xfLeaves, xfMatrix,
 } from './model';
-import { contentBounds, drawLayerContent, effectiveMask, layerBounds, layerMatrix, layerQuad, localBox, localSize, renderDoc, renderSingle } from './render';
+import { contentBounds, drawLayerContent, drawLayerDeformed, effectiveMask, layerBounds, layerMatrix, layerQuad, localBox, localSize, renderDoc, renderSingle } from './render';
 import { allSel, combine, featherSel, growSel, invertSel, isEmpty, selBounds, selEdges, type SelMode } from './selection';
 import { Shortcuts, comboOf } from './shortcuts';
 import { clearTextCache, ensureFont, fontString, layoutText } from './text';
@@ -22,6 +22,9 @@ import { extraOpts, groupByKey, nextInGroup, OVERLAY_HOOKS, setGroupCurrent, gro
 import { runToolCmd } from './tool-cmds';
 import { abRect, artboardOf, artboardSnapTargets, artboardsOf, fitDocToArtboards, fitRect, hasArtboards, isArtboard, makeArtboard, offsetTree, paintArtboardBackdrop, paintArtboardFrames } from './artboards';
 import { autoNest, exportDoc, nudgeArtboards } from './artboard-ops';
+import { mapDocVectors } from './path-doc';
+import { customShapeSubs } from './custom-shapes';
+import { deformOutline, isDeformed, pointInPoly } from './deform';
 
 /** ראשית ה-Pasteboard המצטברת של כל תמונת מצב בהיסטוריה (לתיקון התצוגה בביטול/חזרה) */
 const snapOrigin = new WeakMap<object, { x: number; y: number }>();
@@ -107,7 +110,8 @@ export class Editor {
   live: {
     paint?: { layerId: string; target: 'pixels' | 'mask'; canvas: HTMLCanvasElement } | null;
     floating?: { layerId: string; canvas: HTMLCanvasElement; dx: number; dy: number } | null;
-    freeTransform?: { snapshot: Layer[] } | null;
+    /** mode = Skew/Distort/Perspective מתפריט Edit > Transform (גרירה רגילה של ידית עושה אותו); label = שם הפעולה בהיסטוריה */
+    freeTransform?: { snapshot: Layer[]; mode?: 'skew' | 'distort' | 'perspective' | null; label?: string } | null;
     crop?: Rect | null;
     smart?: Array<{ x1: number; y1: number; x2: number; y2: number }>;
     marquee?: { pts: Pt[]; closed: boolean } | null;
@@ -800,7 +804,7 @@ export class Editor {
     if (id === 'lasso') this.opts.lasso.mode = lassos[(lassos.indexOf(this.opts.lasso.mode) + 1) % lassos.length];
     if (id === 'wand') this.opts.wand.mode = this.opts.wand.mode === 'quick' ? 'wand' : 'quick';
     if (id === 'gradient') this.opts.gradient.mode = this.opts.gradient.mode === 'gradient' ? 'bucket' : 'gradient';
-    if (id === 'shape') { const k: ShapeKind[] = ['rect', 'ellipse', 'triangle', 'polygon', 'star', 'line']; this.opts.shape.kind = k[(k.indexOf(this.opts.shape.kind) + 1) % k.length]; }
+    if (id === 'shape') { const k: ShapeKind[] = ['rect', 'ellipse', 'triangle', 'polygon', 'star', 'line', 'path']; this.opts.shape.kind = k[(k.indexOf(this.opts.shape.kind) + 1) % k.length]; }
     this.setTool(id);
     this.emit();
   }
@@ -817,7 +821,7 @@ export class Editor {
   /** הפאנל הפתוח בכל קבוצת פאנלים (Window) */
   panelTabs: Record<string, string> = { top: 'Color', mid: 'Properties', bottom: 'Layers' };
   openPanel(name: string) {
-    const groups: Record<string, string[]> = { top: ['Color', 'Swatches', 'Info'], mid: ['Properties', 'Adjustments', 'Character', 'Paragraph', 'Align', 'Transform'], bottom: ['Layers', 'History'] };
+    const groups: Record<string, string[]> = { top: ['Color', 'Swatches', 'Info'], mid: ['Properties', 'Adjustments', 'Character', 'Paragraph', 'Align', 'Transform'], bottom: ['Layers', 'History', 'Paths'] };
     for (const [g, names] of Object.entries(groups)) if (names.includes(name)) this.panelTabs[g] = name;
     this.view.panels = true;
     this.emit();
@@ -1048,6 +1052,8 @@ export class Editor {
     const o = this.opts.shape;
     const l = makeShape(kind, r.x + r.w / 2, r.y + r.h / 2, Math.max(1, r.w), Math.max(1, r.h), { ...o.fill }, { on: o.strokeOn, color: o.strokeColor, width: o.strokeWidth }, o.radius, o.sides);
     l.t.rot = rot;
+    // Custom Shape: הצורה מהספרייה נמתחת למלבן שנגרר
+    if (kind === 'path') { l.subs = customShapeSubs(this.opts.customShape.id, l.w, l.h); l.vw = l.w; l.vh = l.h; }
     this.insert(l);
     return l;
   }
@@ -1213,7 +1219,7 @@ export class Editor {
     const d = this.doc!;
     const c = newCanvas(d.width, d.height), x = c.getContext('2d')!;
     x.setTransform(layerMatrix(l));
-    if (l.type === 'raster') x.drawImage(l.canvas, 0, 0);
+    if (l.type === 'raster' && !isDeformed(l)) x.drawImage(l.canvas, 0, 0);
     else { const r = renderSingle({ ...l, fx: { ...l.fx, shadow: { ...l.fx.shadow, on: false } } } as Layer, d); x.setTransform(1, 0, 0, 1, 0, 0); x.drawImage(r, 0, 0); }
     x.setTransform(1, 0, 0, 1, 0, 0);
     if (l.mask?.enabled) { x.globalCompositeOperation = 'destination-in'; x.drawImage(effectiveMask(l.mask), 0, 0); }
@@ -1234,6 +1240,8 @@ export class Editor {
   /** מבטיח שבשכבת פיקסלים בלי טרנספורם יש כיסוי לכל המסמך (כדי שאפשר לצייר בכל מקום) */
   ensureCoverage(l: RasterLayer) {
     const d = this.doc!;
+    // ציור על שכבה מעוותת (Distort/Warp) — קודם מטמיעים את העיוות בפיקסלים, כמו בפוטושופ
+    if (isDeformed(l)) this.bakeDeform(l);
     const t = l.t;
     if (Math.abs(t.sx) !== 1 || Math.abs(t.sy) !== 1 || t.rot % 360 !== 0 || t.sx < 0 || t.sy < 0) return;
     const left = t.x - l.canvas.width / 2, top = t.y - l.canvas.height / 2;
@@ -1254,7 +1262,7 @@ export class Editor {
     const list = target ? [target] : this.topSelected();
     let did = false;
     for (const l of list) {
-      if (l.type !== 'text' && l.type !== 'shape' && l.type !== 'group') continue;
+      if (l.type !== 'text' && l.type !== 'shape' && l.type !== 'group' && !(l.type === 'raster' && isDeformed(l))) continue;
       const nl = this.rasterOf(l);
       const f = findLayer(d.layers, l.id)!;
       f.parent.splice(f.index, 1, nl);
@@ -1264,6 +1272,16 @@ export class Editor {
     }
     if (did && !target) this.commit('המרה לפיקסלים');
     return did;
+  }
+
+  /** מטמיע Distort/Warp/Puppet בפיקסלים של שכבת פיקסלים (copy-on-write; בלי commit — הפעולה שקוראת מבצעת אותו) */
+  bakeDeform(l: RasterLayer) {
+    if (!isDeformed(l)) return;
+    const nl = this.rasterOf(l);
+    l.canvas = nl.canvas;
+    l.t = nl.t;
+    l.quad = null; l.warp = null; l.mesh = null;
+    touch(l);
   }
 
   /** שכבה → שכבת פיקסלים בגבולות התוכן (גם מחוץ למסמך), שומרת שם, אטימות, מיזוג, מסכה ואפקטים */
@@ -1277,7 +1295,8 @@ export class Editor {
     x.scale(k, k);
     x.translate(-r.x, -r.y);
     const tmp: Layer = { ...cloneLayer(l), mask: null, fx: { ...l.fx, shadow: { ...l.fx.shadow, on: false }, glow: { ...l.fx.glow, on: false }, stroke: { ...l.fx.stroke, on: false }, overlay: { ...l.fx.overlay, on: false } }, opacity: 1, blend: 'normal' } as Layer;
-    if (isXf(tmp)) {
+    if (isXf(tmp) && isDeformed(tmp)) drawLayerDeformed(x, tmp, { scale: 1 }, k);
+    else if (isXf(tmp)) {
       const m = layerMatrix(tmp);
       x.transform(m.a, m.b, m.c, m.d, m.e, m.f);
       drawLayerContent(x, tmp, { scale: 1 });
@@ -1287,7 +1306,7 @@ export class Editor {
     }
     const nl = makeRaster(l.name, c, r.x + r.w / 2, r.y + r.h / 2);
     nl.t.sx = nl.t.sy = 1 / k;
-    Object.assign(nl, { id: l.id, opacity: l.opacity, blend: l.blend, mask: l.mask, fx: l.fx, clip: l.clip, visible: l.visible });
+    Object.assign(nl, { id: l.id, opacity: l.opacity, blend: l.blend, mask: l.mask, fx: l.fx, clip: l.clip, visible: l.visible, vmask: l.vmask ?? null });
     return nl;
   }
 
@@ -1556,9 +1575,10 @@ export class Editor {
   }
 
   commitFreeTransform() {
-    if (!this.live.freeTransform) return;
+    const ft = this.live.freeTransform;
+    if (!ft) return;
     this.live.freeTransform = null;
-    this.commit('Free Transform');
+    this.commit(ft.label ?? 'Free Transform');
   }
 
   cancelFreeTransform() {
@@ -1694,6 +1714,7 @@ export class Editor {
     d.selection = d.selection ? scaleMask(d.selection) : null;
     d.channels = d.channels?.map((c) => ({ ...c, canvas: scaleMask(c.canvas) }));
     d.guides = { v: d.guides.v.map((g) => g * kx), h: d.guides.h.map((g) => g * ky) };
+    mapDocVectors(d, { a: kx, b: 0, c: 0, d: ky, e: 0, f: 0 });
     d.width = Math.round(w);
     d.height = Math.round(h);
     clearTextCache();
@@ -1720,6 +1741,7 @@ export class Editor {
     d.selection = d.selection ? shiftMask(d.selection, false) : null;
     d.channels = d.channels?.map((c) => ({ ...c, canvas: shiftMask(c.canvas, false) }));
     d.guides = { v: d.guides.v.map((g) => g + ox).filter((g) => g >= 0 && g <= w), h: d.guides.h.map((g) => g + oy).filter((g) => g >= 0 && g <= h) };
+    mapDocVectors(d, { a: 1, b: 0, c: 0, d: 1, e: ox, f: oy });
     d.width = w;
     d.height = h;
     if (fill) {
@@ -1771,6 +1793,7 @@ export class Editor {
     d.selection = d.selection ? rotC(d.selection) : null;
     d.channels = d.channels?.map((c) => ({ ...c, canvas: rotC(c.canvas) }));
     d.guides = { v: [], h: [] };
+    mapDocVectors(d, deg === 90 ? { a: 0, b: 1, c: -1, d: 0, e: H, f: 0 } : deg === -90 ? { a: 0, b: -1, c: 1, d: 0, e: 0, f: W } : { a: -1, b: 0, c: 0, d: -1, e: W, f: H });
     d.width = nw;
     d.height = nh;
     this.commit(`סיבוב קנבס ${deg}°`);
@@ -1791,6 +1814,7 @@ export class Editor {
     });
     d.selection = d.selection ? fl(d.selection) : null;
     d.channels = d.channels?.map((c) => ({ ...c, canvas: fl(c.canvas) }));
+    mapDocVectors(d, horizontal ? { a: -1, b: 0, c: 0, d: 1, e: d.width, f: 0 } : { a: 1, b: 0, c: 0, d: -1, e: 0, f: d.height });
     this.commit(horizontal ? 'היפוך קנבס אופקי' : 'היפוך קנבס אנכי');
   }
 
@@ -1801,6 +1825,7 @@ export class Editor {
     const a = this.active;
     if (!a) { this.toast('בחר שכבה', 'error'); return null; }
     if (a.type !== 'raster') { this.toast('פילטר עובד על שכבת פיקסלים — Layer > Rasterize, או השתמש בשכבת התאמה', 'error'); return null; }
+    if (isDeformed(a)) this.bakeDeform(a);
     return a;
   }
 
@@ -2035,6 +2060,11 @@ export class Editor {
           continue;
         }
         if (!isXf(l) || l.locked) continue;
+        if (isDeformed(l)) {
+          // Distort/Warp/Puppet: לפי קו המתאר המעוות
+          if (pointInPoly(p, deformOutline(l, layerMatrix(l), localBox(l)))) return l;
+          continue;
+        }
         const m = layerMatrix(l).inverse();
         const q = apply(m, p);
         const b = localBox(l);

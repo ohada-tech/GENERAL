@@ -33,7 +33,9 @@ export const DEFAULTS: ShortcutDef[] = [
   { id: 'tool.spotHeal', label: 'ריפוי נקודתי / מברשת ריפוי / טלאי / עיניים אדומות', en: 'Spot Healing / Healing / Patch / Red Eye', group: 'כלים', keys: ['J'] },
   { id: 'tool.gradient', label: 'מעבר צבע / דלי', en: 'Gradient / Paint Bucket', group: 'כלים', keys: ['G'] },
   { id: 'tool.text', label: 'טקסט אופקי / אנכי / מסכות טקסט', en: 'Type / Vertical Type / Type Mask', group: 'כלים', keys: ['T'] },
-  { id: 'tool.shape', label: 'צורות', en: 'Shape Tool', group: 'כלים', keys: ['U'] },
+  { id: 'tool.shape', label: 'צורות / צורה מותאמת', en: 'Shape / Custom Shape Tool', group: 'כלים', keys: ['U'] },
+  { id: 'tool.pen', label: 'עט / עט חופשי / עט עקומות', en: 'Pen / Freeform Pen / Curvature Pen', group: 'כלים', keys: ['P'] },
+  { id: 'tool.pathSel', label: 'בחירת נתיב / בחירה ישירה', en: 'Path Selection / Direct Selection', group: 'כלים', keys: ['A'] },
   { id: 'tool.hand', label: 'יד', en: 'Hand Tool', group: 'כלים', keys: ['H'] },
   { id: 'tool.rotateView', label: 'סיבוב תצוגה', en: 'Rotate View Tool', group: 'כלים', keys: ['R'] },
   { id: 'tool.zoom', label: 'זכוכית מגדלת', en: 'Zoom Tool', group: 'כלים', keys: ['Z'] },
@@ -70,6 +72,11 @@ export const DEFAULTS: ShortcutDef[] = [
   { id: 'edit.freeTransform', label: 'Free Transform', en: 'Free Transform', group: 'Edit', keys: ['Ctrl+T', 'Alt+T'] },
   { id: 'edit.flipH', label: 'היפוך אופקי', en: 'Flip Horizontal', group: 'Edit', keys: [] },
   { id: 'edit.flipV', label: 'היפוך אנכי', en: 'Flip Vertical', group: 'Edit', keys: [] },
+  { id: 'edit.skew', label: 'הטיה', en: 'Transform > Skew', group: 'Edit', keys: [] },
+  { id: 'edit.distort', label: 'עיוות', en: 'Transform > Distort', group: 'Edit', keys: [] },
+  { id: 'edit.perspective', label: 'פרספקטיבה', en: 'Transform > Perspective', group: 'Edit', keys: [] },
+  { id: 'edit.warp', label: 'עיקום', en: 'Transform > Warp', group: 'Edit', keys: [] },
+  { id: 'edit.puppetWarp', label: 'עיוות בובה', en: 'Puppet Warp', group: 'Edit', keys: [] },
   { id: 'edit.definePattern', label: 'הגדרת דפוס', en: 'Define Pattern…', group: 'Edit', keys: [] },
   { id: 'edit.shortcuts', label: 'קיצורי מקלדת', en: 'Keyboard Shortcuts…', group: 'Edit', keys: ['Ctrl+Alt+Shift+K', 'F1'] },
 
@@ -124,6 +131,10 @@ export const DEFAULTS: ShortcutDef[] = [
   { id: 'select.transform', label: 'שינוי צורת הבחירה', en: 'Transform Selection', group: 'Select', keys: [] },
   { id: 'select.save', label: 'שמירת בחירה', en: 'Save Selection…', group: 'Select', keys: [] },
   { id: 'select.load', label: 'טעינת בחירה', en: 'Load Selection…', group: 'Select', keys: [] },
+  { id: 'path.toSelection', label: 'טעינת הנתיב כבחירה', en: 'Load Path as Selection', group: 'Select', keys: ['Ctrl+Enter'] },
+  { id: 'path.fromSelection', label: 'נתיב עבודה מהבחירה', en: 'Make Work Path', group: 'Select', keys: [] },
+  { id: 'layer.vmaskCurrent', label: 'מסכה וקטורית מהנתיב', en: 'Vector Mask > Current Path', group: 'Layer', keys: [] },
+  { id: 'layer.convertToShape', label: 'המרה לצורה', en: 'Convert to Shape', group: 'Layer', keys: [] },
   { id: 'mask.overlay', label: 'שכבת אדום של המסכה', en: 'Toggle Mask Overlay', group: 'Layer', keys: ['\\'] },
   { id: 'mask.toSelection', label: 'מסכה כבחירה', en: 'Load Mask as Selection', group: 'Layer', keys: [] },
   { id: 'layer.maskRevealAll', label: 'מסכה: הצג הכול', en: 'Layer Mask > Reveal All', group: 'Layer', keys: [] },
@@ -133,6 +144,7 @@ export const DEFAULTS: ShortcutDef[] = [
 
   // Filter
   { id: 'filter.last', label: 'פילטר אחרון', en: 'Last Filter', group: 'Filter', keys: ['Ctrl+Alt+F'] },
+  { id: 'filter.liquify', label: 'נזילות', en: 'Liquify…', group: 'Filter', keys: ['Ctrl+Shift+X'] },
 
   // View
   { id: 'view.zoomIn', label: 'הגדלה', en: 'Zoom In', group: 'View', keys: ['Ctrl+=', 'Ctrl+Shift+='] },

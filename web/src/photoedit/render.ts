@@ -6,6 +6,8 @@ import { applyAdjust, blurCanvas } from './adjust';
 import type { AdjustLayer, Doc, Layer, Mask, Rect, ShapeLayer, XfLayer } from './model';
 import { aabb, apply, cornersOf, ctx2d, gco, hasEffects, isXf, newCanvas, rgba, xfMatrix } from './model';
 import { drawText, layoutText } from './text';
+import { traceSubs, type Mat } from './paths';
+import { deformCorners, deformSamples, drawDeformed, isDeformed } from './deform';
 
 /* ---------- מידות ומטריצות ---------- */
 
@@ -51,6 +53,9 @@ export function localBox(l: XfLayer): Rect {
 /** ארבע הפינות של תיבת השכבה במסמך */
 export function layerQuad(l: XfLayer) {
   const m = layerMatrix(l), b = localBox(l);
+  // Distort/Perspective: תיבת הטרנספורם היא ה-Quad; Puppet: התיבה של הרשת המעוותת
+  if (l.mesh) { const r = aabb(deformSamples(l, m, b)); return [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }]; }
+  if (l.quad) return deformCorners(l, m, b);
   return [
     apply(m, { x: b.x, y: b.y }), apply(m, { x: b.x + b.w, y: b.y }),
     apply(m, { x: b.x + b.w, y: b.y + b.h }), apply(m, { x: b.x, y: b.y + b.h }),
@@ -58,7 +63,7 @@ export function layerQuad(l: XfLayer) {
 }
 
 export function layerBounds(l: Layer): Rect | null {
-  if (isXf(l)) return aabb(layerQuad(l));
+  if (isXf(l)) return l.warp || l.mesh ? aabb([...layerQuad(l), ...deformSamples(l, layerMatrix(l), localBox(l))]) : aabb(layerQuad(l));
   if (l.type === 'group') {
     // משטח עבודה: התוכן נחתך לגבולות המשטח, ולכן התיבה שלו היא המלבן עצמו
     if (l.artboard) return { x: l.artboard.x, y: l.artboard.y, w: l.artboard.w, h: l.artboard.h };
@@ -102,10 +107,19 @@ const pool = new Pool();
 
 /* ---------- ציור תוכן במרחב המקומי ---------- */
 
-export function shapePath(ctx: CanvasRenderingContext2D, l: Pick<ShapeLayer, 'shape' | 'w' | 'h' | 'radius' | 'sides'>) {
+/** shape='path': ממרחב הנתיב (vw×vh) לפיקסלים המקומיים (w×h) */
+export function pathViewMat(l: Pick<ShapeLayer, 'w' | 'h' | 'vw' | 'vh'>): Mat {
+  return { a: l.w / Math.max(1e-6, l.vw ?? l.w), b: 0, c: 0, d: l.h / Math.max(1e-6, l.vh ?? l.h), e: 0, f: 0 };
+}
+
+export function shapePath(ctx: CanvasRenderingContext2D, l: Pick<ShapeLayer, 'shape' | 'w' | 'h' | 'radius' | 'sides'> & Partial<Pick<ShapeLayer, 'subs' | 'vw' | 'vh'>>) {
   const { w, h } = l;
   ctx.beginPath();
   switch (l.shape) {
+    case 'path':
+      // נקודות ממופות (לא ctx.scale) — עובי הקו לא מתעוות במתיחה
+      traceSubs(ctx, l.subs ?? [], pathViewMat(l));
+      break;
     case 'rect': {
       const r = Math.min(l.radius, w / 2, h / 2);
       if (r > 0) ctx.roundRect(0, 0, w, h, r);
@@ -189,6 +203,13 @@ export function drawLayerContent(ctx: CanvasRenderingContext2D, l: XfLayer, o: R
   else drawText(ctx, l);
 }
 
+/** שכבה לא-אפינית (Distort/Warp/Puppet): ctx במרחב המסמך; devScale = פיקסלי מכשיר ליחידת מסמך */
+export function drawLayerDeformed(ctx: CanvasRenderingContext2D, l: XfLayer, o: RenderOpts, devScale: number) {
+  const raster = l.type === 'raster' ? (o.live && o.live.layerId === l.id && o.live.target === 'pixels' ? o.live.canvas : l.canvas) : null;
+  const pad = l.type === 'shape' ? Math.ceil((l.stroke.on ? l.stroke.width / 2 : 0) + 2) : l.type === 'text' ? Math.ceil(l.style.size * 0.25) : 0;
+  drawDeformed(ctx, l, layerMatrix(l), localBox(l), devScale, raster, (x) => drawLayerContent(x, l, { scale: devScale }), pad);
+}
+
 const maskOf = (l: Layer, o: RenderOpts): Mask | null => {
   if (o.live && o.live.layerId === l.id && o.live.target === 'mask') return { canvas: effectiveMask({ ...(l.mask ?? { enabled: true }), canvas: o.live.canvas }), enabled: true };
   return l.mask && l.mask.enabled ? { canvas: effectiveMask(l.mask), enabled: true } : null;
@@ -262,9 +283,9 @@ function renderLayer(l: Layer, doc: Doc, o: RenderOpts): HTMLCanvasElement | nul
     c = pool.get(W, H);
     const x = c.getContext('2d')!;
     const m = layerMatrix(l);
-    x.setTransform(new DOMMatrix().scaleSelf(o.scale, o.scale).multiplySelf(m));
     x.imageSmoothingQuality = 'high';
-    drawLayerContent(x, l, o);
+    if (isDeformed(l)) { x.setTransform(o.scale, 0, 0, o.scale, 0, 0); drawLayerDeformed(x, l, o, o.scale); }
+    else { x.setTransform(new DOMMatrix().scaleSelf(o.scale, o.scale).multiplySelf(m)); drawLayerContent(x, l, o); }
     if (o.floating && o.floating.layerId === l.id) {
       x.setTransform(o.scale, 0, 0, o.scale, 0, 0);
       x.drawImage(o.floating.canvas, o.floating.dx, o.floating.dy);
@@ -278,6 +299,18 @@ function renderLayer(l: Layer, doc: Doc, o: RenderOpts): HTMLCanvasElement | nul
     x.globalCompositeOperation = 'destination-in';
     x.drawImage(mask.canvas, 0, 0, W, H);
     x.globalCompositeOperation = 'source-over';
+  }
+  // Vector Mask: חיתוך לפי נתיב במרחב המסמך (אחרי מסכת הפיקסלים, לפני אפקטים — כמו בפוטושופ)
+  if (l.vmask?.enabled) {
+    const x = c.getContext('2d')!;
+    x.setTransform(o.scale, 0, 0, o.scale, 0, 0);
+    x.globalCompositeOperation = 'destination-in';
+    x.fillStyle = '#000';
+    x.beginPath();
+    traceSubs(x, l.vmask.subs);
+    x.fill('nonzero');
+    x.globalCompositeOperation = 'source-over';
+    x.setTransform(1, 0, 0, 1, 0, 0);
   }
   if (!o.draft && hasEffects(l.fx)) c = withEffects(c, l, o);
   return c;
@@ -319,7 +352,7 @@ function withEffects(content: HTMLCanvasElement, l: Layer, o: RenderOpts): HTMLC
   }
   if (fx.stroke.on && fx.stroke.width > 0) {
     const st = pool.get(W, H), sx = st.getContext('2d')!;
-    if (l.type === 'text' && !(l.mask && l.mask.enabled)) {
+    if (l.type === 'text' && !(l.mask && l.mask.enabled) && !isDeformed(l)) {
       sx.setTransform(new DOMMatrix().scaleSelf(s, s).multiplySelf(layerMatrix(l)));
       drawText(sx, l, fx.stroke.color, { width: fx.stroke.width, color: fx.stroke.color });
       sx.setTransform(1, 0, 0, 1, 0, 0);
@@ -435,8 +468,8 @@ export function drawThumb(l: Layer, doc: Doc, c: HTMLCanvasElement) {
   x.translate((c.width - w) / 2, (c.height - h) / 2);
   x.scale(k, k);
   if (isXf(l)) {
-    x.transform(...matrixArgs(layerMatrix(l)));
-    drawLayerContent(x, l, { scale: k });
+    if (isDeformed(l)) drawLayerDeformed(x, l, { scale: k }, k);
+    else { x.transform(...matrixArgs(layerMatrix(l))); drawLayerContent(x, l, { scale: k }); }
   } else if (l.type === 'group') {
     const r = renderDoc({ ...doc, layers: l.children }, { scale: k, draft: true });
     x.setTransform(1, 0, 0, 1, (c.width - w) / 2, (c.height - h) / 2);

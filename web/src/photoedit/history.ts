@@ -4,6 +4,7 @@
  */
 import type { Doc, Layer } from './model';
 import { cloneTree } from './model';
+import { clonePaths } from './paths';
 
 export interface Snap {
   label: string;
@@ -12,6 +13,8 @@ export interface Snap {
   height: number;
   selection: HTMLCanvasElement | null;
   channels: NonNullable<Doc['channels']>;
+  /** נתיבים (פאנל Paths) — נתונים קטנים, שכפול עמוק */
+  paths: NonNullable<Doc['paths']>;
   guides: { v: number[]; h: number[] };
   selected: string[];
   time: number;
@@ -30,6 +33,7 @@ export class History {
       height: doc.height,
       selection: doc.selection,
       channels: [...(doc.channels ?? [])],
+      paths: clonePaths(doc.paths ?? []),
       guides: { v: [...doc.guides.v], h: [...doc.guides.h] },
       selected: [...selected],
       time: Date.now(),
@@ -52,6 +56,7 @@ export class History {
     doc.height = s.height;
     doc.selection = s.selection;
     doc.channels = [...s.channels];
+    doc.paths = clonePaths(s.paths ?? []);
     doc.guides = { v: [...s.guides.v], h: [...s.guides.h] };
     return [...s.selected];
   }

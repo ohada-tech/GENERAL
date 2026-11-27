@@ -17,7 +17,12 @@ import { endSelTransform } from '../tools-select';
 import { groupCurrent, TOOL_NAMES } from '../tool-registry';
 import { paintOptions } from './paint-options';
 import { InfoPanel } from './info-panel';
+import { PathsPanel } from './paths-panel';
+import { CustomShapePicker, penOptions } from './pen-options';
 import { ArtboardDialogs, ArtboardOptions } from './artboard-ui';
+import { FreeTransformExtras, warpOptions } from './warp-options';
+import { LiquifyDialog } from './liquify-dialog';
+import { hasDeform } from '../tools-warp';
 import { hasArtboards } from '../artboards';
 import '../photoedit.css';
 
@@ -74,7 +79,15 @@ function menus(ed: Editor, projectId: string | null): Array<{ title: string; ite
         { label: 'סיבוב 90° עם השעון', en: 'Rotate 90° CW', act: () => ed.rotateLayers(90) },
         { label: 'סיבוב 90° נגד השעון', en: 'Rotate 90° CCW', act: () => ed.rotateLayers(-90) },
         { label: 'סיבוב 180°', en: 'Rotate 180°', act: () => ed.rotateLayers(180) },
+        { sep: true },
+        { label: 'הטיה', en: 'Skew', cmd: 'edit.skew', checked: ed.live.freeTransform?.mode === 'skew' },
+        { label: 'עיוות', en: 'Distort', cmd: 'edit.distort', checked: ed.live.freeTransform?.mode === 'distort' },
+        { label: 'פרספקטיבה', en: 'Perspective', cmd: 'edit.perspective', checked: ed.live.freeTransform?.mode === 'perspective' },
+        { label: 'עיקום', en: 'Warp', cmd: 'edit.warp' },
+        { sep: true },
+        { label: 'ביטול עיוות', en: 'Remove Distort / Warp', cmd: 'edit.resetDeform', disabled: !ed.topSelected().some((l) => hasDeform(l)) },
       ] },
+      { label: 'עיוות בובה', en: 'Puppet Warp', cmd: 'edit.puppetWarp', disabled: no || !a },
       { sep: true },
       { label: 'קיצורי מקלדת…', en: 'Keyboard Shortcuts', cmd: 'edit.shortcuts' },
     ] },
@@ -125,6 +138,14 @@ function menus(ed: Editor, projectId: string | null): Array<{ title: string; ite
         { label: 'החלת מסכה', en: 'Apply', act: () => ed.deleteMask(true), disabled: !a?.mask || a.type !== 'raster' },
         { label: 'מחיקת מסכה', en: 'Delete', act: () => ed.deleteMask(false), disabled: !a?.mask },
       ] },
+      { label: 'Vector Mask', en: '', disabled: no || !a, sub: [
+        { label: 'מהנתיב הנוכחי', en: 'Current Path', cmd: 'layer.vmaskCurrent' },
+        { label: 'הסתר הכול', en: 'Hide All', cmd: 'layer.vmaskHideAll', disabled: !!a?.vmask },
+        { sep: true },
+        { label: 'כיבוי/הפעלת מסכה וקטורית', en: 'Disable / Enable', cmd: 'layer.vmaskToggle', disabled: !a?.vmask, checked: !!a?.vmask && !a.vmask.enabled },
+        { label: 'עריכה בבחירה ישירה', en: 'Edit (Direct Selection)', cmd: 'layer.vmaskEdit', disabled: !a?.vmask },
+        { label: 'מחיקת מסכה וקטורית', en: 'Delete', cmd: 'layer.vmaskDelete', disabled: !a?.vmask },
+      ] },
       { label: 'Create Clipping Mask', en: '', cmd: 'layer.clip', disabled: no },
       { sep: true },
       { label: 'קיבוץ', en: 'Group Layers', cmd: 'layer.group', disabled: no },
@@ -136,6 +157,7 @@ function menus(ed: Editor, projectId: string | null): Array<{ title: string; ite
         { label: 'לתחתית', en: 'Send to Back', cmd: 'layer.back' },
       ] },
       { label: 'Rasterize', en: '', cmd: 'layer.rasterize', disabled: !a || !['text', 'shape', 'group'].includes(a.type) },
+      { label: 'המרה לצורה', en: 'Convert to Shape', cmd: 'layer.convertToShape', disabled: a?.type !== 'shape' || a.shape === 'path' || a.shape === 'line' },
       { sep: true },
       { label: 'מיזוג', en: 'Merge Down', cmd: 'layer.mergeDown', disabled: no },
       { label: 'מיזוג הגלויות', en: 'Merge Visible', cmd: 'layer.mergeVisible', disabled: no },
@@ -189,6 +211,8 @@ function menus(ed: Editor, projectId: string | null): Array<{ title: string; ite
     { title: 'Filter', items: [
       { label: ed.lastFilter ? `שוב: ${FILTERS.find((f) => f.id === ed.lastFilter!.id)?.en}` : 'פילטר אחרון', en: 'Last Filter', cmd: 'filter.last', disabled: !ed.lastFilter || no },
       { sep: true },
+      { label: 'נזילות…', en: 'Liquify', cmd: 'filter.liquify', disabled: no || !a },
+      { sep: true },
       ...FILTERS.map((f) => ({ label: f.name, en: f.en, act: () => ed.openDialog('filter', { id: f.id }), disabled: no })),
     ] },
     { title: 'View', items: [
@@ -212,7 +236,7 @@ function menus(ed: Editor, projectId: string | null): Array<{ title: string; ite
       { label: 'מסך מלא', en: 'Full Screen', cmd: 'view.screenMode' },
     ] },
     { title: 'Window', items: [
-      ...['Layers', 'Properties', 'Adjustments', 'History', 'Color', 'Swatches', 'Info', 'Character', 'Paragraph', 'Align', 'Transform'].map((p) => ({ label: p, en: '', act: () => ed.openPanel(p) })),
+      ...['Layers', 'Properties', 'Adjustments', 'History', 'Paths', 'Color', 'Swatches', 'Info', 'Character', 'Paragraph', 'Align', 'Transform'].map((p) => ({ label: p, en: '', act: () => ed.openPanel(p) })),
       { sep: true },
       { label: 'הסתרת/הצגת פאנלים', en: 'Tab', cmd: 'view.togglePanels' },
     ] },
@@ -321,9 +345,11 @@ const TOOL_BAR: Array<{ id: ToolId; icon: (ed: Editor) => string; name: string; 
   ] },
   group('blur', 'Blur / Sharpen / Smudge', [['blur', 'Blur · טשטוש'], ['sharpen', 'Sharpen · חידוד'], ['smudge', 'Smudge · מריחה']]),
   group('dodge', 'Dodge / Burn / Sponge', [['dodge', 'Dodge · הבהרה'], ['burn', 'Burn · הכהיה'], ['sponge', 'Sponge · ספוג']]),
+  group('pen', 'Pen Tools', [['pen', 'Pen · עט'], ['freePen', 'Freeform Pen · עט חופשי'], ['curvPen', 'Curvature Pen · עט עקומות'], ['addAnchor', 'Add Anchor Point · הוספת נקודה'], ['delAnchor', 'Delete Anchor Point · מחיקת נקודה'], ['convertPt', 'Convert Point · המרת נקודה']]),
   group('text', 'Type Tools', [['text', 'Horizontal Type · טקסט'], ['vtext', 'Vertical Type · טקסט אנכי'], ['htmask', 'Horizontal Type Mask · מסכת טקסט'], ['vtmask', 'Vertical Type Mask · מסכת טקסט אנכית']]),
-  { id: 'shape', icon: () => 'shape', name: 'Shape Tool', flyout: (['rect', 'ellipse', 'triangle', 'polygon', 'star', 'line'] as const).map((k) => ({
-    label: { rect: 'Rectangle', ellipse: 'Ellipse', triangle: 'Triangle', polygon: 'Polygon', star: 'Star', line: 'Line' }[k], icon: 'shape', set: (ed: Editor) => { ed.opts.shape.kind = k; }, on: (ed: Editor) => ed.opts.shape.kind === k,
+  group('pathSel', 'Path / Direct Selection', [['pathSel', 'Path Selection · בחירת נתיב'], ['directSel', 'Direct Selection · בחירה ישירה']]),
+  { id: 'shape', icon: (ed) => (ed.opts.shape.kind === 'path' ? 'customShape' : 'shape'), name: 'Shape Tool', flyout: (['rect', 'ellipse', 'triangle', 'polygon', 'star', 'line', 'path'] as const).map((k) => ({
+    label: { rect: 'Rectangle', ellipse: 'Ellipse', triangle: 'Triangle', polygon: 'Polygon', star: 'Star', line: 'Line', path: 'Custom Shape · צורה מותאמת' }[k], icon: k === 'path' ? 'customShape' : 'shape', set: (ed: Editor) => { ed.opts.shape.kind = k; }, on: (ed: Editor) => ed.opts.shape.kind === k,
   })) },
   group('hand', 'Hand / Rotate View', [['hand', 'Hand · יד'], ['rotateView', 'Rotate View · סיבוב תצוגה']], (m) => `tool.${m}`),
   { id: 'zoom', icon: () => 'zoom', name: 'Zoom Tool' },
@@ -386,7 +412,7 @@ function OptionsBar({ ed }: { ed: Editor }) {
   const selModes = <span className="pe-opt-hint">Shift = הוספה · Alt = חיסור · Shift+Alt = חיתוך</span>;
   const refineBtn = <button type="button" className="pe-btn" disabled={!ed.doc?.selection} title="Ctrl+Alt+R" onClick={() => ed.run('select.selectAndMask')}>Select and Mask…</button>;
   let body: ReactNode = null;
-  const extra = paintOptions(ed, t);
+  const extra = paintOptions(ed, t) ?? warpOptions(ed, t) ?? penOptions(ed, t);
   if (extra) body = extra;
   else if (t === 'artboard') body = <ArtboardOptions ed={ed} />;
   else if (t === 'move') {
@@ -394,6 +420,7 @@ function OptionsBar({ ed }: { ed: Editor }) {
       <>
         <b className="pe-opt-title">Free Transform</b>
         <TransformPanel ed={ed} />
+        <FreeTransformExtras ed={ed} />
         <button type="button" className="pe-btn" onClick={() => ed.cancelFreeTransform()} title="Esc">ביטול</button>
         <button type="button" className="pe-btn primary" onClick={() => ed.commitFreeTransform()} title="Enter">✓ אישור</button>
       </>
@@ -522,7 +549,7 @@ function OptionsBar({ ed }: { ed: Editor }) {
     body = (
       <>
         <select value={s.kind} onChange={(e) => { s.kind = e.target.value as typeof s.kind; up(); }}>
-          <option value="rect">Rectangle</option><option value="ellipse">Ellipse</option><option value="triangle">Triangle</option><option value="polygon">Polygon</option><option value="star">Star</option><option value="line">Line</option>
+          <option value="rect">Rectangle</option><option value="ellipse">Ellipse</option><option value="triangle">Triangle</option><option value="polygon">Polygon</option><option value="star">Star</option><option value="line">Line</option><option value="path">Custom Shape</option>
         </select>
         <span className="pe-lbl">Fill</span>
         <select value={s.fill.type} onChange={(e) => { s.fill = { ...s.fill, type: e.target.value as typeof s.fill.type }; up(); }}><option value="solid">Solid</option><option value="linear">Linear</option><option value="radial">Radial</option><option value="none">None</option></select>
@@ -533,6 +560,7 @@ function OptionsBar({ ed }: { ed: Editor }) {
         <Num value={s.strokeWidth} min={1} max={500} unit="px" width={36} onChange={(v) => { s.strokeWidth = v; up(); }} title="עובי קו" />
         {s.kind === 'rect' && <Num label="Radius" value={s.radius} min={0} max={5000} unit="px" onChange={(v) => { s.radius = v; up(); }} />}
         {(s.kind === 'polygon' || s.kind === 'star') && <Num label="Sides" value={s.sides} min={3} max={64} onChange={(v) => { s.sides = Math.round(v); up(); }} />}
+        {s.kind === 'path' && <><span className="pe-lbl">Shape</span><CustomShapePicker ed={ed} /></>}
         <span className="pe-opt-hint">Shift = ריבוע/עיגול · Alt = מהמרכז</span>
       </>
     );
@@ -664,6 +692,11 @@ function Viewport({ ed }: { ed: Editor }) {
             { label: 'סיבוב 90° נגד השעון', act: () => ed.rotateLayers(-90) },
             { label: 'סיבוב 180°', act: () => ed.rotateLayers(180) },
             { sep: true },
+            { label: 'הטיה', en: 'Skew', cmd: 'edit.skew', checked: ed.live.freeTransform?.mode === 'skew' },
+            { label: 'עיוות', en: 'Distort', cmd: 'edit.distort', checked: ed.live.freeTransform?.mode === 'distort' },
+            { label: 'פרספקטיבה', en: 'Perspective', cmd: 'edit.perspective', checked: ed.live.freeTransform?.mode === 'perspective' },
+            { label: 'עיקום', en: 'Warp', cmd: 'edit.warp' },
+            { sep: true },
             { label: 'אישור', en: 'Enter', act: () => ed.commitFreeTransform() },
             { label: 'ביטול', en: 'Esc', act: () => ed.cancelFreeTransform() },
           ] : [
@@ -730,7 +763,7 @@ function StatusBar({ ed }: { ed: Editor }) {
 const PANEL_GROUPS: Array<{ key: string; names: string[]; cls: string }> = [
   { key: 'top', names: ['Color', 'Swatches', 'Info'], cls: 'pe-pg-top' },
   { key: 'mid', names: ['Properties', 'Adjustments', 'Character', 'Paragraph', 'Align', 'Transform'], cls: 'pe-pg-mid' },
-  { key: 'bottom', names: ['Layers', 'History'], cls: 'pe-pg-bottom' },
+  { key: 'bottom', names: ['Layers', 'History', 'Paths'], cls: 'pe-pg-bottom' },
 ];
 
 function PanelBody({ ed, name }: { ed: Editor; name: string }) {
@@ -746,6 +779,7 @@ function PanelBody({ ed, name }: { ed: Editor; name: string }) {
     case 'Transform': return <TransformPanel ed={ed} />;
     case 'Layers': return <LayersPanel ed={ed} />;
     case 'History': return <HistoryPanel ed={ed} />;
+    case 'Paths': return <PathsPanel ed={ed} />;
     default: return null;
   }
 }
@@ -912,6 +946,7 @@ export default function PhotoEditApp() {
       <StatusBar ed={ed} />
       <Dialogs ed={ed} projectId={projectId} />
       <ArtboardDialogs ed={ed} />
+      <LiquifyDialog ed={ed} />
       {ed.toastMsg && <div className={`pe-toast ${ed.toastMsg.tone}`} dir="rtl">{ed.toastMsg.text}</div>}
     </div>
   );

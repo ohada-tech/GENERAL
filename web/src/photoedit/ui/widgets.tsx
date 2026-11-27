@@ -163,6 +163,19 @@ export function Seg<T extends string>({ value, options, onChange }: { value: T; 
 /* ---------- אייקונים (ברוח SF Symbols: רשת 20×20, קו 1.6, קצוות ומפרקים מעוגלים) ---------- */
 
 const P: Record<string, ReactNode> = {
+  // Warp / Puppet / Liquify (tools-warp, liquify-dialog)
+  warp: <><path d="M3 5c2.5-1.6 4.5 1.6 7 0s4.5-1.6 7 0M3 15c2.5-1.6 4.5 1.6 7 0s4.5-1.6 7 0" /><path d="M3 5v10M17 5v10M10 5v10" opacity=".55" /></>,
+  warpOrient: <><path d="M4 7h10l-2.5-2.5M16 13H6l2.5 2.5" /></>,
+  puppet: <><circle cx="10" cy="4.5" r="1.8" /><path d="M10 6.3v5.2M6 9l4 1.2 4-1.2M10 11.5l-3 5M10 11.5l3 5" /></>,
+  liqWarp: <><path d="M3.5 15.5c3-1 4.5-3.5 6-6.5s3.5-4.6 7-5" /><path d="M13.6 3.2l2.9.8-1 2.8" /></>,
+  liqReconstruct: <><path d="M4.5 10a5.5 5.5 0 1 0 1.6-3.9" /><path d="M5.6 3.4l.5 2.7 2.7-.4" /><path d="M8.3 10.5l1.4 1.4 2.8-3" /></>,
+  liqSmooth: <path d="M2.5 12c2-3 3.6-3 5 0s3 3 5 0 3.2-3 5 0" />,
+  liqTwirl: <><path d="M10 10.2a1.4 1.4 0 1 1 1.4-1.4 3 3 0 0 1-3 3 4.4 4.4 0 0 1-4.4-4.4 6 6 0 0 1 6-6" /><path d="M10 16.5a6.3 6.3 0 0 0 6.3-6.3" /></>,
+  liqPucker: <><circle cx="10" cy="10" r="6.8" strokeDasharray="2 2" /><path d="M5.2 5.2l2.6 2.6M14.8 5.2l-2.6 2.6M5.2 14.8l2.6-2.6M14.8 14.8l-2.6-2.6" /></>,
+  liqBloat: <><circle cx="10" cy="10" r="2.4" /><path d="M7.8 7.8L4.6 4.6M12.2 7.8l3.2-3.2M7.8 12.2l-3.2 3.2M12.2 12.2l3.2 3.2" /><path d="M4.6 7V4.6H7M15.4 7V4.6H13M4.6 13v2.4H7M15.4 13v2.4H13" /></>,
+  liqPush: <><path d="M12.5 3v14" /><path d="M9.5 6.5H4M9.5 10H3M9.5 13.5H4" /><path d="M6 8.2L3.8 10 6 11.8" /></>,
+  liqFreeze: <><path d="M5.2 3.2l9.6 13.6" opacity=".4" /><rect x="5" y="8" width="10" height="8" rx="1.6" /><path d="M7.4 8V6.2a2.6 2.6 0 0 1 5.2 0V8" /></>,
+  liqThaw: <><rect x="5" y="8" width="10" height="8" rx="1.6" /><path d="M7.4 8V6.2a2.6 2.6 0 0 1 5.1-.7" /></>,
   move: <><path d="M10 2.5v15M2.5 10h15" /><path d="M7.8 4.7L10 2.5l2.2 2.2M7.8 15.3l2.2 2.2 2.2-2.2M4.7 7.8L2.5 10l2.2 2.2M15.3 7.8l2.2 2.2-2.2 2.2" /></>,
   marquee: <rect x="3.5" y="4.5" width="13" height="11" rx="1.5" strokeDasharray="2.4 2.2" />,
   ellipse: <ellipse cx="10" cy="10" rx="7" ry="5.8" strokeDasharray="2.4 2.2" />,
@@ -241,6 +254,22 @@ const P: Record<string, ReactNode> = {
   htmask: <path d="M4.5 5.5V4h11v1.5M10 4v12.5M7.8 16.5h4.4" strokeDasharray="2 1.6" />,
   vtmask: <path d="M5.5 4.5H4v11h1.5M4 10h12.5M16.5 7.8v4.4" strokeDasharray="2 1.6" />,
   artboard: <><rect x="5.5" y="5.5" width="9" height="9" rx="1.2" /><path d="M5.5 2.5v1.6M14.5 2.5v1.6M5.5 15.9v1.6M14.5 15.9v1.6M2.5 5.5h1.6M2.5 14.5h1.6M15.9 5.5h1.6M15.9 14.5h1.6" /></>,
+  /* עט ונתיבים (tools-pen, פאנל Paths, Custom Shape) */
+  pen: <><path d="M10 2.5l5 8.2-3.2 5.3H8.2L5 10.7z" /><path d="M10 2.5v6.3" /><circle cx="10" cy="10.2" r="1.3" /><path d="M8 17.5h4" /></>,
+  freePen: <><path d="M10 2.5l5 8.2-3.2 5.3H8.2L5 10.7z" /><path d="M10 2.5v6.3" /><circle cx="10" cy="10.2" r="1.3" /><path d="M2.5 17.5c1.6-1.6 3.2 1.2 4.8 0" /></>,
+  curvPen: <><path d="M10 2.5l5 8.2-3.2 5.3H8.2L5 10.7z" /><path d="M10 2.5v6.3" /><circle cx="10" cy="10.2" r="1.3" /><path d="M2.5 9C3 5 6 3.5 7.5 4.2" /></>,
+  addAnchor: <><path d="M8.5 3.5l4 6.5-2.6 4.2H7.1L4.5 10z" /><path d="M8.5 3.5v5" /><path d="M15.5 11.5v6M12.5 14.5h6" /></>,
+  delAnchor: <><path d="M8.5 3.5l4 6.5-2.6 4.2H7.1L4.5 10z" /><path d="M8.5 3.5v5" /><path d="M12.5 14.5h6" /></>,
+  convertPt: <><path d="M3 16.5L10 4l7 12.5" /><path d="M6 6.5h8" /><rect x="8.6" y="2.6" width="2.8" height="2.8" rx=".4" /></>,
+  pathSel: <path d="M5 2.5v13.5l3.6-3.4 2.5 5.2 2.3-1.1-2.5-5.1 4.9-.2z" fill="currentColor" />,
+  directSel: <path d="M5 2.5v13.5l3.6-3.4 2.5 5.2 2.3-1.1-2.5-5.1 4.9-.2z" />,
+  customShape: <path d="M10 16.5C6 13.6 3 11 3 7.6 3 5.3 4.8 3.5 7 3.5c1.3 0 2.4.7 3 1.7.6-1 1.7-1.7 3-1.7 2.2 0 4 1.8 4 4.1 0 3.4-3 6-7 8.9z" />,
+  fillPath: <><circle cx="10" cy="10" r="6.5" fill="currentColor" fillOpacity=".45" /><circle cx="10" cy="10" r="6.5" /></>,
+  strokePath: <circle cx="10" cy="10" r="6.5" strokeDasharray="0" strokeWidth="2.4" />,
+  pathToSel: <circle cx="10" cy="10" r="6.5" strokeDasharray="2.2 2" />,
+  selToPath: <><circle cx="10" cy="10" r="6.5" strokeDasharray="2.2 2" /><rect x="2.4" y="8.6" width="2.8" height="2.8" rx=".4" fill="currentColor" /><rect x="14.8" y="8.6" width="2.8" height="2.8" rx=".4" fill="currentColor" /></>,
+  pathMenu: <path d="M4 6h12M4 10h12M4 14h12" />,
+  paths: <><path d="M3 15c2-8 5-10 7-5s5 3 7-5" /><rect x="1.8" y="13.8" width="2.4" height="2.4" rx=".4" /><rect x="15.8" y="3.8" width="2.4" height="2.4" rx=".4" /></>,
 };
 
 export function Ico({ n, size = 18 }: { n: string; size?: number }) {

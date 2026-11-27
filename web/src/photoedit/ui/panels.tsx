@@ -13,6 +13,7 @@ import { historySource, setHistorySource } from '../tools-paint';
 import { Check, ColorField, ColorPicker, Ico, Num, Seg, Slider, useEditor } from './widgets';
 import { ArtboardProps } from './artboard-ui';
 import { isArtboard } from '../artboards';
+import { setActivePath } from '../path-doc';
 
 /* ======================= Layers ======================= */
 
@@ -145,6 +146,12 @@ export function LayersPanel({ ed }: { ed: Editor }) {
                 }}
               >
                 <MaskThumb ed={ed} layer={l} />
+              </span>
+            )}
+            {l.vmask && (
+              <span className={`pe-vmask-badge ${l.vmask.enabled ? '' : 'disabled'}`} title="Vector Mask · לחיצה = עריכה בבחירה ישירה (A) · Shift = כיבוי/הפעלה"
+                onClick={(e) => { e.stopPropagation(); ed.selectLayer(l.id); if (e.shiftKey) { ed.run('layer.vmaskToggle'); return; } setActivePath(ed, `vmask:${l.id}`); ed.openPanel('Paths'); }}>
+                <Ico n="paths" size={14} />
               </span>
             )}
             {renaming === l.id ? (

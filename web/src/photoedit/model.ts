@@ -3,6 +3,8 @@
  * כלל ברזל: קנבס של מצב שנשמר בהיסטוריה לא משתנה במקום. כל עריכת פיקסלים יוצרת קנבס חדש (copy-on-write),
  * וכך תמונת מצב בהיסטוריה היא שכפול זול של המאפיינים בלבד.
  */
+import type { SavedPath, SubPath } from './paths';
+import { cloneSubs } from './paths';
 
 export type BlendMode =
   | 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'color-dodge' | 'color-burn'
@@ -64,7 +66,20 @@ interface Base {
   fx: Effects;
   /** מונה גרסה גלובלי — משתנה בכל שינוי, משמש למטמון רינדור ולתמונות ממוזערות */
   rev: number;
+  /** Distort/Perspective/Skew: ארבע פינות התיבה במרחב המקומי המנורמל (0..1) — לא הרסני, נשמר בקובץ (warp-algo / deform.ts) */
+  quad?: Pt[] | null;
+  /** Warp: 16 נקודות בקרה של משטח בזייה 4×4 במרחב המנורמל, וה-Preset שיצר אותן */
+  warp?: WarpData | null;
+  /** Puppet Warp בזמן עריכה בלבד: רשת משולשים בפיקסלים של השכבה (לא נשמר; Enter מטמיע) */
+  mesh?: MeshData | null;
+  /** Vector Mask (Layer > Vector Mask): חיתוך לפי נתיב בזייה במרחב המסמך — לא הרסני, נשמר בקובץ (paths.ts) */
+  vmask?: VectorMask | null;
 }
+
+export interface VectorMask { subs: SubPath[]; enabled: boolean }
+
+export interface WarpData { pts: Pt[]; preset: string; bend: number; h: number; v: number; vertical: boolean }
+export interface MeshData { src: Pt[]; dst: Pt[]; tris: number[] }
 
 export interface RasterLayer extends Base { type: 'raster'; canvas: HTMLCanvasElement; t: Xf }
 
@@ -96,7 +111,8 @@ export interface TextLayer extends Base {
   orientation?: 'h' | 'v';
 }
 
-export type ShapeKind = 'rect' | 'ellipse' | 'line' | 'triangle' | 'polygon' | 'star';
+/** path = צורה וקטורית חופשית (עט, Custom Shape, Convert to Shape) */
+export type ShapeKind = 'rect' | 'ellipse' | 'line' | 'triangle' | 'polygon' | 'star' | 'path';
 export interface Fill { type: 'solid' | 'linear' | 'radial' | 'none'; color: string; color2: string; angle: number }
 
 export interface ShapeLayer extends Base {
@@ -109,6 +125,10 @@ export interface ShapeLayer extends Base {
   sides: number;
   fill: Fill;
   stroke: { on: boolean; color: string; width: number };
+  /** shape='path': תתי-נתיבים במרחב המקומי (0..vw × 0..vh), מצוירים מתוחים ל-w×h */
+  subs?: SubPath[];
+  vw?: number;
+  vh?: number;
 }
 
 export type AdjustKind =
@@ -141,6 +161,8 @@ export interface Doc {
   selection: HTMLCanvasElement | null;
   /** בחירות שמורות (Save/Load Selection) */
   channels?: Channel[];
+  /** פאנל Paths: Work Path ונתיבים שמורים, במרחב המסמך */
+  paths?: SavedPath[];
   fonts: Array<{ family: string; data: string }>;
   projectId: string | null;
   serverId: string | null;
@@ -189,7 +211,7 @@ export function makeText(text: string, style: TextStyle, x: number, y: number, b
 }
 
 export function makeShape(shape: ShapeKind, x: number, y: number, w: number, h: number, fill: Fill, stroke: ShapeLayer['stroke'], radius = 0, sides = 5): ShapeLayer {
-  const names: Record<ShapeKind, string> = { rect: 'מלבן', ellipse: 'אליפסה', line: 'קו', triangle: 'משולש', polygon: 'מצולע', star: 'כוכב' };
+  const names: Record<ShapeKind, string> = { rect: 'מלבן', ellipse: 'אליפסה', line: 'קו', triangle: 'משולש', polygon: 'מצולע', star: 'כוכב', path: 'צורה' };
   return { ...base(names[shape]), type: 'shape', shape, w, h, radius, sides, fill, stroke, t: { x, y, sx: 1, sy: 1, rot: 0 } };
 }
 
@@ -248,11 +270,14 @@ export function cloneLayer(l: Layer, newId = false): Layer {
     id: newId ? uid() : l.id,
     fx: JSON.parse(JSON.stringify(l.fx)) as Effects,
     mask: l.mask ? { ...l.mask } : null,
+    ...(l.quad ? { quad: l.quad.map((p) => ({ ...p })) } : {}),
+    ...(l.warp ? { warp: { ...l.warp, pts: l.warp.pts.map((p) => ({ ...p })) } } : {}),
+    ...(l.vmask ? { vmask: { enabled: l.vmask.enabled, subs: cloneSubs(l.vmask.subs) } } : {}),
   };
   switch (l.type) {
     case 'raster': return { ...(common as RasterLayer), t: { ...l.t } };
     case 'text': return { ...(common as TextLayer), t: { ...l.t }, style: { ...l.style } };
-    case 'shape': return { ...(common as ShapeLayer), t: { ...l.t }, fill: { ...l.fill }, stroke: { ...l.stroke } };
+    case 'shape': return { ...(common as ShapeLayer), t: { ...l.t }, fill: { ...l.fill }, stroke: { ...l.stroke }, ...(l.subs ? { subs: cloneSubs(l.subs) } : {}) };
     case 'adjust': return { ...(common as AdjustLayer), p: JSON.parse(JSON.stringify(l.p)) };
     case 'group': return { ...(common as GroupLayer), ...(l.artboard ? { artboard: { ...l.artboard } } : {}), children: l.children.map((c) => cloneLayer(c, newId)) };
   }

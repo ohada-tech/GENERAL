@@ -15,8 +15,10 @@ import { BlurTool, BurnTool, DodgeTool, HealTool, PatchTool, RedEyeTool, Sharpen
 import { ColorSamplerTool, RotateViewTool, RulerTool } from './tools-measure';
 import { getPattern } from './patterns';
 import { ArtboardTool, artboardLabelAt, afterMoveToolDrag } from './tools-artboard';
+import { PEN_TOOLS, PEN_TOOL_IDS } from './tools-pen';
 import { applyArtboardMove, beginArtboardMove, selectedArtboards, type AbMove } from './artboard-ops';
 import { unionRect } from './model';
+import { PuppetTool, quadDragMove, quadDragStart, quadOpFor, rotateAbout, WarpTool, type QuadDrag } from './tools-warp';
 
 export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'eyedropper' | 'brush' | 'clone' | 'eraser' | 'gradient' | 'text' | 'shape' | 'hand' | 'zoom' | 'selxf'
   // ציור, רטוש ומדידה (tools-paint / tools-retouch / tools-measure)
@@ -26,7 +28,11 @@ export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'eyedroppe
   | 'colorSampler' | 'ruler' | 'rotateView'
   | 'vtext' | 'htmask' | 'vtmask'
   // משטחי עבודה (tools-artboard)
-  | 'artboard';
+  | 'artboard'
+  // Warp ו-Puppet Warp (tools-warp) — מצבים בלי כפתור בסרגל, נכנסים מ-Edit
+  | 'warp' | 'puppet'
+  // עט ונתיבים (tools-pen)
+  | 'pen' | 'freePen' | 'curvPen' | 'addAnchor' | 'delAnchor' | 'convertPt' | 'pathSel' | 'directSel';
 
 export interface PtrEvt { doc: Pt; screen: Pt; shift: boolean; alt: boolean; ctrl: boolean; button: number; clicks: number }
 
@@ -78,7 +84,9 @@ function quadPoint(q: Pt[], hx: number, hy: number): Pt {
 }
 
 interface MoveState {
-  mode: 'move' | 'scale' | 'rotate' | 'guide' | 'rubber' | 'float';
+  mode: 'move' | 'scale' | 'rotate' | 'guide' | 'rubber' | 'float' | 'distort';
+  /** Skew / Distort / Perspective, או סקאלה של שכבה שכבר עוותה (tools-warp) */
+  qd?: QuadDrag;
   start: Pt;
   items: Array<{ l: XfLayer; t0: Xf }>;
   handle?: number;
@@ -156,6 +164,16 @@ const MoveTool: Tool = {
     const d = ed.doc!;
     const h = hitHandle(ed, e.screen);
     if (h) {
+      // Ctrl+גרירה / מצב Edit > Transform: הפינות זזות בנפרד (שכבה אחת)
+      const one = ed.quadOf()?.single ?? null;
+      const qo = h.kind === 'scale' ? quadOpFor(ed, one, h.index, e) : null;
+      if (qo && one) {
+        if (qo.op !== 'scale' && !ed.live.freeTransform) ed.startFreeTransform();
+        const l1 = ed.quadOf()?.single ?? one;
+        ms = { mode: 'distort', start: e.doc, items: [{ l: l1, t0: { ...l1.t } }], qd: quadDragStart(l1, h.index, qo.op, qo.constrain, e.doc) };
+        ed.beginInteract();
+        return;
+      }
       const q = ed.quadOf()!;
       const items = ed.transformable().map((l) => ({ l, t0: { ...l.t } }));
       ms = { mode: h.kind, start: e.doc, items, handle: h.index, quad0: q.pts, single: q.single };
@@ -257,11 +275,18 @@ const MoveTool: Tool = {
       ed.emit();
       return;
     }
+    if (ms.mode === 'distort') { quadDragMove(ed, ms.qd!, e); return; }
     if (ms.mode === 'rotate') {
       const q = ms.quad0!;
       const c = { x: (q[0].x + q[2].x) / 2, y: (q[0].y + q[2].y) / 2 };
       let da = deg(Math.atan2(e.doc.y - c.y, e.doc.x - c.x) - Math.atan2(ms.start.y - c.y, ms.start.x - c.x));
-      if (ms.single) {
+      if (ms.single?.quad) {
+        // שכבה מעוותת: מסובבים את כל המיפוי סביב מרכז ה-Quad
+        let rot = ms.items[0].t0.rot + da;
+        if (e.shift) rot = Math.round(rot / 15) * 15;
+        rotateAbout(ms.single, ms.items[0].t0, c, rot - ms.items[0].t0.rot);
+        ed.status = `${Math.round(((rot % 360) + 540) % 360 - 180)}°`;
+      } else if (ms.single) {
         const l = ms.single, t0 = ms.items[0].t0;
         let rot = t0.rot + da;
         if (e.shift) rot = Math.round(rot / 15) * 15;
@@ -1288,6 +1313,9 @@ export const TOOLS: Record<ToolId, Tool> = {
   htmask: textTool('htmask', 'h', true),
   vtmask: textTool('vtmask', 'v', true),
   artboard: ArtboardTool,
+  ...PEN_TOOLS,
+  warp: WarpTool,
+  puppet: PuppetTool,
 };
 
 /* ======================= ניתוב אירועי עכבר ======================= */
@@ -1300,7 +1328,8 @@ export function pointerDown(ed: Editor, e: PtrEvt) {
   if (ed.live.pick) { ed.live.pick(e); return; }
   let t = ed.activeTool();
   // Ctrl מחזיק זמנית את כלי ההזזה (כמו בפוטושופ); Alt במברשת/דלי/מעבר = דוגם צבע
-  if (e.ctrl && !['move', 'hand', 'zoom', 'crop', 'text', 'vtext', 'htmask', 'vtmask', 'marquee', 'lasso', 'wand', 'selxf', 'rotateView'].includes(t.id) && !e.alt) t = TOOLS.move;
+  // כלי עט ונתיבים: Ctrl = Direct Selection זמני (מטופל בתוך הכלי), לא Move
+  if (e.ctrl && !['move', 'hand', 'zoom', 'crop', 'text', 'vtext', 'htmask', 'vtmask', 'marquee', 'lasso', 'wand', 'selxf', 'rotateView', ...PEN_TOOL_IDS].includes(t.id) && !e.alt) t = TOOLS.move;
   if (e.ctrl && ['marquee', 'lasso'].includes(t.id) && !poly && !magneticActive()) t = TOOLS.move;
   if (e.alt && t.id === 'gradient') t = TOOLS.eyedropper;
   if (e.button === 1) t = TOOLS.hand;
