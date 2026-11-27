@@ -6,6 +6,7 @@ import { GateError, NotFoundError, type Ctx } from '../context.js';
 import { getProject } from '../db/repo.js';
 import { emit } from '../workflow/events.js';
 import { notify } from './notifications.js';
+import { assertReadableText } from './text-guard.js';
 
 export interface ProgressUpdate {
   text: string;
@@ -18,6 +19,7 @@ export function postProgressUpdate(ctx: Ctx, projectId: string, input: { text?: 
   if (!p) throw new NotFoundError('פרויקט');
   const text = String(input.text ?? '').trim().slice(0, 1000);
   if (!text) throw new GateError('יש לכתוב מה התקדם', 400);
+  assertReadableText(text);
   const by = String(input.by ?? '').trim().slice(0, 40) || ctx.config.ownerName;
   const e = emit(ctx, { projectId, type: 'project.progress', actor: by, message: text, payload: { by } });
   if (by !== ctx.config.ownerName) {

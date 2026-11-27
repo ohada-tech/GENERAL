@@ -16,6 +16,9 @@ export function UrgentInbox() {
   const navigate = useNavigate();
   const pending = (data ?? []).filter((n) => !n.readAt);
   const done = (data ?? []).filter((n) => n.readAt).slice(0, 5);
+  // ישנות: נשלחו לפני יותר מ-3 ימים — כמעט תמיד הסשן כבר המשיך או נסגר
+  const staleBefore = new Date(Date.now() - 3 * 864e5).toISOString();
+  const stale = pending.filter((n) => n.createdAt < staleBefore);
 
   useEffect(() => setBadge(pending.length), [pending.length]);
 
@@ -27,6 +30,10 @@ export function UrgentInbox() {
   const markAll = async () => {
     if (!window.confirm(`לסמן את כל ${pending.length} ההודעות כטופלו?`)) return;
     await api.post('/api/attention/resolve', { all: true }).catch(() => undefined);
+    void reload();
+  };
+  const markStale = async () => {
+    await api.post('/api/attention/resolve', { all: true, before: staleBefore }).catch(() => undefined);
     void reload();
   };
   const markDone = async (n: Notification) => {
@@ -46,6 +53,11 @@ export function UrgentInbox() {
           <div className="bell-head">
             <strong><Icon n="hourglass" /> מחכה לך</strong>
             <span className="muted small">עבודה שעומדת עד שתגיב</span>
+            {stale.length > 0 && stale.length < pending.length && (
+              <button className="btn btn-sm btn-ghost" onClick={markStale} title="סוגר רק הודעות שנשלחו לפני יותר מ-3 ימים">
+                <Icon n="check" /> סגור ישנות ({stale.length})
+              </button>
+            )}
             {pending.length > 1 && (
               <button className="btn btn-sm btn-ghost" onClick={markAll}>
                 <Icon n="check" /> סמן הכל כטופל

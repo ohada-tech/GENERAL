@@ -289,7 +289,11 @@ export async function registerRoutes(app: FastifyInstance, ctx: Ctx) {
   /* ---------- "מחכה לך": הודעות דחופות — סשן שנעצר ומחכה לאוהד (נפרד מהפעמון) ---------- */
   app.get('/api/attention', async () => {
     const rows = ctx.db
-      .prepare(`SELECT * FROM notifications WHERE ${URGENT} ORDER BY (read_at IS NULL) DESC, created_at DESC, rowid DESC LIMIT 30`)
+      // כל הפתוחות (בלי תקרה — המספר על האייקון חייב להיות נכון) + 5 האחרונות שטופלו
+      .prepare(
+        `SELECT * FROM (SELECT * FROM notifications WHERE ${URGENT} AND read_at IS NULL ORDER BY created_at DESC, rowid DESC LIMIT 200)
+         UNION ALL SELECT * FROM (SELECT * FROM notifications WHERE ${URGENT} AND read_at IS NOT NULL ORDER BY read_at DESC LIMIT 5)`,
+      )
       .all();
     return rows.map((r) => mapNotification(r as any));
   });

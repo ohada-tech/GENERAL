@@ -10,6 +10,7 @@ import { registerPhotoeditRoutes } from './api/photoedit-routes.js';
 import { REPO_ROOT } from './config.js';
 import { GateError, type Ctx } from './context.js';
 import { registerAuth } from './auth.js';
+import { tidyAttention } from './services/attention.js';
 
 export async function buildApp(ctx: Ctx, opts: { logger?: boolean; serveWeb?: boolean } = {}) {
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 5 * 1024 * 1024 });
@@ -46,6 +47,12 @@ export async function buildApp(ctx: Ctx, opts: { logger?: boolean; serveWeb?: bo
   await registerRoutes(app, ctx);
   registerServerOnlyRoutes(app, ctx);
   registerPhotoeditRoutes(app, ctx);
+  // "מחכה לך" נקי מכפולים ומפרויקטים שנמסרו כבר מהרגע שהשרת עולה
+  try {
+    tidyAttention(ctx);
+  } catch (e) {
+    console.warn('[attention]', (e as Error).message);
+  }
 
   const webDist = path.join(REPO_ROOT, 'web', 'dist');
   if (opts.serveWeb && fs.existsSync(webDist)) {

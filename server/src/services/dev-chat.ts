@@ -7,6 +7,7 @@ import path from 'node:path';
 import { GateError, NotFoundError, type Ctx } from '../context.js';
 import { uid } from '../db/db.js';
 import { notify } from './notifications.js';
+import { assertReadableText } from './text-guard.js';
 
 export type DevStatus = 'new' | 'in_progress' | 'done' | 'declined' | 'info';
 
@@ -50,6 +51,7 @@ export function postDevMessage(ctx: Ctx, input: { role: 'owner' | 'claude'; text
   const text = (input.text ?? '').trim();
   const attachments = (input.attachments ?? []).filter((a) => /^[a-z0-9-]+\.(png|jpe?g|webp|gif)$/i.test(a));
   if (!text && !attachments.length) throw new GateError('ההודעה ריקה', 400);
+  assertReadableText(text);
   const id = uid();
   const now = ctx.now().toISOString();
   const status: DevStatus = input.status ?? (input.role === 'owner' ? 'new' : 'info');
