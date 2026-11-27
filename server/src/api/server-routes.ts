@@ -24,7 +24,7 @@ import * as share from '../services/share.js';
 import * as branding from '../services/branding.js';
 import { lastProgressUpdate, postProgressUpdate } from '../services/progress.js';
 import { translateScript, type TranslateLang } from '../services/translate.js';
-import { briefSchema, isEnglishScript, openDiscoveryQuestions } from '@apos/shared';
+import { briefSchema, isEnglishScript, mergeEditedScenes, openDiscoveryQuestions, parseEditedScriptText, scenesFromDocTable } from '@apos/shared';
 import { briefToText } from '../providers/prompts.js';
 import { lessonsFor } from '../services/learning.js';
 import { ProviderError } from '../providers/types.js';
@@ -195,6 +195,26 @@ export function registerServerOnlyRoutes(app: FastifyInstance, ctx: Ctx) {
   });
 
   // קובץ שמצרפים להנחיה (שיפור תסריט) — מחזיר את הטקסט שלו
+  // הוספה ידנית: קובץ Word / טקסט שהלקוח ערך ← תוכן תסריט לעורך (לא נשמר כאן — אוהד בודק ושומר כגרסה)
+  app.post('/api/projects/:id/scripts/parse-file', async (req) => {
+    const id = (req.params as { id: string }).id;
+    if (!getProject(ctx.db, id)) throw new NotFoundError('פרויקט');
+    const baseId = (req.query as { baseId?: string }).baseId;
+    const base = baseId ? getScript(ctx.db, baseId) : null;
+    if (baseId && (!base || base.projectId !== id)) throw new NotFoundError('גרסת בסיס');
+    const file = await req.file();
+    if (!file) throw new GateError('לא נשלח קובץ', 400);
+    const data = await file.toBuffer();
+    if (data.length > 30 * 1024 * 1024) throw new GateError('הקובץ גדול מדי (עד 30MB)', 400);
+    if (file.filename.toLowerCase().endsWith('.docx')) {
+      const p = feedback.parseDocx(data);
+      const rows = scenesFromDocTable(p.tables);
+      if (rows) return { content: mergeEditedScenes(base?.content ?? null, rows), from: 'table' as const };
+    }
+    const { text } = extractDocText(file.filename, data);
+    return { content: parseEditedScriptText(text, base?.content ?? null), from: 'text' as const };
+  });
+
   app.post('/api/doc-text', async (req) => {
     const file = await req.file();
     if (!file) throw new GateError('לא נשלח קובץ', 400);

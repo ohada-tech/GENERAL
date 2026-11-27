@@ -9,6 +9,7 @@ import {
   STORY_ROLE_LABELS,
   countWords,
   wordsPerSecond,
+  parseEditedScriptText,
   STORY_ROLES,
   type Approval,
   type Comment,
@@ -50,6 +51,9 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
   const [editing, setEditing] = useState<ScriptContent | null>(null);
   const gen = useAction();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  // "+ הוספה ידנית": נוסח שהלקוח ערך ← עורך ← טיוטה חדשה
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualNote, setManualNote] = useState<string | null>(null);
   // הערות לקוח שיובאו (רק בגרסת השרת)
   const feedback = useApi<{ imports: FeedbackImport[] }>(isCloud() ? null : `/api/projects/${project.id}/feedback`, { pollMs: running ? 4000 : 0 });
 
@@ -92,11 +96,25 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
   return (
     <div className="script-layout">
       <aside className="card versions">
-        <div className="row between">
+        <div className="row between wrap gap-s">
           <h2>גרסאות</h2>
-          <button className="btn btn-sm" onClick={generate} disabled={gen.busy || running || !project.briefCompletedAt} title="יוצר גרסה חדשה מהאפיון בלי למחוק קודמות">
-            {latest ? '+ טיוטה חדשה (AI)' : 'צור טיוטה (AI)'}
-          </button>
+          <div className="row gap-s wrap">
+            <button className="btn btn-sm" onClick={generate} disabled={gen.busy || running || !project.briefCompletedAt} title="יוצר גרסה חדשה מהאפיון בלי למחוק קודמות">
+              {latest ? '+ טיוטה חדשה (AI)' : 'צור טיוטה (AI)'}
+            </button>
+            <button
+              className="btn btn-sm btn-ghost"
+              onClick={() => {
+                setEditing(null);
+                setFeedbackOpen(false);
+                setManualOpen(true);
+              }}
+              disabled={manualOpen || !project.briefCompletedAt}
+              title="תסריט שהלקוח ערך (או כל נוסח אחר) — הדבק או העלה Word, והוא נשמר כטיוטה חדשה"
+            >
+              + הוספה ידנית
+            </button>
+          </div>
         </div>
         <div className="small muted row gap-s">
           ספק: <ModeTag mode={providerMode} /> {project.settings.textProvider === 'openai' ? project.settings.textModel || 'מודל ברירת מחדל' : ''}
@@ -117,7 +135,7 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
         <ul className="version-list">
           {versions.map((v) => (
             <li key={v.id}>
-              <button className={`version-item ${selected?.id === v.id ? 'on' : ''}`} onClick={() => { setSelectedId(v.id); setEditing(null); }}>
+              <button className={`version-item ${selected?.id === v.id ? 'on' : ''}`} onClick={() => { setSelectedId(v.id); setEditing(null); setManualNote(null); }}>
                 <span className="row between">
                   <strong>
                     {v.id === latest?.id && (v.status === 'internal_approved' || v.status === 'client_approved') ? <Icon n="star" holo /> : ''}v{v.label}
@@ -145,6 +163,20 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
       </aside>
 
       <div className="script-main">
+        {manualOpen && !editing && (
+          <ManualScriptAdd
+            projectId={project.id}
+            versions={versions}
+            defaultBaseId={selected?.id ?? null}
+            onClose={() => setManualOpen(false)}
+            onParsed={(baseId, content, note) => {
+              setSelectedId(baseId);
+              setManualNote(note);
+              setManualOpen(false);
+              setEditing(content);
+            }}
+          />
+        )}
         {feedbackOpen && !editing && (
           <ClientFeedbackImport
             projectId={project.id}
@@ -163,9 +195,15 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
             language={project.brief.language}
             target={project.brief.durationSec}
             versions={versions}
-            onCancel={() => setEditing(null)}
+            initialNote={manualNote ?? ''}
+            manual={manualNote !== null}
+            onCancel={() => {
+              setEditing(null);
+              setManualNote(null);
+            }}
             onSaved={async () => {
               setEditing(null);
+              setManualNote(null);
               await refresh();
             }}
           />
@@ -176,7 +214,10 @@ export function ScriptTab({ detail, reload: reloadProject }: TabProps) {
               isLatest={selected.id === latest?.id}
               language={project.brief.language}
               target={project.brief.durationSec}
-              onEdit={() => setEditing(structuredClone(selected.content))}
+              onEdit={() => {
+                setManualNote(null);
+                setEditing(structuredClone(selected.content));
+              }}
               onChanged={refresh}
             />
             {fromClient && <ClientFeedbackChanges imp={fromClient} base={versions.find((v) => v.id === fromClient.baseVersionId)} result={selected} />}
@@ -437,6 +478,8 @@ function ScriptEditor({
   language,
   target,
   versions,
+  initialNote = '',
+  manual = false,
   onCancel,
   onSaved,
 }: {
@@ -444,6 +487,10 @@ function ScriptEditor({
   versions: ScriptVersion[];
   base: ScriptVersion | null;
   initial: ScriptContent;
+  /** תיאור השינוי שממולא מראש (הוספה ידנית: "נוסח שהלקוח ערך") */
+  initialNote?: string;
+  /** הוספה ידנית: נשמר רק כגרסה חדשה, לא דורס את גרסת הבסיס */
+  manual?: boolean;
   language: string;
   target: number | null;
   onCancel: () => void;
@@ -469,7 +516,7 @@ function ScriptEditor({
   const wps = wordsPerSecond(language);
   // כיוון השדות לפי שפת התסריט (אנגלית: משמאל לימין)
   const ltr = !mostlyHebrew(c);
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState(initialNote);
   const act = useAction();
   const setScene = (i: number, patch: Partial<ScriptContent['scenes'][number]>) =>
     setC((x) => ({ ...x, scenes: x.scenes.map((s, j) => (j === i ? { ...s, ...patch } : s)) }));
@@ -500,12 +547,12 @@ function ScriptEditor({
   return (
     <section className="card" data-editing="true">
       <div className="row between version-head editor-head">
-        <h2>{base ? `עריכת v${base.label}` : 'תסריט חדש (ידני)'}</h2>
+        <h2>{manual ? `הוספה ידנית${base ? ` (על בסיס v${base.label})` : ''}` : base ? `עריכת v${base.label}` : 'תסריט חדש (ידני)'}</h2>
         <div className="row gap-s">
           <button className="btn btn-ghost" onClick={onCancel}>
             ביטול
           </button>
-          {base && (
+          {base && !manual && (
             <button
               className="btn"
               onClick={saveInPlace}
@@ -897,7 +944,113 @@ function Comments({
   );
 }
 
-/** "שפר עם ChatGPT / Claude": מודל אחד עובר על כל התסריט כבמאי ומחזיר גרסה משופרת. הערה אופציונלית מכוונת אותו. */
+/**
+ * "+ הוספה ידנית": תסריט שהלקוח ערך אחרי שקיבל את שלנו (או כל נוסח שנכתב מחוץ למערכת).
+ * הדבקה או קובץ Word ← הטקסט מסודר בסצנות של הגרסה שנשלחה ← העורך, לבדיקה ← "שמור כגרסה חדשה" = טיוטה חדשה ברשימה.
+ */
+function ManualScriptAdd({
+  projectId,
+  versions,
+  defaultBaseId,
+  onClose,
+  onParsed,
+}: {
+  projectId: string;
+  versions: ScriptVersion[];
+  defaultBaseId: string | null;
+  onClose: () => void;
+  onParsed: (baseId: string | null, content: ScriptContent, note: string) => void;
+}) {
+  const [baseId, setBaseId] = useState<string>(defaultBaseId ?? '');
+  const [fromClient, setFromClient] = useState(true);
+  const [text, setText] = useState('');
+  const act = useAction();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const base = versions.find((v) => v.id === baseId) ?? null;
+  const note = () => (fromClient ? `נוסח שהלקוח ערך${base ? ` (על בסיס v${base.label})` : ''}` : 'הוספה ידנית');
+  const done = (content: ScriptContent) => {
+    if (!content.scenes.length) return false;
+    onParsed(base?.id ?? null, content, note());
+    return true;
+  };
+  const fromText = () => {
+    const c = parseEditedScriptText(text, base?.content ?? null);
+    if (!done(c)) void act.run(() => Promise.reject(new Error('לא נמצא טקסט של תסריט')));
+  };
+  const fromFile = async (f: File) => {
+    const r = await act.run(() =>
+      api.upload<{ content: ScriptContent }>(`/api/projects/${projectId}/scripts/parse-file${base ? `?baseId=${encodeURIComponent(base.id)}` : ''}`, f),
+    );
+    if (r && !done(r.content)) void act.run(() => Promise.reject(new Error('לא נמצאו סצנות בקובץ')));
+  };
+  return (
+    <section className="card stack" dir="rtl">
+      <div className="row between">
+        <h2>הוספה ידנית של תסריט</h2>
+        <button className="btn btn-sm btn-ghost" onClick={onClose}>
+          ביטול
+        </button>
+      </div>
+      <p className="small muted">
+        הדבק את התסריט שהלקוח ערך, או העלה את קובץ ה-Word שהוא החזיר. הטקסט מסודר בסצנות של הגרסה שנשלחה (מה שהלקוח לא שינה נשאר ממנה), נפתח בעורך לבדיקה, ונשמר כטיוטה חדשה ברשימת הגרסאות.
+      </p>
+      <div className="grid-2">
+        <Field label="מבוסס על הגרסה שנשלחה ללקוח">
+          <select value={baseId} onChange={(e) => setBaseId(e.target.value)}>
+            <option value="">בלי בסיס (תסריט חדש)</option>
+            {versions.map((v) => (
+              <option key={v.id} value={v.id}>
+                v{v.label} · {SCRIPT_STATUS_LABELS[v.status]} · {fmtDateTime(v.createdAt)}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="מקור">
+          <label className="row gap-s">
+            <input type="checkbox" checked={fromClient} onChange={(e) => setFromClient(e.target.checked)} /> הלקוח ערך את הנוסח
+          </label>
+        </Field>
+      </div>
+      <textarea
+        rows={10}
+        placeholder={'הדבק כאן את התסריט.\nאפשר עם "סצנה 1", "סצנה 2"… (ושדות כמו "קריינות:", "טקסט על המסך:", "מה רואים:"), או פסקה לכל סצנה — פסקה בלי תווית נחשבת קריינות.'}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+      <InlineError error={act.error} onClose={act.clearError} />
+      <div className="row gap-s wrap">
+        <button className="btn btn-primary" disabled={act.busy || !text.trim()} onClick={fromText}>
+          המשך לבדיקה בעורך
+        </button>
+        {!isCloud() && (
+          <>
+            <button className="btn" disabled={act.busy} onClick={() => fileRef.current?.click()} title="קובץ ה-Word שהמערכת הפיקה וחזר מהלקוח עם שינויים (או כל Word / טקסט)">
+              <Icon n="clip" /> {act.busy ? 'קורא…' : 'העלה Word מהלקוח'}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".docx,.txt,.md,.markdown"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (f) void fromFile(f);
+              }}
+            />
+          </>
+        )}
+        {base && (
+          <button className="btn btn-ghost" disabled={act.busy} onClick={() => onParsed(base.id, structuredClone(base.content), note())} title="פותח את הגרסה בעורך — מקלידים את השינויים של הלקוח ושומרים כגרסה חדשה">
+            הקלד את השינויים בעצמי
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** "שפר עם ChatGPT / Claude":מודל אחד עובר על כל התסריט כבמאי ומחזיר גרסה משופרת. הערה אופציונלית מכוונת אותו. */
 function ImproveBar({
   projectId,
   version,
