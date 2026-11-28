@@ -157,6 +157,8 @@ export class Editor {
   textArea: HTMLTextAreaElement | null = null;
   comp = newCanvas(1, 1);
   compScale = 1;
+  /** החלון שהקומפוזיציה מכסה, ביחידות מסמך (בזום קרוב מרנדרים רק את מה שנראה ושוליים סביבו) */
+  compRect = { x: 0, y: 0, w: 1, h: 1 };
   compDirty = true;
   interacting = false;
   private raf = 0;
@@ -180,6 +182,23 @@ export class Editor {
     if (composite) this.compDirty = true;
     if (this.raf) return;
     this.raf = requestAnimationFrame(() => { this.raf = 0; this.paint(); });
+  }
+
+  /** מצייר את הקומפוזיציה במקומה על המסך (כל המסמך או רק החלון שרונדר) */
+  private drawComp(x: CanvasRenderingContext2D, dx: number, dy: number, z: number) {
+    const r = this.compRect;
+    x.drawImage(this.comp, dx + r.x * z, dy + r.y * z, r.w * z, r.h * z);
+  }
+
+  /** החלק של המסמך שנראה על המסך (ביחידות מסמך, חתוך לגבולות המסמך) */
+  visibleDocRect(cw: number, ch: number): { x: number; y: number; w: number; h: number } | null {
+    const d = this.doc;
+    if (!d || !this.st) return null;
+    const pts = [this.toDoc(0, 0), this.toDoc(cw, 0), this.toDoc(cw, ch), this.toDoc(0, ch)];
+    const x0 = Math.max(0, Math.min(...pts.map((p) => p.x))), y0 = Math.max(0, Math.min(...pts.map((p) => p.y)));
+    const x1 = Math.min(d.width, Math.max(...pts.map((p) => p.x))), y1 = Math.min(d.height, Math.max(...pts.map((p) => p.y)));
+    if (x1 <= x0 || y1 <= y0) return null;
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
   }
 
   beginInteract() { this.interacting = true; window.clearTimeout(this.hiResTimer); }
@@ -209,11 +228,35 @@ export class Editor {
     const doc = st.doc;
     // מרכיב מחדש ברזולוציית התצוגה (כמו פוטושופ) — לא ברזולוציה המלאה של המסמך.
     // זום פנימה מרכיב מחדש בחדות גבוהה יותר (zoomTo); ייצוא ושמירה מרנדרים בנפרד ב-100%.
+    const full = Math.min(1, Math.max(0.05, 8000 / Math.max(doc.width, doc.height)));
+    const want = Math.min(full, Math.max(0.05, st.zoom * dpr));
+    // זום קרוב: כשכל המסמך בסקאלה הזו גדול בהרבה מהמסך — רק החלון הנראה (ושוליים להזזה קטנה)
+    const vis = this.visibleDocRect(cw, ch);
+    const wholePx = doc.width * doc.height * want * want;
+    const useRegion = !!vis && wholePx > cw * ch * dpr * dpr * 2.5 && !(this.live.selPreview && this.live.selPreview.mode !== 'ants');
+    const cr = this.compRect;
+    const isWhole = cr.x <= 0 && cr.y <= 0 && cr.w >= doc.width && cr.h >= doc.height;
+    if (!this.compDirty) {
+      if (useRegion && vis && !(vis.x >= cr.x && vis.y >= cr.y && vis.x + vis.w <= cr.x + cr.w && vis.y + vis.h <= cr.y + cr.h)) this.compDirty = true;
+      if (!useRegion && !isWhole) this.compDirty = true;
+    }
     if (this.compDirty) {
-      const full = Math.min(1, Math.max(0.05, 8000 / Math.max(doc.width, doc.height)));
-      const want = Math.min(full, Math.max(0.05, st.zoom * dpr));
       this.compScale = want;
-      renderDoc(doc, { scale: want, hide: this.hideIds(), live: this.live.paint, floating: this.live.floating }, this.comp);
+      let region: { x: number; y: number; w: number; h: number } | null = null;
+      if (useRegion && vis) {
+        // שוליים של רבע מסך לכל צד (הזזה קטנה לא מרנדרת מחדש), ועוד מקום לצל/זוהר של שכבות מחוץ לחלון
+        // בזמן גרירה/ציור — רק מה שעל המסך (כל פריים קטן); בסיום מרנדרים שוב עם השוליים
+        const m = this.interacting ? 96 / want : Math.max(vis.w, vis.h) * 0.25 + 96 / want;
+        const x0 = Math.max(0, Math.floor(vis.x - m)), y0 = Math.max(0, Math.floor(vis.y - m));
+        const x1 = Math.min(doc.width, Math.ceil(vis.x + vis.w + m)), y1 = Math.min(doc.height, Math.ceil(vis.y + vis.h + m));
+        const px0 = Math.floor(x0 * want), py0 = Math.floor(y0 * want);
+        region = { x: px0, y: py0, w: Math.max(1, Math.ceil(x1 * want) - px0), h: Math.max(1, Math.ceil(y1 * want) - py0) };
+        this.compRect = { x: px0 / want, y: py0 / want, w: region.w / want, h: region.h / want };
+      } else {
+        const W0 = Math.max(1, Math.round(doc.width * want)), H0 = Math.max(1, Math.round(doc.height * want));
+        this.compRect = { x: 0, y: 0, w: W0 / want, h: H0 / want };
+      }
+      renderDoc(doc, { scale: want, hide: this.hideIds(), live: this.live.paint, floating: this.live.floating, region }, this.comp);
       this.compDirty = false;
     }
     const z = st.zoom;
@@ -227,7 +270,7 @@ export class Editor {
       paintArtboardBackdrop(x, doc, z, dx, dy);
       x.imageSmoothingEnabled = z * dpr < 2;
       x.imageSmoothingQuality = 'high';
-      x.drawImage(this.comp, dx, dy, W, H);
+      this.drawComp(x, dx, dy, z);
       paintArtboardFrames(x, doc, z, dx, dy);
     } else {
     // צל המסמך ולוח שחמט לשקיפות
@@ -256,7 +299,7 @@ export class Editor {
     }
     x.imageSmoothingEnabled = z * dpr < 2;
     x.imageSmoothingQuality = 'high';
-    x.drawImage(this.comp, dx, dy, W, H);
+    this.drawComp(x, dx, dy, z);
     x.restore();
     x.strokeStyle = 'rgba(0,0,0,.6)';
     x.lineWidth = 1;

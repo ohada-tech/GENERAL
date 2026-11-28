@@ -159,9 +159,11 @@ export function drawCross(x: CanvasRenderingContext2D, s: Pt, n = 8) {
 export function compPixel(ed: Editor, p: Pt): [number, number, number, number] | null {
   const d = ed.doc;
   if (!d || p.x < 0 || p.y < 0 || p.x >= d.width || p.y >= d.height) return null;
-  const k = ed.compScale;
+  const k = ed.compScale, r = ed.compRect;
   const c = ed.comp;
-  const x = Math.min(c.width - 1, Math.floor(p.x * k)), y = Math.min(c.height - 1, Math.floor(p.y * k));
+  // בזום קרוב הקומפוזיציה מכסה רק את החלון הנראה — נקודה מחוצה לו לא נדגמת
+  if (p.x < r.x || p.y < r.y || p.x >= r.x + r.w || p.y >= r.y + r.h) return null;
+  const x = Math.min(c.width - 1, Math.floor((p.x - r.x) * k)), y = Math.min(c.height - 1, Math.floor((p.y - r.y) * k));
   const v = ctx2d(c).getImageData(x, y, 1, 1).data;
   return [v[0], v[1], v[2], v[3]];
 }

@@ -195,7 +195,15 @@ export interface RenderOpts {
   floating?: { layerId: string; canvas: HTMLCanvasElement; dx: number; dy: number } | null;
   /** בלי אפקטים ושכבות התאמה — לרינדור מהיר במיוחד */
   draft?: boolean;
+  /** רינדור של חלון בלבד (בפיקסלי הפלט): ראשית ומידות. בלי — כל המסמך */
+  region?: { x: number; y: number; w: number; h: number } | null;
 }
+
+/** מידות הפלט: כל המסמך כפול scale, או החלון בלבד */
+const outW = (doc: Doc, o: RenderOpts) => o.region ? o.region.w : Math.max(1, Math.round(doc.width * o.scale));
+const outH = (doc: Doc, o: RenderOpts) => o.region ? o.region.h : Math.max(1, Math.round(doc.height * o.scale));
+/** מרחב המסמך ← פיקסלי הפלט (סקאלה, ובחלון גם הזזה) */
+const baseOf = (o: RenderOpts) => new DOMMatrix([o.scale, 0, 0, o.scale, -(o.region?.x ?? 0), -(o.region?.y ?? 0)]);
 
 /* ---------- Mipmaps: הקטנה איכותית פעם אחת לכל קנבס, לא בכל ציור ---------- */
 
@@ -289,13 +297,14 @@ export function effectiveMask(m: Pick<Mask, 'canvas' | 'density' | 'feather'>): 
 
 /** שכבה אחת (או קבוצה) כקנבס בגודל המסמך, אחרי מסכה ואפקטים — לפני מיזוג */
 function renderLayer(l: Layer, doc: Doc, o: RenderOpts): HTMLCanvasElement | null {
-  const W = Math.round(doc.width * o.scale), H = Math.round(doc.height * o.scale);
+  const W = outW(doc, o), H = outH(doc, o);
+  const rx = o.region?.x ?? 0, ry = o.region?.y ?? 0;
   let c: HTMLCanvasElement;
   if (l.type === 'group') {
     c = pool.get(W, H);
     const ab = l.artboard;
     // משטח עבודה: רקע מתחת לילדים (כדי שמצבי מיזוג יחולו עליו), ואז חיתוך לגבולות המשטח
-    const s = o.scale, abx = ab ? ab.x * s : 0, aby = ab ? ab.y * s : 0, abw = ab ? ab.w * s : 0, abh = ab ? ab.h * s : 0;
+    const s = o.scale, abx = ab ? ab.x * s - rx : 0, aby = ab ? ab.y * s - ry : 0, abw = ab ? ab.w * s : 0, abh = ab ? ab.h * s : 0;
     if (ab && ab.bg !== 'transparent') {
       const x = c.getContext('2d')!;
       x.fillStyle = ab.bg === 'white' ? '#ffffff' : ab.bg === 'black' ? '#000000' : ab.bg;
@@ -314,10 +323,10 @@ function renderLayer(l: Layer, doc: Doc, o: RenderOpts): HTMLCanvasElement | nul
     const x = c.getContext('2d')!;
     const m = layerMatrix(l);
     x.imageSmoothingQuality = 'high';
-    if (isDeformed(l)) { x.setTransform(o.scale, 0, 0, o.scale, 0, 0); drawLayerDeformed(x, l, o, o.scale); }
-    else { x.setTransform(new DOMMatrix().scaleSelf(o.scale, o.scale).multiplySelf(m)); drawLayerContent(x, l, o); }
+    if (isDeformed(l)) { x.setTransform(baseOf(o)); drawLayerDeformed(x, l, o, o.scale); }
+    else { x.setTransform(baseOf(o).multiplySelf(m)); drawLayerContent(x, l, o); }
     if (o.floating && o.floating.layerId === l.id) {
-      x.setTransform(o.scale, 0, 0, o.scale, 0, 0);
+      x.setTransform(baseOf(o));
       x.drawImage(o.floating.canvas, o.floating.dx, o.floating.dy);
     }
     x.setTransform(1, 0, 0, 1, 0, 0);
@@ -327,13 +336,13 @@ function renderLayer(l: Layer, doc: Doc, o: RenderOpts): HTMLCanvasElement | nul
   if (mask) {
     const x = c.getContext('2d')!;
     x.globalCompositeOperation = 'destination-in';
-    x.drawImage(mipFor(mask.canvas, W / mask.canvas.width), 0, 0, W, H);
+    x.drawImage(mipFor(mask.canvas, o.scale * doc.width / mask.canvas.width), -rx, -ry, doc.width * o.scale, doc.height * o.scale);
     x.globalCompositeOperation = 'source-over';
   }
   // Vector Mask: חיתוך לפי נתיב במרחב המסמך (אחרי מסכת הפיקסלים, לפני אפקטים — כמו בפוטושופ)
   if (l.vmask?.enabled) {
     const x = c.getContext('2d')!;
-    x.setTransform(o.scale, 0, 0, o.scale, 0, 0);
+    x.setTransform(baseOf(o));
     x.globalCompositeOperation = 'destination-in';
     x.fillStyle = '#000';
     x.beginPath();
@@ -383,7 +392,7 @@ function withEffects(content: HTMLCanvasElement, l: Layer, o: RenderOpts): HTMLC
   if (fx.stroke.on && fx.stroke.width > 0) {
     const st = pool.get(W, H), sx = st.getContext('2d')!;
     if (l.type === 'text' && !(l.mask && l.mask.enabled) && !isDeformed(l)) {
-      sx.setTransform(new DOMMatrix().scaleSelf(s, s).multiplySelf(layerMatrix(l)));
+      sx.setTransform(baseOf(o).multiplySelf(layerMatrix(l)));
       drawText(sx, l, fx.stroke.color, { width: fx.stroke.width, color: fx.stroke.color });
       sx.setTransform(1, 0, 0, 1, 0, 0);
     } else {
@@ -416,14 +425,13 @@ function adjustInto(target: HTMLCanvasElement, l: AdjustLayer, doc: Doc, o: Rend
   ax.putImageData(img, 0, 0);
   if (mask) {
     ax.globalCompositeOperation = 'destination-in';
-    ax.drawImage(mipFor(mask.canvas, a.width / mask.canvas.width), 0, 0, a.width, a.height);
+    ax.drawImage(mipFor(mask.canvas, o.scale * doc.width / mask.canvas.width), -(o.region?.x ?? 0), -(o.region?.y ?? 0), doc.width * o.scale, doc.height * o.scale);
   }
   x.globalAlpha = l.opacity;
   x.globalCompositeOperation = 'source-atop';
   x.drawImage(a, 0, 0);
   x.globalAlpha = 1;
   x.globalCompositeOperation = 'source-over';
-  void doc;
 }
 
 /** האם אפשר לצייר את השכבה ישר ליעד — אותה תוצאה בדיוק כמו דרך קנבס ביניים */
@@ -455,7 +463,7 @@ function renderList(layers: Layer[], doc: Doc, o: RenderOpts, target: HTMLCanvas
       tx.globalAlpha = l.opacity;
       tx.globalCompositeOperation = gco(l.blend);
       tx.imageSmoothingQuality = 'high';
-      tx.setTransform(new DOMMatrix().scaleSelf(o.scale, o.scale).multiplySelf(layerMatrix(l as XfLayer)));
+      tx.setTransform(baseOf(o).multiplySelf(layerMatrix(l as XfLayer)));
       drawLayerContent(tx, l as XfLayer, o);
       tx.restore();
       continue;
@@ -489,7 +497,7 @@ function renderList(layers: Layer[], doc: Doc, o: RenderOpts, target: HTMLCanvas
 
 /** מרכיב את כל המסמך לתוך target (שיוגדל לגודל המסמך כפול scale) */
 export function renderDoc(doc: Doc, o: RenderOpts, target?: HTMLCanvasElement): HTMLCanvasElement {
-  const W = Math.max(1, Math.round(doc.width * o.scale)), H = Math.max(1, Math.round(doc.height * o.scale));
+  const W = outW(doc, o), H = outH(doc, o);
   const out = target ?? newCanvas(W, H);
   if (out.width !== W || out.height !== H) { out.width = W; out.height = H; }
   const x = out.getContext('2d')!;
