@@ -197,8 +197,38 @@ export interface RenderOpts {
   draft?: boolean;
 }
 
+/* ---------- Mipmaps: הקטנה איכותית פעם אחת לכל קנבס, לא בכל ציור ---------- */
+
+const mipCache = new WeakMap<HTMLCanvasElement, Map<number, HTMLCanvasElement>>();
+/**
+ * גרסה מוקטנת מראש של קנבס גדול, בחזקה של 2 שגדולה או שווה ל-k (פיקסלי יעד לפיקסל מקור).
+ * הקטנה ב-imageSmoothingQuality 'high' של תמונה של 8 מגה-פיקסל עולה עשרות מילישניות בכל ציור;
+ * הקנבסים לא משתנים במקום (copy-on-write), ולכן המטמון לפי זהות הקנבס בטוח.
+ */
+export function mipFor(src: HTMLCanvasElement, k: number): HTMLCanvasElement {
+  if (!(k < 0.5) || src.width * src.height < 512 * 512) return src;
+  let lvl = 0.5;
+  while (lvl / 2 >= k && lvl > 1 / 64) lvl /= 2;
+  let m = mipCache.get(src);
+  if (!m) { m = new Map(); mipCache.set(src, m); }
+  const hit = m.get(lvl);
+  if (hit) return hit;
+  const prev = lvl >= 0.5 ? src : mipFor(src, lvl * 2);
+  const c = newCanvas(Math.max(1, Math.round(src.width * lvl)), Math.max(1, Math.round(src.height * lvl)));
+  const x = c.getContext('2d')!;
+  x.imageSmoothingEnabled = true;
+  x.imageSmoothingQuality = 'high';
+  x.drawImage(prev, 0, 0, c.width, c.height);
+  m.set(lvl, c);
+  return c;
+}
+const devScaleOf = (ctx: CanvasRenderingContext2D) => { const t = ctx.getTransform(); return Math.sqrt(Math.abs(t.a * t.d - t.b * t.c)); };
+
 export function drawLayerContent(ctx: CanvasRenderingContext2D, l: XfLayer, o: RenderOpts) {
-  if (l.type === 'raster') ctx.drawImage(o.live && o.live.layerId === l.id && o.live.target === 'pixels' ? o.live.canvas : l.canvas, 0, 0);
+  if (l.type === 'raster') {
+    if (o.live && o.live.layerId === l.id && o.live.target === 'pixels') ctx.drawImage(o.live.canvas, 0, 0);
+    else ctx.drawImage(mipFor(l.canvas, devScaleOf(ctx)), 0, 0, l.canvas.width, l.canvas.height);
+  }
   else if (l.type === 'shape') drawShape(ctx, l);
   else drawText(ctx, l);
 }
@@ -297,7 +327,7 @@ function renderLayer(l: Layer, doc: Doc, o: RenderOpts): HTMLCanvasElement | nul
   if (mask) {
     const x = c.getContext('2d')!;
     x.globalCompositeOperation = 'destination-in';
-    x.drawImage(mask.canvas, 0, 0, W, H);
+    x.drawImage(mipFor(mask.canvas, W / mask.canvas.width), 0, 0, W, H);
     x.globalCompositeOperation = 'source-over';
   }
   // Vector Mask: חיתוך לפי נתיב במרחב המסמך (אחרי מסכת הפיקסלים, לפני אפקטים — כמו בפוטושופ)
@@ -386,7 +416,7 @@ function adjustInto(target: HTMLCanvasElement, l: AdjustLayer, doc: Doc, o: Rend
   ax.putImageData(img, 0, 0);
   if (mask) {
     ax.globalCompositeOperation = 'destination-in';
-    ax.drawImage(mask.canvas, 0, 0, a.width, a.height);
+    ax.drawImage(mipFor(mask.canvas, a.width / mask.canvas.width), 0, 0, a.width, a.height);
   }
   x.globalAlpha = l.opacity;
   x.globalCompositeOperation = 'source-atop';
@@ -394,6 +424,16 @@ function adjustInto(target: HTMLCanvasElement, l: AdjustLayer, doc: Doc, o: Rend
   x.globalAlpha = 1;
   x.globalCompositeOperation = 'source-over';
   void doc;
+}
+
+/** האם אפשר לצייר את השכבה ישר ליעד — אותה תוצאה בדיוק כמו דרך קנבס ביניים */
+function canDrawDirect(l: Layer, next: Layer | undefined, o: RenderOpts): boolean {
+  if (!isXf(l) || isDeformed(l) || next?.clip) return false;
+  if (maskOf(l, o) || l.vmask?.enabled) return false;
+  if (!o.draft && hasEffects(l.fx)) return false;
+  if (o.floating && o.floating.layerId === l.id) return false;
+  // טקסט וצורה מצוירים בכמה משיכות שחופפות זו לזו — שקיפות או מצב מיזוג חייבים קנבס ביניים
+  return l.type === 'raster' || (l.opacity >= 1 && gco(l.blend) === 'source-over');
 }
 
 function renderList(layers: Layer[], doc: Doc, o: RenderOpts, target: HTMLCanvasElement) {
@@ -407,6 +447,17 @@ function renderList(layers: Layer[], doc: Doc, o: RenderOpts, target: HTMLCanvas
     }
     if (l.type === 'adjust') {
       if (!o.draft) adjustInto(target, l, doc, o);
+      continue;
+    }
+    if (canDrawDirect(l, layers[i + 1], o)) {
+      // שכבה פשוטה (בלי מסכה, אפקטים או שכבות חתוכות): ישר ליעד, בלי קנבס ביניים בגודל המסמך
+      tx.save();
+      tx.globalAlpha = l.opacity;
+      tx.globalCompositeOperation = gco(l.blend);
+      tx.imageSmoothingQuality = 'high';
+      tx.setTransform(new DOMMatrix().scaleSelf(o.scale, o.scale).multiplySelf(layerMatrix(l as XfLayer)));
+      drawLayerContent(tx, l as XfLayer, o);
+      tx.restore();
       continue;
     }
     const b = renderLayer(l, doc, o);

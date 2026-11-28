@@ -207,10 +207,11 @@ export class Editor {
     if (!st) { this.paintRulers(); return; }
     if (!st.fitted && cw > 50) { this.fit(); st.fitted = true; }
     const doc = st.doc;
-    // מרכיב מחדש: בזמן גרירה בסקאלה של המסך (מהיר), אחר כך ברזולוציה מלאה
+    // מרכיב מחדש ברזולוציית התצוגה (כמו פוטושופ) — לא ברזולוציה המלאה של המסמך.
+    // זום פנימה מרכיב מחדש בחדות גבוהה יותר (zoomTo); ייצוא ושמירה מרנדרים בנפרד ב-100%.
     if (this.compDirty) {
       const full = Math.min(1, Math.max(0.05, 8000 / Math.max(doc.width, doc.height)));
-      const want = this.interacting ? Math.min(full, Math.max(0.05, st.zoom * dpr)) : full;
+      const want = Math.min(full, Math.max(0.05, st.zoom * dpr));
       this.compScale = want;
       renderDoc(doc, { scale: want, hide: this.hideIds(), live: this.live.paint, floating: this.live.floating }, this.comp);
       this.compDirty = false;
